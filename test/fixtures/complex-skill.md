@@ -10,7 +10,7 @@ A dummy pipeline that exercises complex BPMN control flow. Every task just sleep
 ## Steps
 
 1. Initialize the system. Sleep 5 seconds. Set retryCount to 1. Set status to "not ready".
-2. Check if retryCount >= 3. If yes, set status to "ready". If no, increment retryCount by 1 and go back to step 1.
+2. Check if retryCount >= 3. If yes, set status to "ready". If no, increment retryCount by 1 and check again (loop back to step 2, not step 1).
 3. Once status is "ready", fork into two parallel branches:
    - Branch A: sleep 5 seconds. Set resultA to "alpha".
    - Branch B: sleep 5 seconds. Set resultB to "beta".

@@ -9,35 +9,35 @@
 
     <!-- Start -->
     <startEvent id="StartEvent_1"/>
-    <sequenceFlow id="Flow_Start_Init" sourceRef="StartEvent_1" targetRef="Task_Initialize"/>
+    <sequenceFlow id="Flow_Start_Init" sourceRef="StartEvent_1" targetRef="Task_Init"/>
 
     <!-- Step 1: Initialize -->
-    <serviceTask id="Task_Initialize" name="Initialize the system" implementation="${environment.services.runAgent}">
+    <serviceTask id="Task_Init" name="Initialize system" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Initialize the system. Run a bash command to sleep for 5 seconds. Then set the following output variables: retryCount to 1, and status to "not ready".</skillsc:prompt>
+          <skillsc:prompt>Initialize the system. Sleep for 5 seconds using bash (run: sleep 5). Then set retryCount to 1 and status to "not ready".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>retryCount,status</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_Init_EvalRetry" sourceRef="Task_Initialize" targetRef="Task_EvalRetry"/>
+    <sequenceFlow id="Flow_Init_EvalRetry" sourceRef="Task_Init" targetRef="Task_EvalRetry"/>
 
-    <!-- Step 2: Evaluate retry condition -->
-    <serviceTask id="Task_EvalRetry" name="Check if retryCount >= 3" implementation="${environment.services.runAgent}">
+    <!-- Step 2: Evaluate if retryCount >= 3 -->
+    <serviceTask id="Task_EvalRetry" name="Evaluate retry count" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Check if retryCount is greater than or equal to 3. If retryCount >= 3, set retriesExhausted to true. Otherwise, set retriesExhausted to false.</skillsc:prompt>
+          <skillsc:prompt>Check if retryCount is greater than or equal to 3. If it is, set retriesExhausted to true. Otherwise set retriesExhausted to false.</skillsc:prompt>
           <skillsc:tools></skillsc:tools>
           <skillsc:inputs>retryCount</skillsc:inputs>
           <skillsc:outputs>retriesExhausted</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_EvalRetry_Gateway" sourceRef="Task_EvalRetry" targetRef="Gateway_RetryCheck"/>
+    <sequenceFlow id="Flow_EvalRetry_GW" sourceRef="Task_EvalRetry" targetRef="Gateway_RetryCheck"/>
 
-    <!-- Gateway: retry or proceed -->
+    <!-- Gateway: retries exhausted? -->
     <exclusiveGateway id="Gateway_RetryCheck" default="Flow_RetryNo"/>
     <sequenceFlow id="Flow_RetryYes" sourceRef="Gateway_RetryCheck" targetRef="Task_SetReady">
       <conditionExpression xsi:type="tFormalExpression">${environment.variables.retriesExhausted}</conditionExpression>
@@ -45,70 +45,71 @@
     <sequenceFlow id="Flow_RetryNo" sourceRef="Gateway_RetryCheck" targetRef="Task_IncrementRetry"/>
 
     <!-- Increment retryCount and loop back -->
-    <serviceTask id="Task_IncrementRetry" name="Increment retryCount" implementation="${environment.services.runAgent}">
+    <serviceTask id="Task_IncrementRetry" name="Increment retry count" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Increment the retryCount by 1. The current retryCount value is provided as input. Output the new retryCount value. Also set status to "not ready".</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
+          <skillsc:prompt>Increment retryCount by 1. The current value of retryCount is provided as input. Output the new retryCount value. Also sleep for 5 seconds using bash (run: sleep 5).</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>retryCount</skillsc:inputs>
-          <skillsc:outputs>retryCount,status</skillsc:outputs>
+          <skillsc:outputs>retryCount</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_Increment_BackToInit" sourceRef="Task_IncrementRetry" targetRef="Task_Initialize"/>
+    <sequenceFlow id="Flow_Increment_EvalRetry" sourceRef="Task_IncrementRetry" targetRef="Task_EvalRetry"/>
 
     <!-- Set status to ready -->
     <serviceTask id="Task_SetReady" name="Set status to ready" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The retry count has reached the threshold. Sleep for 5 seconds using bash. Set status to "ready".</skillsc:prompt>
+          <skillsc:prompt>Set status to "ready". Sleep for 5 seconds using bash (run: sleep 5).</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>retryCount</skillsc:inputs>
+          <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>status</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_Ready_ForkGateway" sourceRef="Task_SetReady" targetRef="Gateway_ParallelFork"/>
+    <sequenceFlow id="Flow_SetReady_Fork" sourceRef="Task_SetReady" targetRef="Gateway_Fork"/>
 
     <!-- Step 3: Parallel fork -->
-    <parallelGateway id="Gateway_ParallelFork"/>
-    <sequenceFlow id="Flow_Fork_BranchA" sourceRef="Gateway_ParallelFork" targetRef="Task_BranchA"/>
-    <sequenceFlow id="Flow_Fork_BranchB" sourceRef="Gateway_ParallelFork" targetRef="Task_BranchB"/>
+    <parallelGateway id="Gateway_Fork"/>
+    <sequenceFlow id="Flow_Fork_A" sourceRef="Gateway_Fork" targetRef="Task_BranchA"/>
+    <sequenceFlow id="Flow_Fork_B" sourceRef="Gateway_Fork" targetRef="Task_BranchB"/>
 
     <!-- Branch A -->
-    <serviceTask id="Task_BranchA" name="Branch A: compute alpha" implementation="${environment.services.runAgent}">
+    <serviceTask id="Task_BranchA" name="Branch A" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>This is parallel branch A. Run a bash command to sleep for 5 seconds. Then set resultA to "alpha".</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultA to "alpha".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>resultA</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_BranchA_Join" sourceRef="Task_BranchA" targetRef="Gateway_ParallelJoin"/>
+    <sequenceFlow id="Flow_A_Join" sourceRef="Task_BranchA" targetRef="Gateway_Join"/>
 
     <!-- Branch B -->
-    <serviceTask id="Task_BranchB" name="Branch B: compute beta" implementation="${environment.services.runAgent}">
+    <serviceTask id="Task_BranchB" name="Branch B" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>This is parallel branch B. Run a bash command to sleep for 5 seconds. Then set resultB to "beta".</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultB to "beta".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>resultB</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_BranchB_Join" sourceRef="Task_BranchB" targetRef="Gateway_ParallelJoin"/>
+    <sequenceFlow id="Flow_B_Join" sourceRef="Task_BranchB" targetRef="Gateway_Join"/>
 
-    <!-- Step 4: Parallel join and merge -->
-    <parallelGateway id="Gateway_ParallelJoin"/>
-    <sequenceFlow id="Flow_Join_Merge" sourceRef="Gateway_ParallelJoin" targetRef="Task_Merge"/>
+    <!-- Step 4: Parallel join -->
+    <parallelGateway id="Gateway_Join"/>
+    <sequenceFlow id="Flow_Join_Merge" sourceRef="Gateway_Join" targetRef="Task_Merge"/>
 
+    <!-- Merge results -->
     <serviceTask id="Task_Merge" name="Merge results" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Both parallel branches have completed. Run a bash command to sleep for 5 seconds. Then concatenate the values of resultA and resultB (with no separator) into a single string called merged. For example if resultA is "alpha" and resultB is "beta", merged should be "alphabeta".</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then concatenate resultA and resultB into a single string called merged. For example if resultA is "alpha" and resultB is "beta", merged should be "alphabeta".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>resultA,resultB</skillsc:inputs>
           <skillsc:outputs>merged</skillsc:outputs>
@@ -121,7 +122,7 @@
     <serviceTask id="Task_Validate" name="Validate merged result" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Validate the merged result. Run a bash command to sleep for 5 seconds. The merged value is provided as input. Set valid to true. This task performs validation of the merged result.</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Validate the merged result. Set valid to true. This task may fail with an error if something goes wrong.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>merged</skillsc:inputs>
           <skillsc:outputs>valid</skillsc:outputs>
@@ -129,7 +130,7 @@
       </extensionElements>
     </serviceTask>
 
-    <!-- Error boundary on validation -->
+    <!-- Boundary error on validation -->
     <boundaryEvent id="BoundaryError_Validate" attachedToRef="Task_Validate">
       <errorEventDefinition/>
     </boundaryEvent>
@@ -139,19 +140,19 @@
     <serviceTask id="Task_Fallback" name="Validation fallback" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Validation has failed with an error. Run a bash command to sleep for 5 seconds. Set valid to false and set reason to "validation failed".</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set valid to false and reason to "validation failed".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>valid,reason</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_Fallback_DecisionGateway" sourceRef="Task_Fallback" targetRef="Gateway_ValidCheck"/>
+    <sequenceFlow id="Flow_Fallback_ValidGW" sourceRef="Task_Fallback" targetRef="Gateway_ValidCheck"/>
 
-    <!-- Normal flow from validate to decision gateway -->
-    <sequenceFlow id="Flow_Validate_DecisionGateway" sourceRef="Task_Validate" targetRef="Gateway_ValidCheck"/>
+    <!-- Normal flow from validate to gateway -->
+    <sequenceFlow id="Flow_Validate_ValidGW" sourceRef="Task_Validate" targetRef="Gateway_ValidCheck"/>
 
-    <!-- Step 6/7: Check valid flag -->
+    <!-- Step 6/7: Check valid -->
     <exclusiveGateway id="Gateway_ValidCheck" default="Flow_NotValid"/>
     <sequenceFlow id="Flow_Valid" sourceRef="Gateway_ValidCheck" targetRef="Task_Publish">
       <conditionExpression xsi:type="tFormalExpression">${environment.variables.valid}</conditionExpression>
@@ -162,9 +163,9 @@
     <serviceTask id="Task_Publish" name="Publish result" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The result is valid. Run a bash command to sleep for 5 seconds. Set published to true.</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set published to true.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>merged</skillsc:inputs>
+          <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>published</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
@@ -177,9 +178,9 @@
     <serviceTask id="Task_Reject" name="Reject result" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The result is not valid. Run a bash command to sleep for 5 seconds. Set rejected to true.</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set rejected to true.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>reason</skillsc:inputs>
+          <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>rejected</skillsc:outputs>
         </skillsc:config>
       </extensionElements>

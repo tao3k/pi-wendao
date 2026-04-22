@@ -87,8 +87,8 @@ export class GraphView implements Component {
 		g.setGraph({ rankdir: "TB", nodesep: 3, ranksep: 1, marginx: 1, marginy: 0 });
 		g.setDefaultEdgeLabel(() => ({}));
 
-		// Cap node label width so the graph fits the terminal
-		const maxLabelWidth = Math.max(6, Math.min(14, Math.floor(width / Math.max(this.nodes.size / 2, 3)) - 4));
+		// Cap node label width — use wider labels since TB layout is narrow
+		const maxLabelWidth = Math.max(10, Math.min(30, Math.floor(width / 3)));
 
 		for (const [id, node] of this.nodes) {
 			const label = formatNodeLabel(node, maxLabelWidth);
