@@ -2,7 +2,6 @@
 import { readFileSync } from "fs";
 import { program } from "commander";
 import { execute } from "../executor/executor.js";
-import { GraphView } from "../output/graph-view.js";
 import { createRenderer } from "../output/renderer.js";
 import { resolveModel } from "./model-resolver.js";
 
@@ -26,10 +25,12 @@ program
 			}
 
 			const { model, apiKey } = await resolveModel(options.model, options.provider, options.apiKey, options.extension);
-			const renderer = createRenderer();
-			const graphView = options.graph !== false ? new GraphView() : undefined;
+			const useGraph = options.graph !== false;
+			const renderer = createRenderer(useGraph);
 
-			console.log(`Executing ${workflowPath} using ${model.provider}/${model.id}...\n`);
+			console.log(`Executing ${workflowPath} using ${model.provider}/${model.id}...`);
+
+			renderer.start();
 
 			const result = await execute({
 				source,
@@ -37,13 +38,17 @@ program
 				apiKey,
 				cwd: process.cwd(),
 				variables: options.var,
-				graphView,
+				graphView: useGraph ? renderer.graphView : undefined,
+				onGraphReady: () => renderer.graphView.invalidate(),
+				onGraphUpdate: () => renderer.graphView.invalidate(),
 				onAgentEvent: renderer.onAgentEvent,
 				onActivityStart: renderer.onNodeStart,
 				onActivityEnd: renderer.onNodeEnd,
 				onFlowTake: renderer.onFlowTake,
 				onError: renderer.onError,
 			});
+
+			renderer.stop();
 
 			if (!result.success) {
 				console.error(`\nExecution failed: ${result.error}`);

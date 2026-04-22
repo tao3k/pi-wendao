@@ -17,6 +17,7 @@
     "@mariozechner/pi-agent-core": "^0.68.1",
     "@mariozechner/pi-ai": "^0.68.1",
     "@mariozechner/pi-coding-agent": "^0.68.1",
+    "@mariozechner/pi-tui": "^0.68.1",
     "@twogiants/pi-anthropic-vertex": "^0.1.1",
     "@types/dagre": "^0.7.54",
     "bpmn-engine": "^25.0.1",

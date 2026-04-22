@@ -14,7 +14,7 @@
     <serviceTask id="Task_FindFiles" name="Find TypeScript files" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. Capture the full output of the command. Then count the number of lines in the output (each line represents one TypeScript file). Output the raw list of files as "fileList" and the total count as "fileCount".</skillsc:prompt>
+          <skillsc:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. Capture the full output of the command. Then count the number of lines in the output (each line is one file). Output the raw list of files as "fileList" and the total count as "fileCount".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>fileList,fileCount</skillsc:outputs>
@@ -31,10 +31,10 @@
     <serviceTask id="Task_HandleError" name="Handle find error" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The find command failed to list TypeScript files. Report that an error occurred while searching for TypeScript files and set fileCount to 0 and summary to an error message explaining the failure.</skillsc:prompt>
+          <skillsc:prompt>The attempt to find TypeScript files failed. Report that an error occurred while searching for TypeScript files and set fileCount to 0 and report to "report".</skillsc:prompt>
           <skillsc:tools></skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>fileCount,summary</skillsc:outputs>
+          <skillsc:outputs>fileCount,report</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
@@ -46,12 +46,10 @@
     <serviceTask id="Task_Report" name="Report the count" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>You are given a list of TypeScript files and a count. Generate a human-readable summary report. The report should state the total number of TypeScript files found and list them. Output the report as "summary".
-
-For example: "Found 5 TypeScript files in the current directory: ..." followed by the file list.</skillsc:prompt>
+          <skillsc:prompt>You are given a list of TypeScript files and their count. Generate a clear, human-readable summary report. State the total number of TypeScript files found (from "fileCount") and list the files (from "fileList"). Output the summary as "report".</skillsc:prompt>
           <skillsc:tools></skillsc:tools>
           <skillsc:inputs>fileList,fileCount</skillsc:inputs>
-          <skillsc:outputs>summary</skillsc:outputs>
+          <skillsc:outputs>report</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>

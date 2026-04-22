@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { Engine } from "bpmn-engine";
 import type { Model } from "@mariozechner/pi-ai";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { GraphView, type NodeStatus } from "../output/graph-view.js";
+import type { GraphView } from "../output/graph-view.js";
 import { createRunAgentService, type SkillscConfig } from "./node-runner.js";
 
 export interface ExecuteOptions {
@@ -30,6 +30,10 @@ export interface ExecuteOptions {
 	moddleOptions?: Record<string, unknown>;
 	/** If provided, the executor populates and updates this graph view during execution */
 	graphView?: GraphView;
+	/** Called after graph is populated but before execution starts */
+	onGraphReady?: () => void;
+	/** Called when graph state changes (node status, edge taken) */
+	onGraphUpdate?: () => void;
 }
 
 export interface ExecuteResult {
@@ -133,7 +137,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 		onActivityStart?.(elementApi.id, elementApi.name ?? elementApi.id);
 		if (options.graphView) {
 			options.graphView.setNodeStatus(elementApi.id, "active");
-			options.graphView.print();
+			options.onGraphUpdate?.();
 		}
 	});
 
@@ -141,14 +145,14 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 		onActivityEnd?.(elementApi.id, elementApi.name ?? elementApi.id);
 		if (options.graphView) {
 			options.graphView.setNodeStatus(elementApi.id, "done");
-			options.graphView.print();
+			options.onGraphUpdate?.();
 		}
 	});
 
 	listener.on("activity.error", (elementApi: { id: string }) => {
 		if (options.graphView) {
 			options.graphView.setNodeStatus(elementApi.id, "error");
-			options.graphView.print();
+			options.onGraphUpdate?.();
 		}
 	});
 
@@ -176,7 +180,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 			for (const def of definitions) {
 				populateGraphView(options.graphView, def);
 			}
-			options.graphView.print();
+			options.onGraphReady?.();
 		}
 
 		const execution = await engine.execute({
