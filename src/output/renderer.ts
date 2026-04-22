@@ -241,21 +241,26 @@ class SplitLayout implements Component {
 		}
 
 		const totalRows = this.terminal.rows;
-		const topLines = this.top.render(width);
-		const separator = "─".repeat(width);
-		const headerHeight = topLines.length + 1; // +1 for separator
-		const bottomHeight = Math.max(1, totalRows - headerHeight);
+		const topHeight = Math.floor(totalRows * 2 / 3);
+		const bottomHeight = Math.max(1, totalRows - topHeight - 1); // -1 for separator
 
-		// Render bottom, then take only the tail that fits
+		// Render top, pad or trim to fixed height
+		const topLines = this.top.render(width);
+		const visibleTop = topLines.slice(0, topHeight);
+		while (visibleTop.length < topHeight) {
+			visibleTop.push("");
+		}
+
+		const separator = dim("─".repeat(width));
+
+		// Render bottom, take tail that fits
 		const allBottomLines = this.bottom.render(width);
 		const visibleBottom = allBottomLines.slice(-bottomHeight);
-
-		// Pad to fill the remaining space so the layout is stable
 		while (visibleBottom.length < bottomHeight) {
 			visibleBottom.unshift("");
 		}
 
-		const lines = [...topLines, separator, ...visibleBottom];
+		const lines = [...visibleTop, separator, ...visibleBottom];
 		this.cachedWidth = width;
 		this.cachedLines = lines;
 		return lines;
