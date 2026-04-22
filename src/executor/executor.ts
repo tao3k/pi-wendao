@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { Engine } from "bpmn-engine";
 import type { Model } from "@mariozechner/pi-ai";
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import { GraphView, type NodeStatus } from "../output/graph-view.js";
 import { createRunAgentService, type SkillscConfig } from "./node-runner.js";
 
 export interface ExecuteOptions {
@@ -27,6 +28,8 @@ export interface ExecuteOptions {
 	onError?: (err: Error) => void;
 	/** Custom moddle options for bpmn-engine (e.g., extension namespaces) */
 	moddleOptions?: Record<string, unknown>;
+	/** If provided, the executor populates and updates this graph view during execution */
+	graphView?: GraphView;
 }
 
 export interface ExecuteResult {
@@ -128,14 +131,32 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 
 	listener.on("activity.start", (elementApi: { id: string; name?: string }) => {
 		onActivityStart?.(elementApi.id, elementApi.name ?? elementApi.id);
+		if (options.graphView) {
+			options.graphView.setNodeStatus(elementApi.id, "active");
+			options.graphView.print();
+		}
 	});
 
 	listener.on("activity.end", (elementApi: { id: string; name?: string }) => {
 		onActivityEnd?.(elementApi.id, elementApi.name ?? elementApi.id);
+		if (options.graphView) {
+			options.graphView.setNodeStatus(elementApi.id, "done");
+			options.graphView.print();
+		}
 	});
 
-	listener.on("flow.take", (flow: { id: string }) => {
+	listener.on("activity.error", (elementApi: { id: string }) => {
+		if (options.graphView) {
+			options.graphView.setNodeStatus(elementApi.id, "error");
+			options.graphView.print();
+		}
+	});
+
+	listener.on("flow.take", (flow: { id: string; sourceId?: string; targetId?: string }) => {
 		onFlowTake?.(flow.id);
+		if (options.graphView && flow.sourceId && flow.targetId) {
+			options.graphView.setEdgeTaken(flow.sourceId, flow.targetId);
+		}
 	});
 
 	// Create and execute the engine
@@ -149,6 +170,15 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 	});
 
 	try {
+		// Build graph view from definitions if requested
+		if (options.graphView) {
+			const definitions = await engine.getDefinitions();
+			for (const def of definitions) {
+				populateGraphView(options.graphView, def);
+			}
+			options.graphView.print();
+		}
+
 		const execution = await engine.execute({
 			listener,
 			variables: initialVariables,
@@ -178,5 +208,46 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 			variables: {},
 			output: {},
 		};
+	}
+}
+
+/**
+ * Populate a GraphView from a bpmn-engine Definition.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function populateGraphView(view: GraphView, definition: any): void {
+	const ctx = definition.context;
+	if (!ctx) return;
+
+	const activities = ctx.getActivities?.() ?? [];
+	const flows = ctx.getSequenceFlows?.() ?? [];
+
+	for (const act of activities) {
+		let type: "start" | "end" | "task" | "gateway" | "boundary" = "task";
+		const bpmnType = act.type as string;
+		if (bpmnType.includes("StartEvent")) type = "start";
+		else if (bpmnType.includes("EndEvent")) type = "end";
+		else if (bpmnType.includes("Gateway")) type = "gateway";
+		else if (bpmnType.includes("BoundaryEvent")) type = "boundary";
+
+		view.addNode({
+			id: act.id,
+			label: act.name ?? act.id,
+			type,
+			status: "pending",
+		});
+	}
+
+	for (const flow of flows) {
+		const sourceId = flow.behaviour?.sourceRef?.id ?? flow.sourceId;
+		const targetId = flow.behaviour?.targetRef?.id ?? flow.targetId;
+		if (sourceId && targetId) {
+			view.addEdge({
+				source: sourceId,
+				target: targetId,
+				label: flow.behaviour?.name,
+				taken: false,
+			});
+		}
 	}
 }

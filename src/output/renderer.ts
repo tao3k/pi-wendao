@@ -1,12 +1,5 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-
-const RESET = "\x1b[0m";
-const BOLD = "\x1b[1m";
-const DIM = "\x1b[2m";
-const CYAN = "\x1b[36m";
-const GREEN = "\x1b[32m";
-const RED = "\x1b[31m";
-const YELLOW = "\x1b[33m";
+import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
 
 export interface Renderer {
 	onAgentEvent: (event: AgentEvent) => void;
@@ -35,12 +28,12 @@ export function createRenderer(): Renderer {
 					break;
 				}
 				case "tool_execution_start": {
-					console.log(`${DIM}  [tool] ${event.toolName}(${formatArgs(event.args)})${RESET}`);
+					console.log(dim(`  [tool] ${event.toolName}(${formatArgs(event.args)})`));
 					break;
 				}
 				case "tool_execution_end": {
 					if (event.isError) {
-						console.log(`${RED}  [tool] ${event.toolName} failed${RESET}`);
+						console.log(red(`  [tool] ${event.toolName} failed`));
 					}
 					break;
 				}
@@ -48,27 +41,27 @@ export function createRenderer(): Renderer {
 		},
 
 		onNodeStart(activityId: string, activityName: string) {
-			console.log(`\n${CYAN}${BOLD}>> ${activityName}${RESET} ${DIM}(${activityId})${RESET}`);
+			console.log(`\n${cyan(bold(`>> ${activityName}`))} ${dim(`(${activityId})`)}`);
 		},
 
-		onNodeEnd(activityId: string, activityName: string) {
-			console.log(`${GREEN}   done${RESET}`);
+		onNodeEnd(_activityId: string, _activityName: string) {
+			console.log(green("   done"));
 		},
 
-		onFlowTake(flowId: string) {
-			// Silent by default — too noisy
+		onFlowTake(_flowId: string) {
+			// Silent by default
 		},
 
 		onError(err: Error) {
-			console.error(`${RED}Error: ${err.message}${RESET}`);
+			console.error(red(`Error: ${err.message}`));
 		},
 
 		printVariables(variables: Record<string, unknown>) {
 			const keys = Object.keys(variables);
 			if (keys.length === 0) return;
-			console.log(`\n${BOLD}Variables:${RESET}`);
+			console.log(`\n${bold("Variables:")}`);
 			for (const [key, value] of Object.entries(variables)) {
-				console.log(`  ${YELLOW}${key}${RESET}: ${JSON.stringify(value)}`);
+				console.log(`  ${yellow(key)}: ${JSON.stringify(value)}`);
 			}
 		},
 	};

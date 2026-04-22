@@ -2,6 +2,7 @@
 import { readFileSync } from "fs";
 import { program } from "commander";
 import { execute } from "../executor/executor.js";
+import { GraphView } from "../output/graph-view.js";
 import { createRenderer } from "../output/renderer.js";
 import { resolveModel } from "./model-resolver.js";
 
@@ -13,7 +14,8 @@ program
 	.option("--provider <provider>", "LLM provider")
 	.option("--api-key <key>", "API key (overrides env vars)")
 	.option("--var <pairs...>", "Variables as key=value pairs")
-	.action(async (workflowPath: string, options: { model?: string; provider?: string; apiKey?: string; var?: string[] }) => {
+	.option("--no-graph", "Disable graph visualization")
+	.action(async (workflowPath: string, options: { model?: string; provider?: string; apiKey?: string; var?: string[]; graph?: boolean }) => {
 		try {
 			const source = readFileSync(workflowPath, "utf-8");
 
@@ -25,8 +27,9 @@ program
 			const { model, apiKey } = resolveModel(options.model, options.provider);
 			const finalApiKey = options.apiKey ?? apiKey;
 			const renderer = createRenderer();
+			const graphView = options.graph !== false ? new GraphView() : undefined;
 
-			console.log(`Executing ${workflowPath} using ${model.provider}/${model.id}...`);
+			console.log(`Executing ${workflowPath} using ${model.provider}/${model.id}...\n`);
 
 			const result = await execute({
 				source,
@@ -34,6 +37,7 @@ program
 				apiKey: finalApiKey,
 				cwd: process.cwd(),
 				variables: options.var,
+				graphView,
 				onAgentEvent: renderer.onAgentEvent,
 				onActivityStart: renderer.onNodeStart,
 				onActivityEnd: renderer.onNodeEnd,
