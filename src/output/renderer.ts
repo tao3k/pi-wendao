@@ -11,6 +11,7 @@ export interface Renderer {
 	onFlowTake: (flowId: string) => void;
 	onError: (err: Error) => void;
 	printVariables: (variables: Record<string, unknown>) => void;
+	refresh: () => void;
 	start: () => void;
 	stop: () => void;
 }
@@ -54,6 +55,7 @@ function createTuiRenderer(): Renderer {
 
 	return {
 		graphView,
+		refresh,
 
 		start() {
 			tui.start();
@@ -132,6 +134,7 @@ function createPlainRenderer(): Renderer {
 
 	return {
 		graphView,
+		refresh() {},
 		start() {},
 		stop() {},
 

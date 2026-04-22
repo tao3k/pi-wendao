@@ -134,19 +134,19 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 	const listener = new EventEmitter();
 
 	listener.on("activity.start", (elementApi: { id: string; name?: string }) => {
-		onActivityStart?.(elementApi.id, elementApi.name ?? elementApi.id);
 		if (options.graphView) {
 			options.graphView.setNodeStatus(elementApi.id, "active");
 			options.onGraphUpdate?.();
 		}
+		onActivityStart?.(elementApi.id, elementApi.name ?? elementApi.id);
 	});
 
 	listener.on("activity.end", (elementApi: { id: string; name?: string }) => {
-		onActivityEnd?.(elementApi.id, elementApi.name ?? elementApi.id);
 		if (options.graphView) {
 			options.graphView.setNodeStatus(elementApi.id, "done");
 			options.onGraphUpdate?.();
 		}
+		onActivityEnd?.(elementApi.id, elementApi.name ?? elementApi.id);
 	});
 
 	listener.on("activity.error", (elementApi: { id: string }) => {
@@ -157,10 +157,11 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 	});
 
 	listener.on("flow.take", (flow: { id: string; sourceId?: string; targetId?: string }) => {
-		onFlowTake?.(flow.id);
 		if (options.graphView && flow.sourceId && flow.targetId) {
 			options.graphView.setEdgeTaken(flow.sourceId, flow.targetId);
+			options.onGraphUpdate?.();
 		}
+		onFlowTake?.(flow.id);
 	});
 
 	// Create and execute the engine
