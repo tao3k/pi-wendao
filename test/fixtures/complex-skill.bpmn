@@ -15,7 +15,7 @@
     <serviceTask id="Task_Initialize" name="Initialize System" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Initialize the system. Sleep for 2 seconds using bash (sleep 2). Then set retryCount to 1 and status to "not ready". Output these as JSON variables.</skillsc:prompt>
+          <skillsc:prompt>Initialize the system. Sleep for 5 seconds using bash (sleep 5). Then set retryCount to 1 and status to "not ready". Output these as JSON variables.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>retryCount,status</skillsc:outputs>
@@ -39,7 +39,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_IncrementRetry" name="Increment Retry Count" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The current retryCount is provided in the input variable retryCount. Increment it by 1. Sleep for 2 seconds using bash (sleep 2). Output the new retryCount and set status to "not ready".</skillsc:prompt>
+          <skillsc:prompt>The current retryCount is provided in the input variable retryCount. Increment it by 1. Sleep for 5 seconds using bash (sleep 5). Output the new retryCount and set status to "not ready".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>retryCount</skillsc:inputs>
           <skillsc:outputs>retryCount,status</skillsc:outputs>
@@ -52,7 +52,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_SetReady" name="Set Status Ready" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The retry loop is complete. Sleep for 2 seconds using bash (sleep 2). Set status to "ready".</skillsc:prompt>
+          <skillsc:prompt>The retry loop is complete. Sleep for 5 seconds using bash (sleep 5). Set status to "ready".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>retryCount</skillsc:inputs>
           <skillsc:outputs>status</skillsc:outputs>
@@ -71,7 +71,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_BranchA" name="Branch A" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>This is Branch A of a parallel execution. Sleep for 2 seconds using bash (sleep 2). Set resultA to "alpha".</skillsc:prompt>
+          <skillsc:prompt>This is Branch A of a parallel execution. Sleep for 5 seconds using bash (sleep 5). Set resultA to "alpha".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>resultA</skillsc:outputs>
@@ -84,7 +84,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_BranchB" name="Branch B" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>This is Branch B of a parallel execution. Sleep for 2 seconds using bash (sleep 2). Set resultB to "beta".</skillsc:prompt>
+          <skillsc:prompt>This is Branch B of a parallel execution. Sleep for 5 seconds using bash (sleep 5). Set resultB to "beta".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>resultB</skillsc:outputs>
@@ -101,7 +101,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_Merge" name="Merge Results" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Both parallel branches are complete. You have resultA and resultB as input variables. Sleep for 2 seconds using bash (sleep 2). Concatenate resultA and resultB together into a single string called merged (e.g., "alphabeta"). Output the merged value.</skillsc:prompt>
+          <skillsc:prompt>Both parallel branches are complete. You have resultA and resultB as input variables. Sleep for 5 seconds using bash (sleep 5). Concatenate resultA and resultB together into a single string called merged (e.g., "alphabeta"). Output the merged value.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>resultA,resultB</skillsc:inputs>
           <skillsc:outputs>merged</skillsc:outputs>
@@ -114,7 +114,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_Validate" name="Validate Merged Result" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Validate the merged result. The input variable merged contains the merged string. Sleep for 2 seconds using bash (sleep 2). Set valid to true. This step may throw an error if validation fails.</skillsc:prompt>
+          <skillsc:prompt>Validate the merged result. The input variable merged contains the merged string. Sleep for 5 seconds using bash (sleep 5). Set valid to true. This step may throw an error if validation fails.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>merged</skillsc:inputs>
           <skillsc:outputs>valid</skillsc:outputs>
@@ -132,7 +132,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_Fallback" name="Validation Fallback" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Validation failed. Sleep for 2 seconds using bash (sleep 2). Set valid to false and reason to "validation failed".</skillsc:prompt>
+          <skillsc:prompt>Validation failed. Sleep for 5 seconds using bash (sleep 5). Set valid to false and reason to "validation failed".</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
           <skillsc:outputs>valid,reason</skillsc:outputs>
@@ -157,7 +157,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_Publish" name="Publish Result" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The result is valid. Sleep for 2 seconds using bash (sleep 2). Set published to true.</skillsc:prompt>
+          <skillsc:prompt>The result is valid. Sleep for 5 seconds using bash (sleep 5). Set published to true.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>merged</skillsc:inputs>
           <skillsc:outputs>published</skillsc:outputs>
@@ -172,7 +172,7 @@ next(null, this.environment.variables.retryCount >= 3);
     <serviceTask id="Task_Reject" name="Reject Result" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>The result is not valid. Sleep for 2 seconds using bash (sleep 2). Set rejected to true.</skillsc:prompt>
+          <skillsc:prompt>The result is not valid. Sleep for 5 seconds using bash (sleep 5). Set rejected to true.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>reason</skillsc:inputs>
           <skillsc:outputs>rejected</skillsc:outputs>

@@ -72,11 +72,11 @@ export class GraphView implements Component {
 		}
 
 		const g = new dagre.graphlib.Graph();
-		g.setGraph({ rankdir: "LR", nodesep: 1, ranksep: 2, marginx: 1, marginy: 0 });
+		g.setGraph({ rankdir: "TB", nodesep: 3, ranksep: 1, marginx: 1, marginy: 0 });
 		g.setDefaultEdgeLabel(() => ({}));
 
 		// Cap node label width so the graph fits the terminal
-		const maxLabelWidth = Math.max(8, Math.floor(width / Math.max(this.nodes.size, 4)) - 4);
+		const maxLabelWidth = Math.max(6, Math.min(14, Math.floor(width / Math.max(this.nodes.size / 2, 3)) - 4));
 
 		for (const [id, node] of this.nodes) {
 			const label = formatNodeLabel(node, maxLabelWidth);
@@ -287,7 +287,7 @@ function drawEdgeOnGrid(
 		const lx = Math.round(last.x);
 		const ly = Math.round(last.y);
 		if (lx >= 0 && lx < gridW && ly >= 0 && ly < gridH) {
-			grid[ly][lx] = "▸";
+			grid[ly][lx] = "▾";
 		}
 	}
 }
@@ -313,7 +313,7 @@ function drawLineOnGrid(
 	while (true) {
 		if (cx >= 0 && cx < gridW && cy >= 0 && cy < gridH) {
 			if (grid[cy][cx] === " ") {
-				grid[cy][cx] = dx > dy ? char : "│";
+				grid[cy][cx] = dy >= dx ? char : "│";
 			}
 		}
 		if (cx === x1 && cy === y1) break;
