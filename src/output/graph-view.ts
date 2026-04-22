@@ -27,6 +27,9 @@ export class GraphView implements Component {
 	private edges: GraphEdge[] = [];
 	private cachedWidth?: number;
 	private cachedLines?: string[];
+	/** Row of the currently active node in the full rendered output */
+	private activeRow = 0;
+	private nodePositions: Map<string, number> = new Map();
 
 	addNode(node: GraphNode): void {
 		this.nodes.set(node.id, node);
@@ -42,8 +45,17 @@ export class GraphView implements Component {
 		const node = this.nodes.get(id);
 		if (node && node.status !== status) {
 			node.status = status;
+			if (status === "active") {
+				const pos = this.nodePositions.get(id);
+				if (pos !== undefined) this.activeRow = pos;
+			}
 			this.invalidate();
 		}
+	}
+
+	/** Get the row of the currently active node in the full rendered graph */
+	getActiveRow(): number {
+		return this.activeRow;
 	}
 
 	setEdgeTaken(source: string, target: string): void {
@@ -111,11 +123,21 @@ export class GraphView implements Component {
 			drawEdgeOnGrid(grid, dagreEdge.points, gridW, gridH, edge.taken);
 		}
 
-		// Draw nodes
+		// Draw nodes and record positions
+		this.nodePositions.clear();
 		for (const [id, node] of this.nodes) {
 			const pos = g.node(id);
 			if (!pos) continue;
+			this.nodePositions.set(id, Math.round(pos.y));
 			drawNodeOnGrid(grid, pos, node, gridW, gridH, maxLabelWidth);
+		}
+
+		// Update activeRow for the currently active node
+		for (const [id, node] of this.nodes) {
+			if (node.status === "active") {
+				const pos = this.nodePositions.get(id);
+				if (pos !== undefined) this.activeRow = pos;
+			}
 		}
 
 		// Convert grid to lines, truncate to width, trim trailing blanks

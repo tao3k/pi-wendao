@@ -71,22 +71,38 @@ The root \`definitions\` element MUST declare these namespaces:
 
 For exclusive gateways, use bpmn-engine compatible expressions:
 
-Simple truthy check:
+Gateways ONLY support simple truthy checks on boolean variables:
 \`\`\`xml
-<conditionExpression xsi:type="tFormalExpression">\${environment.variables.testsPassed}</conditionExpression>
+<conditionExpression xsi:type="tFormalExpression">\${environment.variables.isReady}</conditionExpression>
 \`\`\`
 
-Comparison:
+Comparison operators (>=, ===, <, etc.) do NOT work in condition expressions.
+
+When a gateway decision requires a comparison, string check, or any logic beyond a simple truthy check, add a dedicated serviceTask BEFORE the gateway that evaluates the condition and outputs a boolean variable. The gateway then checks that boolean.
+
+Example — instead of checking "retryCount >= 3" in the gateway:
 \`\`\`xml
-<conditionExpression xsi:type="tFormalExpression">\${environment.variables.count > 5}</conditionExpression>
+<!-- Evaluation task outputs a boolean -->
+<serviceTask id="Task_EvalRetry" name="Check retry count" implementation="\${environment.services.runAgent}">
+  <extensionElements>
+    <skillsc:config>
+      <skillsc:prompt>Check if retryCount is greater than or equal to 3. Output retriesExhausted as true if it is, false otherwise.</skillsc:prompt>
+      <skillsc:tools></skillsc:tools>
+      <skillsc:inputs>retryCount</skillsc:inputs>
+      <skillsc:outputs>retriesExhausted</skillsc:outputs>
+    </skillsc:config>
+  </extensionElements>
+</serviceTask>
+
+<!-- Gateway does a simple truthy check -->
+<exclusiveGateway id="Gateway_1" default="Flow_No"/>
+<sequenceFlow id="Flow_Yes" sourceRef="Gateway_1" targetRef="...">
+  <conditionExpression xsi:type="tFormalExpression">\${environment.variables.retriesExhausted}</conditionExpression>
+</sequenceFlow>
+<sequenceFlow id="Flow_No" sourceRef="Gateway_1" targetRef="..."/>
 \`\`\`
 
-String equality:
-\`\`\`xml
-<conditionExpression xsi:type="tFormalExpression">\${environment.variables.status === "ready"}</conditionExpression>
-\`\`\`
-
-Do NOT use CDATA or next() callback style. Always use the \${...} expression format.
+This pattern ensures all decisions work regardless of expression engine limitations.
 
 Use the \`default\` attribute on exclusiveGateway for the fallback path.
 

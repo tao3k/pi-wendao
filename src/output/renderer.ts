@@ -223,7 +223,7 @@ class SplitLayout implements Component {
 	private cachedLines?: string[];
 
 	constructor(
-		private top: Component,
+		private top: GraphView,
 		private bottom: Component,
 		private terminal: { rows: number },
 	) {}
@@ -244,9 +244,14 @@ class SplitLayout implements Component {
 		const topHeight = Math.floor(totalRows * 2 / 3);
 		const bottomHeight = Math.max(1, totalRows - topHeight - 1); // -1 for separator
 
-		// Render top, pad or trim to fixed height
-		const topLines = this.top.render(width);
-		const visibleTop = topLines.slice(0, topHeight);
+		// Render full graph, then viewport-scroll centered on active node
+		const allTopLines = this.top.render(width);
+		const activeRow = this.top.getActiveRow();
+		const scrollOffset = Math.max(0, Math.min(
+			activeRow - Math.floor(topHeight / 2),
+			Math.max(0, allTopLines.length - topHeight),
+		));
+		const visibleTop = allTopLines.slice(scrollOffset, scrollOffset + topHeight);
 		while (visibleTop.length < topHeight) {
 			visibleTop.push("");
 		}

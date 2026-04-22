@@ -65,9 +65,18 @@ export function createRunAgentService(options: NodeRunnerOptions) {
 			.map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
 			.join("\n");
 
-		const promptParts = [config.prompt];
+		// Replace ${environment.variables.X} references in prompt with actual values
+		const resolvedPrompt = config.prompt.replace(
+			/\$\{environment\.variables\.(\w+)\}/g,
+			(_, varName) => {
+				const val = environment.variables[varName];
+				return val !== undefined ? JSON.stringify(val) : "undefined";
+			},
+		);
+
+		const promptParts = [resolvedPrompt];
 		if (variableContext) {
-			promptParts.push(`\nAvailable variables:\n${variableContext}`);
+			promptParts.push(`\n\nCurrent variable values (use these as inputs):\n${variableContext}`);
 		}
 		if (config.outputs.length > 0) {
 			promptParts.push(
