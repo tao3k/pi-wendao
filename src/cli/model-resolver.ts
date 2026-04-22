@@ -1,7 +1,10 @@
 import type { Api, Model } from "@mariozechner/pi-ai";
 import {
 	AuthStorage,
+	DefaultPackageManager,
 	ModelRegistry,
+	SettingsManager,
+	getAgentDir,
 	discoverAndLoadExtensions,
 } from "@mariozechner/pi-coding-agent";
 
@@ -26,8 +29,15 @@ export async function resolveModel(
 	const authStorage = AuthStorage.create();
 	const modelRegistry = ModelRegistry.create(authStorage);
 
-	// Load pi extensions and apply provider registrations
-	const result = await discoverAndLoadExtensions(extensionPaths ?? [], process.cwd());
+	// Resolve installed pi packages + explicit -e paths
+	const cwd = process.cwd();
+	const agentDir = getAgentDir();
+	const settingsManager = SettingsManager.create(cwd, agentDir);
+	const packageManager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
+	const resolved = await packageManager.resolve();
+	const allPaths = [...resolved.extensions.map((r) => r.path), ...(extensionPaths ?? [])];
+
+	const result = await discoverAndLoadExtensions(allPaths, cwd, agentDir);
 
 	for (const err of result.errors) {
 		console.warn(`Warning: failed to load extension ${err.path}: ${err.error}`);
