@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { Container, ProcessTerminal, Spacer, TUI } from "@mariozechner/pi-tui";
+import { Container, matchesKey, ProcessTerminal, Spacer, TUI } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
 import { GraphView, LogView } from "./graph-view.js";
 
@@ -38,6 +38,15 @@ function createTuiRenderer(): Renderer {
 	layout.addChild(new Spacer(1));
 	layout.addChild(logView);
 	tui.addChild(layout);
+
+	// Handle Ctrl+C to exit cleanly
+	tui.addInputListener((data) => {
+		if (matchesKey(data, "ctrl+c")) {
+			tui.stop();
+			process.exit(130);
+		}
+		return undefined;
+	});
 
 	function refresh(): void {
 		tui.requestRender();
