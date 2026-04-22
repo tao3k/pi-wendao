@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { Container, matchesKey, ProcessTerminal, Spacer, TUI } from "@mariozechner/pi-tui";
+import { type Component, matchesKey, ProcessTerminal, TUI } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
 import { GraphView, LogView } from "./graph-view.js";
 
@@ -34,10 +34,7 @@ function createTuiRenderer(): Renderer {
 	const graphView = new GraphView();
 	const logView = new LogView();
 
-	const layout = new Container();
-	layout.addChild(graphView);
-	layout.addChild(new Spacer(1));
-	layout.addChild(logView);
+	const layout = new SplitLayout(graphView, logView, terminal);
 	tui.addChild(layout);
 
 	// Handle Ctrl+C to exit cleanly
@@ -50,6 +47,7 @@ function createTuiRenderer(): Renderer {
 	});
 
 	function refresh(): void {
+		layout.invalidate();
 		tui.requestRender();
 	}
 
@@ -189,6 +187,55 @@ function createPlainRenderer(): Renderer {
 			}
 		},
 	};
+}
+
+/**
+ * Split layout: top component gets its natural height,
+ * bottom component fills the remaining terminal rows.
+ * Bottom content is tail-scrolled (shows last N lines).
+ */
+class SplitLayout implements Component {
+	private cachedWidth?: number;
+	private cachedLines?: string[];
+
+	constructor(
+		private top: Component,
+		private bottom: Component,
+		private terminal: { rows: number },
+	) {}
+
+	invalidate(): void {
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+		this.top.invalidate();
+		this.bottom.invalidate();
+	}
+
+	render(width: number): string[] {
+		if (this.cachedLines && this.cachedWidth === width) {
+			return this.cachedLines;
+		}
+
+		const totalRows = this.terminal.rows;
+		const topLines = this.top.render(width);
+		const separator = "─".repeat(width);
+		const headerHeight = topLines.length + 1; // +1 for separator
+		const bottomHeight = Math.max(1, totalRows - headerHeight);
+
+		// Render bottom, then take only the tail that fits
+		const allBottomLines = this.bottom.render(width);
+		const visibleBottom = allBottomLines.slice(-bottomHeight);
+
+		// Pad to fill the remaining space so the layout is stable
+		while (visibleBottom.length < bottomHeight) {
+			visibleBottom.unshift("");
+		}
+
+		const lines = [...topLines, separator, ...visibleBottom];
+		this.cachedWidth = width;
+		this.cachedLines = lines;
+		return lines;
+	}
 }
 
 function formatArgs(args: unknown): string {
