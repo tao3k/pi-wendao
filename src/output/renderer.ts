@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { type Component, matchesKey, ProcessTerminal, TUI } from "@mariozechner/pi-tui";
+import { type Component, matchesKey, ProcessTerminal, truncateToWidth, TUI } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
 import { GraphView, LogView } from "./graph-view.js";
 
@@ -251,7 +251,7 @@ class SplitLayout implements Component {
 			visibleTop.push("");
 		}
 
-		const separator = dim("─".repeat(width));
+		const separator = truncateToWidth(dim("─".repeat(width)), width);
 
 		// Render bottom, take tail that fits
 		const allBottomLines = this.bottom.render(width);

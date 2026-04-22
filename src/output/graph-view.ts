@@ -1,6 +1,6 @@
 import dagre from "dagre";
 import { bold, dim, green, red, yellow } from "yoctocolors";
-import { type Component, Container, Text } from "@mariozechner/pi-tui";
+import { type Component, truncateToWidth } from "@mariozechner/pi-tui";
 
 export type NodeStatus = "pending" | "active" | "done" | "error";
 
@@ -72,11 +72,14 @@ export class GraphView implements Component {
 		}
 
 		const g = new dagre.graphlib.Graph();
-		g.setGraph({ rankdir: "LR", nodesep: 2, ranksep: 4, marginx: 1, marginy: 1 });
+		g.setGraph({ rankdir: "LR", nodesep: 1, ranksep: 2, marginx: 1, marginy: 0 });
 		g.setDefaultEdgeLabel(() => ({}));
 
+		// Cap node label width so the graph fits the terminal
+		const maxLabelWidth = Math.max(8, Math.floor(width / Math.max(this.nodes.size, 4)) - 4);
+
 		for (const [id, node] of this.nodes) {
-			const label = formatNodeLabel(node);
+			const label = formatNodeLabel(node, maxLabelWidth);
 			const w = stripAnsi(label).length + 4;
 			g.setNode(id, { label, width: w, height: 3 });
 		}
@@ -112,13 +115,13 @@ export class GraphView implements Component {
 		for (const [id, node] of this.nodes) {
 			const pos = g.node(id);
 			if (!pos) continue;
-			drawNodeOnGrid(grid, pos, node, gridW, gridH);
+			drawNodeOnGrid(grid, pos, node, gridW, gridH, maxLabelWidth);
 		}
 
-		// Convert grid to lines, trim trailing blanks
+		// Convert grid to lines, truncate to width, trim trailing blanks
 		const lines: string[] = [];
 		for (const row of grid) {
-			lines.push(row.join(""));
+			lines.push(truncateToWidth(row.join(""), width));
 		}
 		while (lines.length > 0 && lines[lines.length - 1].trim() === "") {
 			lines.pop();
@@ -177,13 +180,7 @@ export class LogView implements Component {
 			return this.cachedRendered;
 		}
 
-		// Truncate lines to width
-		const rendered = this.lines.map((line) => {
-			const vis = stripAnsi(line).length;
-			if (vis <= width) return line;
-			// Rough truncation — good enough for log output
-			return line.slice(0, width);
-		});
+		const rendered = this.lines.map((line) => truncateToWidth(line, width));
 
 		this.cachedWidth = width;
 		this.cachedRendered = rendered;
@@ -193,20 +190,20 @@ export class LogView implements Component {
 
 // -- Node helpers --
 
-function formatNodeLabel(node: GraphNode): string {
+function formatNodeLabel(node: GraphNode, maxWidth = 20): string {
 	switch (node.type) {
 		case "start":
 			return "( )";
 		case "end":
 			return "(*)";
 		case "gateway":
-			return `<${truncLabel(node.label, 16)}>`;
+			return `<${truncLabel(node.label, Math.max(3, maxWidth - 2))}>`;
 		case "task":
-			return truncLabel(node.label, 20);
+			return truncLabel(node.label, maxWidth);
 		case "boundary":
 			return "err";
 		default:
-			return node.label;
+			return truncLabel(node.label, maxWidth);
 	}
 }
 
@@ -221,8 +218,9 @@ function drawNodeOnGrid(
 	node: GraphNode,
 	gridW: number,
 	gridH: number,
+	maxLabelWidth = 20,
 ): void {
-	const label = formatNodeLabel(node);
+	const label = formatNodeLabel(node, maxLabelWidth);
 	const boxW = stripAnsi(label).length + 4;
 	const startX = Math.round(pos.x - boxW / 2);
 	const startY = Math.round(pos.y - 1);
