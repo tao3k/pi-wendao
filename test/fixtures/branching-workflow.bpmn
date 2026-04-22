@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             id="Definitions_1"
+             targetNamespace="http://skillsc.dev">
+  <process id="Process_1" name="Branching Workflow" isExecutable="true">
+    <startEvent id="Start_1"/>
+    <serviceTask id="Task_RunTests" name="Run tests" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Run the test suite and determine if tests pass or fail.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>testsPassed</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <exclusiveGateway id="Gateway_1" name="Tests passed?" default="Flow_Fail"/>
+    <serviceTask id="Task_ReportSuccess" name="Report success" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Report that all tests passed successfully.</skillsc:prompt>
+          <skillsc:tools></skillsc:tools>
+          <skillsc:inputs>testsPassed</skillsc:inputs>
+          <skillsc:outputs></skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <serviceTask id="Task_FixTests" name="Fix tests" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Analyze and fix the failing tests.</skillsc:prompt>
+          <skillsc:tools>bash,read,edit</skillsc:tools>
+          <skillsc:inputs>testsPassed</skillsc:inputs>
+          <skillsc:outputs></skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <endEvent id="End_1"/>
+    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_RunTests"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_RunTests" targetRef="Gateway_1"/>
+    <sequenceFlow id="Flow_Pass" sourceRef="Gateway_1" targetRef="Task_ReportSuccess">
+      <conditionExpression xsi:type="tFormalExpression">${environment.variables.testsPassed}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_Fail" sourceRef="Gateway_1" targetRef="Task_FixTests"/>
+    <sequenceFlow id="Flow_3" sourceRef="Task_ReportSuccess" targetRef="End_1"/>
+    <sequenceFlow id="Flow_4" sourceRef="Task_FixTests" targetRef="End_1"/>
+  </process>
+</definitions>

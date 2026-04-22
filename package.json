@@ -1,0 +1,26 @@
+{
+  "name": "skillsc",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "skillsc": "./dist/cli/skillsc.js",
+    "skillsx": "./dist/cli/skillsx.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.68.1",
+    "@mariozechner/pi-ai": "^0.68.1",
+    "@mariozechner/pi-coding-agent": "^0.68.1",
+    "bpmn-engine": "^25.0.1",
+    "commander": "^13.0.0",
+    "fast-xml-parser": "^5.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

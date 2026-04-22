@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             id="Definitions_1"
+             targetNamespace="http://skillsc.dev">
+  <process id="Process_1" name="Error Handling Workflow" isExecutable="true">
+    <startEvent id="Start_1"/>
+    <serviceTask id="Task_Risky" name="Risky operation" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Perform a risky operation that may fail.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>result</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <boundaryEvent id="BoundaryError_1" attachedToRef="Task_Risky">
+      <errorEventDefinition/>
+    </boundaryEvent>
+    <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Run the fallback procedure after the risky operation failed.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>fallbackResult</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <endEvent id="End_1"/>
+    <endEvent id="End_2"/>
+    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Risky"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_Risky" targetRef="End_1"/>
+    <sequenceFlow id="Flow_Error" sourceRef="BoundaryError_1" targetRef="Task_Fallback"/>
+    <sequenceFlow id="Flow_3" sourceRef="Task_Fallback" targetRef="End_2"/>
+  </process>
+</definitions>

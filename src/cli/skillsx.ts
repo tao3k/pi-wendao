@@ -1,0 +1,57 @@
+#!/usr/bin/env node
+import { readFileSync } from "fs";
+import { program } from "commander";
+import { execute } from "../executor/executor.js";
+import { createRenderer } from "../output/renderer.js";
+import { resolveModel } from "./model-resolver.js";
+
+program
+	.name("skillsx")
+	.description("Execute a compiled BPMN workflow")
+	.argument("<workflow>", "Path to .bpmn workflow file")
+	.option("--model <model>", "Model to use for execution")
+	.option("--provider <provider>", "LLM provider")
+	.option("--api-key <key>", "API key (overrides env vars)")
+	.option("--var <pairs...>", "Variables as key=value pairs")
+	.action(async (workflowPath: string, options: { model?: string; provider?: string; apiKey?: string; var?: string[] }) => {
+		try {
+			const source = readFileSync(workflowPath, "utf-8");
+
+			if (!options.model) {
+				console.error("Error: --model is required (e.g., --model openai/gpt-4o-mini)");
+				process.exit(1);
+			}
+
+			const { model, apiKey } = resolveModel(options.model, options.provider);
+			const finalApiKey = options.apiKey ?? apiKey;
+			const renderer = createRenderer();
+
+			console.log(`Executing ${workflowPath} using ${model.provider}/${model.id}...`);
+
+			const result = await execute({
+				source,
+				model,
+				apiKey: finalApiKey,
+				cwd: process.cwd(),
+				variables: options.var,
+				onAgentEvent: renderer.onAgentEvent,
+				onActivityStart: renderer.onNodeStart,
+				onActivityEnd: renderer.onNodeEnd,
+				onFlowTake: renderer.onFlowTake,
+				onError: renderer.onError,
+			});
+
+			if (!result.success) {
+				console.error(`\nExecution failed: ${result.error}`);
+				process.exit(1);
+			}
+
+			console.log("\nWorkflow completed successfully.");
+			renderer.printVariables(result.variables);
+		} catch (err) {
+			console.error("Error:", err instanceof Error ? err.message : String(err));
+			process.exit(1);
+		}
+	});
+
+program.parse();
