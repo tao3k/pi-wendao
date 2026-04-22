@@ -1,5 +1,9 @@
 import type { Api, Model } from "@mariozechner/pi-ai";
-import { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import {
+	AuthStorage,
+	ModelRegistry,
+	discoverAndLoadExtensions,
+} from "@mariozechner/pi-coding-agent";
 
 export interface ResolvedModel {
 	model: Model<string>;
@@ -14,10 +18,33 @@ export interface ResolvedModel {
  * - Custom providers from ~/.pi/agent/models.json (Ollama, vLLM, etc.)
  * - OAuth credentials from ~/.pi/agent/auth.json
  * - Environment variable API keys
+ *
+ * If extensionPaths are provided, loads pi extensions first and applies
+ * any provider registrations they make (e.g., pi-anthropic-vertex).
  */
-export async function resolveModel(modelPattern: string, provider?: string, apiKeyOverride?: string): Promise<ResolvedModel> {
+export async function resolveModel(
+	modelPattern: string,
+	provider?: string,
+	apiKeyOverride?: string,
+	extensionPaths?: string[],
+): Promise<ResolvedModel> {
 	const authStorage = AuthStorage.create();
 	const modelRegistry = ModelRegistry.create(authStorage);
+
+	// Load pi extensions (auto-discover from ~/.pi/agent/extensions, .pi/extensions,
+	// installed packages, plus any explicit -e paths) and apply provider registrations
+	{
+		const result = await discoverAndLoadExtensions(extensionPaths ?? [], process.cwd());
+
+		for (const err of result.errors) {
+			console.warn(`Warning: failed to load extension ${err.path}: ${err.error}`);
+		}
+
+		// Apply queued provider registrations from extensions
+		for (const reg of result.runtime.pendingProviderRegistrations) {
+			modelRegistry.registerProvider(reg.name, reg.config as Parameters<typeof modelRegistry.registerProvider>[1]);
+		}
+	}
 
 	// Apply CLI api-key override
 	if (apiKeyOverride && provider) {
@@ -63,7 +90,7 @@ export async function resolveModel(modelPattern: string, provider?: string, apiK
 		// Search all providers
 		model = modelRegistry.getAll().find((m) => m.id === modelId || m.id.includes(modelId));
 		if (!model) {
-			throw new Error(`Model "${modelPattern}" not found. Check ~/.pi/agent/models.json for custom providers.`);
+			throw new Error(`Model "${modelPattern}" not found. Use -e to load provider extensions.`);
 		}
 	}
 

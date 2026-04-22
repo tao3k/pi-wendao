@@ -12,7 +12,8 @@ program
 	.option("--model <model>", "Model to use (e.g., anthropic/claude-sonnet-4-20250514)")
 	.option("--provider <provider>", "LLM provider")
 	.option("--api-key <key>", "API key (overrides env vars)")
-	.action(async (skillPath: string, options: { output?: string; model?: string; provider?: string; apiKey?: string }) => {
+	.option("-e, --extension <path>", "Load a pi extension (repeatable)", collect, [])
+	.action(async (skillPath: string, options: { output?: string; model?: string; provider?: string; apiKey?: string; extension?: string[] }) => {
 		try {
 			const skillContent = readFileSync(skillPath, "utf-8");
 			const outputPath = options.output ?? skillPath.replace(/\.md$/, ".bpmn");
@@ -22,7 +23,7 @@ program
 				process.exit(1);
 			}
 
-			const { model, apiKey } = await resolveModel(options.model, options.provider, options.apiKey);
+			const { model, apiKey } = await resolveModel(options.model, options.provider, options.apiKey, options.extension);
 
 			console.log(`Compiling ${skillPath} using ${model.provider}/${model.id}...`);
 
@@ -45,5 +46,9 @@ program
 			process.exit(1);
 		}
 	});
+
+function collect(value: string, prev: string[]): string[] {
+	return prev.concat([value]);
+}
 
 program.parse();

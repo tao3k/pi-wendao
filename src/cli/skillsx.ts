@@ -13,9 +13,10 @@ program
 	.option("--model <model>", "Model to use for execution")
 	.option("--provider <provider>", "LLM provider")
 	.option("--api-key <key>", "API key (overrides env vars)")
+	.option("-e, --extension <path>", "Load a pi extension (repeatable)", collect, [])
 	.option("--var <pairs...>", "Variables as key=value pairs")
 	.option("--no-graph", "Disable graph visualization")
-	.action(async (workflowPath: string, options: { model?: string; provider?: string; apiKey?: string; var?: string[]; graph?: boolean }) => {
+	.action(async (workflowPath: string, options: { model?: string; provider?: string; apiKey?: string; extension?: string[]; var?: string[]; graph?: boolean }) => {
 		try {
 			const source = readFileSync(workflowPath, "utf-8");
 
@@ -24,7 +25,7 @@ program
 				process.exit(1);
 			}
 
-			const { model, apiKey } = await resolveModel(options.model, options.provider, options.apiKey);
+			const { model, apiKey } = await resolveModel(options.model, options.provider, options.apiKey, options.extension);
 			const renderer = createRenderer();
 			const graphView = options.graph !== false ? new GraphView() : undefined;
 
@@ -56,5 +57,9 @@ program
 			process.exit(1);
 		}
 	});
+
+function collect(value: string, prev: string[]): string[] {
+	return prev.concat([value]);
+}
 
 program.parse();
