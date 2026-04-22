@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             id="Definitions_1"
+             targetNamespace="http://skillsc.dev">
+  <process id="Process_1" name="Complex Workflow" isExecutable="true">
+
+    <startEvent id="Start"/>
+
+    <serviceTask id="Task_Init" name="Initialize" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>status</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <exclusiveGateway id="GW_Check" name="Status?" default="Flow_NotReady"/>
+
+    <serviceTask id="Task_FetchA" name="Fetch A" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output resultA as "alpha".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>status</skillsc:inputs>
+          <skillsc:outputs>resultA</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <serviceTask id="Task_FetchB" name="Fetch B" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output resultB as "beta".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>status</skillsc:inputs>
+          <skillsc:outputs>resultB</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <serviceTask id="Task_Retry" name="Retry init" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>status</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <parallelGateway id="GW_Fork" name="Fork"/>
+    <parallelGateway id="GW_Join" name="Join"/>
+
+    <serviceTask id="Task_Merge" name="Merge results" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output merged as the concatenation of resultA and resultB separated by a comma.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>resultA,resultB</skillsc:inputs>
+          <skillsc:outputs>merged</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <serviceTask id="Task_Validate" name="Validate" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output valid as true.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>merged</skillsc:inputs>
+          <skillsc:outputs>valid</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <boundaryEvent id="BE_Validate" attachedToRef="Task_Validate">
+      <errorEventDefinition/>
+    </boundaryEvent>
+
+    <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output valid as false and reason as "validation failed".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>merged</skillsc:inputs>
+          <skillsc:outputs>valid,reason</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <exclusiveGateway id="GW_Valid" name="Valid?" default="Flow_Invalid"/>
+
+    <serviceTask id="Task_Publish" name="Publish" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output published as true.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>merged</skillsc:inputs>
+          <skillsc:outputs>published</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <serviceTask id="Task_Reject" name="Reject" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output rejected as true.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>merged,reason</skillsc:inputs>
+          <skillsc:outputs>rejected</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <endEvent id="End_OK" name="Done"/>
+    <endEvent id="End_Rejected" name="Rejected"/>
+
+    <!-- Start -> Init -->
+    <sequenceFlow id="F1" sourceRef="Start" targetRef="Task_Init"/>
+
+    <!-- Init -> Check gateway -->
+    <sequenceFlow id="F2" sourceRef="Task_Init" targetRef="GW_Check"/>
+
+    <!-- Check: ready -> Fork, not ready -> Retry -->
+    <sequenceFlow id="Flow_Ready" sourceRef="GW_Check" targetRef="GW_Fork">
+      <conditionExpression xsi:type="tFormalExpression">${environment.variables.status === "ready"}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_NotReady" sourceRef="GW_Check" targetRef="Task_Retry"/>
+
+    <!-- Retry -> back to Check -->
+    <sequenceFlow id="F_RetryToCheck" sourceRef="Task_Retry" targetRef="GW_Check"/>
+
+    <!-- Fork -> Fetch A, Fetch B (parallel) -->
+    <sequenceFlow id="F3" sourceRef="GW_Fork" targetRef="Task_FetchA"/>
+    <sequenceFlow id="F4" sourceRef="GW_Fork" targetRef="Task_FetchB"/>
+
+    <!-- Fetch A, Fetch B -> Join -->
+    <sequenceFlow id="F5" sourceRef="Task_FetchA" targetRef="GW_Join"/>
+    <sequenceFlow id="F6" sourceRef="Task_FetchB" targetRef="GW_Join"/>
+
+    <!-- Join -> Merge -->
+    <sequenceFlow id="F7" sourceRef="GW_Join" targetRef="Task_Merge"/>
+
+    <!-- Merge -> Validate -->
+    <sequenceFlow id="F8" sourceRef="Task_Merge" targetRef="Task_Validate"/>
+
+    <!-- Validate error -> Fallback -->
+    <sequenceFlow id="F_Error" sourceRef="BE_Validate" targetRef="Task_Fallback"/>
+
+    <!-- Fallback -> Valid gateway -->
+    <sequenceFlow id="F_FallbackToValid" sourceRef="Task_Fallback" targetRef="GW_Valid"/>
+
+    <!-- Validate success -> Valid gateway -->
+    <sequenceFlow id="F9" sourceRef="Task_Validate" targetRef="GW_Valid"/>
+
+    <!-- Valid: yes -> Publish, no -> Reject -->
+    <sequenceFlow id="Flow_Valid" sourceRef="GW_Valid" targetRef="Task_Publish">
+      <conditionExpression xsi:type="tFormalExpression">${environment.variables.valid}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_Invalid" sourceRef="GW_Valid" targetRef="Task_Reject"/>
+
+    <!-- Publish -> End OK -->
+    <sequenceFlow id="F10" sourceRef="Task_Publish" targetRef="End_OK"/>
+
+    <!-- Reject -> End Rejected -->
+    <sequenceFlow id="F11" sourceRef="Task_Reject" targetRef="End_Rejected"/>
+
+  </process>
+</definitions>

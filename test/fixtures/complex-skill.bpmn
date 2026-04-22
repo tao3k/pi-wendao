@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             id="Definitions_1"
+             targetNamespace="http://skillsc.dev">
+
+  <process id="Process_ComplexPipeline" name="Complex Pipeline" isExecutable="true">
+
+    <!-- Start -->
+    <startEvent id="StartEvent_1" name="Start"/>
+
+    <!-- Step 1: Initialize -->
+    <serviceTask id="Task_Initialize" name="Initialize System" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Initialize the system. Run a bash command to sleep for 2 seconds (sleep 2). Then set the output variable "status" to the string "ready".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>status</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <!-- Step 2: Check status gateway -->
+    <exclusiveGateway id="Gateway_CheckStatus" name="Is status ready?" default="Flow_NotReady"/>
+
+    <!-- Flow back to init if not ready -->
+    <sequenceFlow id="Flow_Start_to_Init" sourceRef="StartEvent_1" targetRef="Task_Initialize"/>
+    <sequenceFlow id="Flow_Init_to_Check" sourceRef="Task_Initialize" targetRef="Gateway_CheckStatus"/>
+
+    <sequenceFlow id="Flow_Ready" sourceRef="Gateway_CheckStatus" targetRef="Gateway_ForkParallel">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[
+next(null, this.environment.variables.status === "ready");
+]]></conditionExpression>
+    </sequenceFlow>
+
+    <sequenceFlow id="Flow_NotReady" sourceRef="Gateway_CheckStatus" targetRef="Task_Initialize"/>
+
+    <!-- Step 3: Parallel fork -->
+    <parallelGateway id="Gateway_ForkParallel" name="Fork into branches"/>
+
+    <!-- Branch A -->
+    <serviceTask id="Task_FetchA" name="Fetch Data A" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Fetch data for Branch A. Run a bash command to sleep for 2 seconds (sleep 2). Then set the output variable "resultA" to the string "alpha".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>resultA</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <!-- Branch B -->
+    <serviceTask id="Task_FetchB" name="Fetch Data B" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Fetch data for Branch B. Run a bash command to sleep for 2 seconds (sleep 2). Then set the output variable "resultB" to the string "beta".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>resultB</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_Fork_to_A" sourceRef="Gateway_ForkParallel" targetRef="Task_FetchA"/>
+    <sequenceFlow id="Flow_Fork_to_B" sourceRef="Gateway_ForkParallel" targetRef="Task_FetchB"/>
+
+    <!-- Parallel join -->
+    <parallelGateway id="Gateway_JoinParallel" name="Join branches"/>
+
+    <sequenceFlow id="Flow_A_to_Join" sourceRef="Task_FetchA" targetRef="Gateway_JoinParallel"/>
+    <sequenceFlow id="Flow_B_to_Join" sourceRef="Task_FetchB" targetRef="Gateway_JoinParallel"/>
+
+    <!-- Step 4: Merge results -->
+    <serviceTask id="Task_Merge" name="Merge Results" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Merge the two branch results. Run a bash command to sleep for 2 seconds (sleep 2). Then concatenate the input variables resultA and resultB together (e.g., "alpha" + "beta" = "alphabeta") and set the output variable "merged" to that concatenated string.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>resultA,resultB</skillsc:inputs>
+          <skillsc:outputs>merged</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_Join_to_Merge" sourceRef="Gateway_JoinParallel" targetRef="Task_Merge"/>
+
+    <!-- Step 5: Validate -->
+    <serviceTask id="Task_Validate" name="Validate Merged Result" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Validate the merged result. Run a bash command to sleep for 2 seconds (sleep 2). Check the input variable "merged" — it should be a non-empty string. Set the output variable "valid" to true if it looks correct.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>merged</skillsc:inputs>
+          <skillsc:outputs>valid</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_Merge_to_Validate" sourceRef="Task_Merge" targetRef="Task_Validate"/>
+
+    <!-- Boundary error on validation -->
+    <boundaryEvent id="BoundaryError_Validate" attachedToRef="Task_Validate">
+      <errorEventDefinition/>
+    </boundaryEvent>
+
+    <!-- Fallback task for validation error -->
+    <serviceTask id="Task_Fallback" name="Validation Fallback" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Validation has failed with an error. Run a bash command to sleep for 2 seconds (sleep 2). Set the output variable "valid" to false and "reason" to the string "validation failed".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>valid,reason</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_Error_to_Fallback" sourceRef="BoundaryError_Validate" targetRef="Task_Fallback"/>
+
+    <!-- Step 6/7: Check valid gateway -->
+    <exclusiveGateway id="Gateway_CheckValid" name="Is result valid?" default="Flow_NotValid"/>
+
+    <sequenceFlow id="Flow_Validate_to_CheckValid" sourceRef="Task_Validate" targetRef="Gateway_CheckValid"/>
+    <sequenceFlow id="Flow_Fallback_to_CheckValid" sourceRef="Task_Fallback" targetRef="Gateway_CheckValid"/>
+
+    <!-- If valid: publish -->
+    <serviceTask id="Task_Publish" name="Publish Result" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Publish the validated result. Run a bash command to sleep for 2 seconds (sleep 2). Set the output variable "published" to true.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>merged</skillsc:inputs>
+          <skillsc:outputs>published</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_Valid" sourceRef="Gateway_CheckValid" targetRef="Task_Publish">
+      <conditionExpression xsi:type="tFormalExpression">${environment.variables.valid}</conditionExpression>
+    </sequenceFlow>
+
+    <!-- If not valid: reject -->
+    <serviceTask id="Task_Reject" name="Reject Result" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Reject the result because validation failed. Run a bash command to sleep for 2 seconds (sleep 2). Set the output variable "rejected" to true.</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs>reason</skillsc:inputs>
+          <skillsc:outputs>rejected</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_NotValid" sourceRef="Gateway_CheckValid" targetRef="Task_Reject"/>
+
+    <!-- End events -->
+    <endEvent id="EndEvent_Published" name="Published"/>
+    <endEvent id="EndEvent_Rejected" name="Rejected"/>
+
+    <sequenceFlow id="Flow_Publish_to_End" sourceRef="Task_Publish" targetRef="EndEvent_Published"/>
+    <sequenceFlow id="Flow_Reject_to_End" sourceRef="Task_Reject" targetRef="EndEvent_Rejected"/>
+
+  </process>
+</definitions>
