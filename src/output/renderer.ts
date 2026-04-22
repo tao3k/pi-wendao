@@ -11,6 +11,8 @@ export interface Renderer {
 	onFlowTake: (flowId: string) => void;
 	onError: (err: Error) => void;
 	printVariables: (variables: Record<string, unknown>) => void;
+	appendLog: (text: string) => void;
+	waitForKey: () => Promise<void>;
 	refresh: () => void;
 	start: () => void;
 	stop: () => void;
@@ -62,6 +64,20 @@ function createTuiRenderer(): Renderer {
 
 		stop() {
 			tui.stop();
+		},
+
+		appendLog(text: string) {
+			logView.appendLine(text);
+			refresh();
+		},
+
+		waitForKey() {
+			return new Promise<void>((resolve) => {
+				tui.addInputListener(() => {
+					resolve();
+					return { consume: true };
+				});
+			});
 		},
 
 		onAgentEvent(event: AgentEvent) {
@@ -135,6 +151,14 @@ function createPlainRenderer(): Renderer {
 		refresh() {},
 		start() {},
 		stop() {},
+
+		appendLog(text: string) {
+			console.log(text);
+		},
+
+		async waitForKey() {
+			// No TUI, just return immediately
+		},
 
 		onAgentEvent(event: AgentEvent) {
 			switch (event.type) {

@@ -48,15 +48,16 @@ program
 				onError: renderer.onError,
 			});
 
-			renderer.stop();
-
 			if (!result.success) {
-				console.error(`\nExecution failed: ${result.error}`);
-				process.exit(1);
+				renderer.appendLog(`\nExecution failed: ${result.error}`);
+			} else {
+				renderer.appendLog("\nWorkflow completed successfully.");
+				renderer.printVariables(result.variables);
 			}
 
-			console.log("\nWorkflow completed successfully.");
-			renderer.printVariables(result.variables);
+			renderer.appendLog("\nPress any key to exit.");
+			await renderer.waitForKey();
+			renderer.stop();
 		} catch (err) {
 			console.error("Error:", err instanceof Error ? err.message : String(err));
 			process.exit(1);
