@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             id="Definitions_1"
+             targetNamespace="http://skillsc.dev">
+
+  <process id="Process_SimpleFileCounter" name="Simple File Counter" isExecutable="true">
+
+    <startEvent id="Start_1" name="Start"/>
+
+    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_FindFiles"/>
+
+    <serviceTask id="Task_FindFiles" name="Find TypeScript files" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. Capture the full output of the command. Then count the number of lines in the output (each line represents one TypeScript file). Output the raw list of files as "fileList" and the total count as "fileCount".</skillsc:prompt>
+          <skillsc:tools>bash</skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>fileList,fileCount</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <boundaryEvent id="BoundaryError_FindFiles" attachedToRef="Task_FindFiles">
+      <errorEventDefinition/>
+    </boundaryEvent>
+
+    <sequenceFlow id="Flow_Error" sourceRef="BoundaryError_FindFiles" targetRef="Task_HandleError"/>
+
+    <serviceTask id="Task_HandleError" name="Handle find error" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>The find command failed to list TypeScript files. Report that an error occurred while searching for TypeScript files and set fileCount to 0 and summary to an error message explaining the failure.</skillsc:prompt>
+          <skillsc:tools></skillsc:tools>
+          <skillsc:inputs></skillsc:inputs>
+          <skillsc:outputs>fileCount,summary</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_ErrorToEnd" sourceRef="Task_HandleError" targetRef="End_1"/>
+
+    <sequenceFlow id="Flow_2" sourceRef="Task_FindFiles" targetRef="Task_Report"/>
+
+    <serviceTask id="Task_Report" name="Report the count" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>You are given a list of TypeScript files and a count. Generate a human-readable summary report. The report should state the total number of TypeScript files found and list them. Output the report as "summary".
+
+For example: "Found 5 TypeScript files in the current directory: ..." followed by the file list.</skillsc:prompt>
+          <skillsc:tools></skillsc:tools>
+          <skillsc:inputs>fileList,fileCount</skillsc:inputs>
+          <skillsc:outputs>summary</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+
+    <sequenceFlow id="Flow_3" sourceRef="Task_Report" targetRef="End_1"/>
+
+    <endEvent id="End_1" name="End"/>
+
+  </process>
+
+</definitions>
