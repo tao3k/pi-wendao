@@ -9,7 +9,9 @@
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "skillsc": "node dist/cli/skillsc.js",
+    "skillsx": "node dist/cli/skillsx.js"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "^0.68.1",

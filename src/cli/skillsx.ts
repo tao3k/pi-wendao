@@ -20,12 +20,11 @@ program
 			const source = readFileSync(workflowPath, "utf-8");
 
 			if (!options.model) {
-				console.error("Error: --model is required (e.g., --model openai/gpt-4o-mini)");
+				console.error("Error: --model is required");
 				process.exit(1);
 			}
 
-			const { model, apiKey } = resolveModel(options.model, options.provider);
-			const finalApiKey = options.apiKey ?? apiKey;
+			const { model, apiKey } = await resolveModel(options.model, options.provider, options.apiKey);
 			const renderer = createRenderer();
 			const graphView = options.graph !== false ? new GraphView() : undefined;
 
@@ -34,7 +33,7 @@ program
 			const result = await execute({
 				source,
 				model,
-				apiKey: finalApiKey,
+				apiKey,
 				cwd: process.cwd(),
 				variables: options.var,
 				graphView,

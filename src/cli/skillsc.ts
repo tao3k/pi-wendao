@@ -9,7 +9,7 @@ program
 	.description("Compile an agent skill into a BPMN 2.0 workflow")
 	.argument("<skill>", "Path to SKILL.md file")
 	.option("-o, --output <file>", "Output BPMN file path")
-	.option("--model <model>", "Model to use for compilation (e.g., anthropic/claude-sonnet-4-20250514)")
+	.option("--model <model>", "Model to use (e.g., anthropic/claude-sonnet-4-20250514)")
 	.option("--provider <provider>", "LLM provider")
 	.option("--api-key <key>", "API key (overrides env vars)")
 	.action(async (skillPath: string, options: { output?: string; model?: string; provider?: string; apiKey?: string }) => {
@@ -18,19 +18,18 @@ program
 			const outputPath = options.output ?? skillPath.replace(/\.md$/, ".bpmn");
 
 			if (!options.model) {
-				console.error("Error: --model is required (e.g., --model anthropic/claude-sonnet-4-20250514)");
+				console.error("Error: --model is required");
 				process.exit(1);
 			}
 
-			const { model, apiKey } = resolveModel(options.model, options.provider);
-			const finalApiKey = options.apiKey ?? apiKey;
+			const { model, apiKey } = await resolveModel(options.model, options.provider, options.apiKey);
 
 			console.log(`Compiling ${skillPath} using ${model.provider}/${model.id}...`);
 
 			const result = await compileSkill({
 				skillContent,
 				model,
-				apiKey: finalApiKey,
+				apiKey,
 			});
 
 			if (!result.success) {
