@@ -76,12 +76,17 @@ Simple truthy check:
 <conditionExpression xsi:type="tFormalExpression">\${environment.variables.testsPassed}</conditionExpression>
 \`\`\`
 
-Script-based comparison (use CDATA):
+Comparison:
 \`\`\`xml
-<conditionExpression xsi:type="tFormalExpression"><![CDATA[
-next(null, this.environment.variables.count > 5);
-]]></conditionExpression>
+<conditionExpression xsi:type="tFormalExpression">\${environment.variables.count > 5}</conditionExpression>
 \`\`\`
+
+String equality:
+\`\`\`xml
+<conditionExpression xsi:type="tFormalExpression">\${environment.variables.status === "ready"}</conditionExpression>
+\`\`\`
+
+Do NOT use CDATA or next() callback style. Always use the \${...} expression format.
 
 Use the \`default\` attribute on exclusiveGateway for the fallback path.
 

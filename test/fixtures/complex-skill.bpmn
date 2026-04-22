@@ -28,9 +28,7 @@
     <exclusiveGateway id="Gateway_RetryCheck" name="retryCount >= 3?" default="Flow_RetryNo"/>
 
     <sequenceFlow id="Flow_RetryYes" sourceRef="Gateway_RetryCheck" targetRef="Task_SetReady">
-      <conditionExpression xsi:type="tFormalExpression"><![CDATA[
-next(null, this.environment.variables.retryCount >= 3);
-]]></conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">${environment.variables.retryCount >= 3}</conditionExpression>
     </sequenceFlow>
 
     <sequenceFlow id="Flow_RetryNo" sourceRef="Gateway_RetryCheck" targetRef="Task_IncrementRetry"/>
