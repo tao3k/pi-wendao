@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fauxAssistantMessage, registerFauxProvider } from "@mariozechner/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, registerFauxProvider } from "@mariozechner/pi-ai";
 import type { FauxProviderRegistration } from "@mariozechner/pi-ai";
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
-import { createRunAgentService } from "../../src/executor/node-runner.js";
+import type { SkillscAgentEvent, SkillscAgentTool } from "../../src/executor/agent-runtime-types.js";
+import { createPiAiHost, createRunAgentService } from "../../src/executor/node-runner.js";
 
 describe("createRunAgentService", () => {
 	let faux: FauxProviderRegistration;
@@ -22,7 +22,7 @@ describe("createRunAgentService", () => {
 		const service = createRunAgentService({
 			model: faux.getModel(),
 			cwd: process.cwd(),
-			onEvent: (event: AgentEvent) => {
+			onEvent: (event: SkillscAgentEvent) => {
 				events.push(event.type);
 			},
 			getConfig: (id) =>
@@ -87,5 +87,86 @@ describe("createRunAgentService", () => {
 		expect(capturedPrompt).toContain("someValue");
 		expect(capturedPrompt).not.toContain("otherVar");
 		expect(capturedPrompt).not.toContain("hidden");
+	});
+
+	it("enables medium thinking by default for real agent execution", async () => {
+		let capturedReasoning: unknown;
+		faux.setResponses([
+			(_context, options) => {
+				capturedReasoning = (options as { reasoning?: unknown } | undefined)?.reasoning;
+				return fauxAssistantMessage("Done.");
+			},
+		]);
+
+		const service = createRunAgentService({
+			model: faux.getModel(),
+			cwd: process.cwd(),
+			getConfig: (id) =>
+				id === "Task_1"
+					? { prompt: "Use thinking", tools: [], inputs: [], outputs: [] }
+					: undefined,
+		});
+
+		await new Promise<void>((resolve, reject) => {
+			service(
+				{
+					content: { id: "Task_1" },
+					environment: { variables: {}, output: {} },
+				},
+				(err) => {
+					if (err) reject(err);
+					else resolve();
+				},
+			);
+		});
+
+		expect(capturedReasoning).toBe("medium");
+	});
+
+	it("exposes injected extension tools to the default agent host", async () => {
+		const toolCalls: unknown[] = [];
+		faux.setResponses([
+			fauxAssistantMessage(
+				fauxToolCall("intercom", { action: "status" }, { id: "tool-intercom-1" }),
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage('Done.\n```json\n{"result":"intercom_available"}\n```'),
+		]);
+		const intercomTool: SkillscAgentTool<any> = {
+			name: "intercom",
+			label: "Intercom",
+			description: "Fixture intercom tool",
+			parameters: {
+				type: "object",
+				required: ["action"],
+				properties: {
+					action: { type: "string" },
+				},
+			} as any,
+			async execute(_toolCallId, params) {
+				toolCalls.push(params);
+				return {
+					content: [{ type: "text", text: "Connected: Yes" }],
+					details: { delivered: true },
+				};
+			},
+		};
+		const host = createPiAiHost({
+			model: faux.getModel(),
+			cwd: process.cwd(),
+			extraTools: [intercomTool],
+		});
+
+		await expect(host.run({
+			activityId: "Task_Intercom",
+			variables: {},
+			config: {
+				prompt: "Check intercom status.",
+				tools: ["intercom"],
+				inputs: [],
+				outputs: ["result"],
+			},
+		})).resolves.toEqual({ result: "intercom_available" });
+		expect(toolCalls).toEqual([{ action: "status" }]);
 	});
 });

@@ -9,16 +9,14 @@
     <serviceTask id="Task_Risky" name="Risky operation" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Perform a risky operation that may fail.</skillsc:prompt>
+          <skillsc:prompt>Perform a risky operation. If it succeeds, output success as true and result. If it cannot complete, output success as false.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>result</skillsc:outputs>
+          <skillsc:outputs>result,success</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <boundaryEvent id="BoundaryError_1" attachedToRef="Task_Risky">
-      <errorEventDefinition/>
-    </boundaryEvent>
+    <exclusiveGateway id="Gateway_RiskySuccess" default="Flow_Fallback"/>
     <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
@@ -32,8 +30,11 @@
     <endEvent id="End_1"/>
     <endEvent id="End_2"/>
     <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Risky"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_Risky" targetRef="End_1"/>
-    <sequenceFlow id="Flow_Error" sourceRef="BoundaryError_1" targetRef="Task_Fallback"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_Risky" targetRef="Gateway_RiskySuccess"/>
+    <sequenceFlow id="Flow_Success" sourceRef="Gateway_RiskySuccess" targetRef="End_1">
+      <conditionExpression xsi:type="tFormalExpression">success</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_Fallback" sourceRef="Gateway_RiskySuccess" targetRef="Task_Fallback"/>
     <sequenceFlow id="Flow_3" sourceRef="Task_Fallback" targetRef="End_2"/>
   </process>
 </definitions>

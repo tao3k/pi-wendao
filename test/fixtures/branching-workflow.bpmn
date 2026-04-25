@@ -41,7 +41,7 @@
     <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_RunTests"/>
     <sequenceFlow id="Flow_2" sourceRef="Task_RunTests" targetRef="Gateway_1"/>
     <sequenceFlow id="Flow_Pass" sourceRef="Gateway_1" targetRef="Task_ReportSuccess">
-      <conditionExpression xsi:type="tFormalExpression">${environment.variables.testsPassed}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">testsPassed</conditionExpression>
     </sequenceFlow>
     <sequenceFlow id="Flow_Fail" sourceRef="Gateway_1" targetRef="Task_FixTests"/>
     <sequenceFlow id="Flow_3" sourceRef="Task_ReportSuccess" targetRef="End_1"/>

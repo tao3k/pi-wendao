@@ -40,7 +40,7 @@
     <!-- Gateway: retries exhausted? -->
     <exclusiveGateway id="Gateway_RetryCheck" default="Flow_RetryNo"/>
     <sequenceFlow id="Flow_RetryYes" sourceRef="Gateway_RetryCheck" targetRef="Task_SetReady">
-      <conditionExpression xsi:type="tFormalExpression">${environment.variables.retriesExhausted}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">retriesExhausted</conditionExpression>
     </sequenceFlow>
     <sequenceFlow id="Flow_RetryNo" sourceRef="Gateway_RetryCheck" targetRef="Task_IncrementRetry"/>
 
@@ -122,19 +122,13 @@
     <serviceTask id="Task_Validate" name="Validate merged result" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Validate the merged result. Set valid to true. This task may fail with an error if something goes wrong.</skillsc:prompt>
+          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Validate the merged result. Set valid to true when validation passes; otherwise set valid to false.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs>merged</skillsc:inputs>
           <skillsc:outputs>valid</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-
-    <!-- Boundary error on validation -->
-    <boundaryEvent id="BoundaryError_Validate" attachedToRef="Task_Validate">
-      <errorEventDefinition/>
-    </boundaryEvent>
-    <sequenceFlow id="Flow_ValidateError_Fallback" sourceRef="BoundaryError_Validate" targetRef="Task_Fallback"/>
 
     <!-- Fallback task -->
     <serviceTask id="Task_Fallback" name="Validation fallback" implementation="${environment.services.runAgent}">
@@ -147,7 +141,7 @@
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-    <sequenceFlow id="Flow_Fallback_ValidGW" sourceRef="Task_Fallback" targetRef="Gateway_ValidCheck"/>
+    <sequenceFlow id="Flow_Fallback_Reject" sourceRef="Task_Fallback" targetRef="Task_Reject"/>
 
     <!-- Normal flow from validate to gateway -->
     <sequenceFlow id="Flow_Validate_ValidGW" sourceRef="Task_Validate" targetRef="Gateway_ValidCheck"/>
@@ -155,9 +149,9 @@
     <!-- Step 6/7: Check valid -->
     <exclusiveGateway id="Gateway_ValidCheck" default="Flow_NotValid"/>
     <sequenceFlow id="Flow_Valid" sourceRef="Gateway_ValidCheck" targetRef="Task_Publish">
-      <conditionExpression xsi:type="tFormalExpression">${environment.variables.valid}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">valid</conditionExpression>
     </sequenceFlow>
-    <sequenceFlow id="Flow_NotValid" sourceRef="Gateway_ValidCheck" targetRef="Task_Reject"/>
+    <sequenceFlow id="Flow_NotValid" sourceRef="Gateway_ValidCheck" targetRef="Task_Fallback"/>
 
     <!-- Publish -->
     <serviceTask id="Task_Publish" name="Publish result" implementation="${environment.services.runAgent}">
@@ -180,7 +174,7 @@
         <skillsc:config>
           <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set rejected to true.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
+          <skillsc:inputs>reason</skillsc:inputs>
           <skillsc:outputs>rejected</skillsc:outputs>
         </skillsc:config>
       </extensionElements>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GraphView } from "../../src/output/graph-view.js";
+import { GraphView, LogView } from "../../src/output/graph-view.js";
 
 describe("GraphView", () => {
 	it("renders a simple linear graph", () => {
@@ -59,15 +59,80 @@ describe("GraphView", () => {
 		// Update to active
 		view.setNodeStatus("T1", "active");
 		lines = view.render(40);
-		const raw = lines.join("\n");
-		// Active nodes use yellow (ANSI 33)
-		expect(raw).toContain("\x1b[33m");
+		plain = lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toContain("Task");
+		expect(statusOf(view, "T1")).toBe("active");
 
 		// Update to done
 		view.setNodeStatus("T1", "done");
 		lines = view.render(40);
-		const rawDone = lines.join("\n");
-		// Done nodes use green (ANSI 32)
-		expect(rawDone).toContain("\x1b[32m");
+		plain = lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toContain("Task");
+		expect(statusOf(view, "T1")).toBe("done");
+	});
+
+	it("renders runtime details inside task nodes", () => {
+		const view = new GraphView();
+		view.addNode({ id: "T1", label: "Review", type: "task", status: "active" });
+		view.setNodeDetails("T1", ["llm:bash t2/8 1t", "host:2 pi-subagents", "checkpoint:duckdb/fresh"]);
+
+		const plain = view.render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+
+		expect(plain).toContain("Review");
+		expect(plain).toContain("llm:bash t2/8 1t");
+		expect(plain).toContain("host:2 pi-subagents");
+		expect(plain).toContain("checkpoint:duckdb/fresh");
+		expect(view.getNodeDetails("T1")).toEqual([
+			"llm:bash t2/8 1t",
+			"host:2 pi-subagents",
+			"checkpoint:duckdb/fresh",
+		]);
+	});
+
+	it("keeps the active branch visible in a narrow viewport", () => {
+		const view = new GraphView();
+		view.addNode({ id: "S1", label: "Start", type: "start", status: "done" });
+		view.addNode({ id: "G1", label: "Parallel", type: "gateway", status: "done" });
+		view.addNode({ id: "A", label: "Branch A", type: "task", status: "done" });
+		view.addNode({ id: "B", label: "Branch B", type: "task", status: "done" });
+		view.addNode({ id: "C", label: "Branch C", type: "task", status: "done" });
+		view.addNode({ id: "D", label: "Branch D", type: "task", status: "done" });
+		view.addNode({ id: "E", label: "Branch E", type: "task", status: "done" });
+		view.addNode({ id: "F", label: "Branch F", type: "task", status: "active" });
+		view.addNode({ id: "End", label: "End", type: "end", status: "pending" });
+		view.addEdge({ source: "S1", target: "G1", taken: true });
+		for (const id of ["A", "B", "C", "D", "E", "F"]) {
+			view.addEdge({ source: "G1", target: id, taken: id !== "F" });
+			view.addEdge({ source: id, target: "End", taken: false });
+		}
+
+		const plain = stripAnsi(view.render(24).join("\n"));
+
+		expect(plain).toContain("Branch F");
+		expect(plain).toContain("┌──────────┐");
+		expect(plain).toContain("│ Branch F │");
+		expect(plain).toContain("└──────────┘");
+		expect(plain).not.toMatch(/^[┐┘]/m);
+		expect(plain).not.toContain("││││");
 	});
 });
+
+describe("LogView", () => {
+	it("clears old workflow log lines", () => {
+		const view = new LogView();
+		view.appendLine("workflow: old.bpmn");
+		view.clear();
+		view.appendLine("workflow: new.bpmn");
+
+		expect(view.getLines()).toEqual(["workflow: new.bpmn"]);
+		expect(stripAnsi(view.render(80).join("\n"))).toBe("workflow: new.bpmn");
+	});
+});
+
+function statusOf(view: GraphView, id: string): string | undefined {
+	return (view as unknown as { nodes: Map<string, { status: string }> }).nodes.get(id)?.status;
+}
+
+function stripAnsi(text: string): string {
+	return text.replace(/\x1b\[[0-9;]*m/g, "");
+}

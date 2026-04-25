@@ -11,10 +11,10 @@
     <serviceTask id="Task_Init" name="Initialize" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready".</skillsc:prompt>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>status</skillsc:outputs>
+          <skillsc:outputs>status,isReady</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
@@ -46,10 +46,10 @@
     <serviceTask id="Task_Retry" name="Retry init" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready".</skillsc:prompt>
+          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>status</skillsc:outputs>
+          <skillsc:outputs>status,isReady</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
@@ -78,10 +78,6 @@
         </skillsc:config>
       </extensionElements>
     </serviceTask>
-
-    <boundaryEvent id="BE_Validate" attachedToRef="Task_Validate">
-      <errorEventDefinition/>
-    </boundaryEvent>
 
     <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
       <extensionElements>
@@ -129,7 +125,7 @@
 
     <!-- Check: ready -> Fork, not ready -> Retry -->
     <sequenceFlow id="Flow_Ready" sourceRef="GW_Check" targetRef="GW_Fork">
-      <conditionExpression xsi:type="tFormalExpression">${environment.variables.status === "ready"}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">isReady</conditionExpression>
     </sequenceFlow>
     <sequenceFlow id="Flow_NotReady" sourceRef="GW_Check" targetRef="Task_Retry"/>
 
@@ -150,20 +146,17 @@
     <!-- Merge -> Validate -->
     <sequenceFlow id="F8" sourceRef="Task_Merge" targetRef="Task_Validate"/>
 
-    <!-- Validate error -> Fallback -->
-    <sequenceFlow id="F_Error" sourceRef="BE_Validate" targetRef="Task_Fallback"/>
-
-    <!-- Fallback -> Valid gateway -->
-    <sequenceFlow id="F_FallbackToValid" sourceRef="Task_Fallback" targetRef="GW_Valid"/>
+    <!-- Fallback -> reject -->
+    <sequenceFlow id="F_FallbackToReject" sourceRef="Task_Fallback" targetRef="Task_Reject"/>
 
     <!-- Validate success -> Valid gateway -->
     <sequenceFlow id="F9" sourceRef="Task_Validate" targetRef="GW_Valid"/>
 
-    <!-- Valid: yes -> Publish, no -> Reject -->
+    <!-- Valid: yes -> Publish, no -> Fallback -->
     <sequenceFlow id="Flow_Valid" sourceRef="GW_Valid" targetRef="Task_Publish">
-      <conditionExpression xsi:type="tFormalExpression">${environment.variables.valid}</conditionExpression>
+      <conditionExpression xsi:type="tFormalExpression">valid</conditionExpression>
     </sequenceFlow>
-    <sequenceFlow id="Flow_Invalid" sourceRef="GW_Valid" targetRef="Task_Reject"/>
+    <sequenceFlow id="Flow_Invalid" sourceRef="GW_Valid" targetRef="Task_Fallback"/>
 
     <!-- Publish -> End OK -->
     <sequenceFlow id="F10" sourceRef="Task_Publish" targetRef="End_OK"/>

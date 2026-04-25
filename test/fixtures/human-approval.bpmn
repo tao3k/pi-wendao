@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             id="Definitions_1"
+             targetNamespace="http://skillsc.dev">
+  <process id="Process_1" isExecutable="true">
+    <startEvent id="Start_1"/>
+    <serviceTask id="Task_Draft" name="Draft proposal" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Draft a concise proposal from the user's initial idea. Output proposal.</skillsc:prompt>
+          <skillsc:tools></skillsc:tools>
+          <skillsc:inputs>idea</skillsc:inputs>
+          <skillsc:outputs>proposal</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <userTask id="Task_Approve" name="Approve proposal">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Review the proposal and approve before the workflow continues.</skillsc:prompt>
+          <skillsc:tools></skillsc:tools>
+          <skillsc:inputs>proposal</skillsc:inputs>
+          <skillsc:outputs>approved,approvedReply</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </userTask>
+    <exclusiveGateway id="Gateway_Approved" name="Approved?" default="Flow_Rejected"/>
+    <serviceTask id="Task_Finalize" name="Finalize proposal" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Finalize the approved proposal and output finalSummary.</skillsc:prompt>
+          <skillsc:tools></skillsc:tools>
+          <skillsc:inputs>proposal,approvedReply</skillsc:inputs>
+          <skillsc:outputs>finalSummary</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <serviceTask id="Task_Revise" name="Record revision request" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <skillsc:config>
+          <skillsc:prompt>Summarize why the proposal was not approved and output revisionRequest.</skillsc:prompt>
+          <skillsc:tools></skillsc:tools>
+          <skillsc:inputs>proposal,approvedReply</skillsc:inputs>
+          <skillsc:outputs>revisionRequest</skillsc:outputs>
+        </skillsc:config>
+      </extensionElements>
+    </serviceTask>
+    <endEvent id="End_Approved"/>
+    <endEvent id="End_Rejected"/>
+    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Draft"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_Draft" targetRef="Task_Approve"/>
+    <sequenceFlow id="Flow_3" sourceRef="Task_Approve" targetRef="Gateway_Approved"/>
+    <sequenceFlow id="Flow_Approved" sourceRef="Gateway_Approved" targetRef="Task_Finalize">
+      <conditionExpression>approved</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_Rejected" sourceRef="Gateway_Approved" targetRef="Task_Revise"/>
+    <sequenceFlow id="Flow_4" sourceRef="Task_Finalize" targetRef="End_Approved"/>
+    <sequenceFlow id="Flow_5" sourceRef="Task_Revise" targetRef="End_Rejected"/>
+  </process>
+</definitions>

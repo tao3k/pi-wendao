@@ -14,19 +14,17 @@
     <serviceTask id="Task_FindFiles" name="Find TypeScript files" implementation="${environment.services.runAgent}">
       <extensionElements>
         <skillsc:config>
-          <skillsc:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. Capture the full output of the command. Then count the number of lines in the output (each line is one file). Output the raw list of files as "fileList" and the total count as "fileCount".</skillsc:prompt>
+          <skillsc:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. If the command succeeds, capture the full output, count the number of lines, and output success as true, the raw list as "fileList", and the total count as "fileCount". If it fails, output success as false.</skillsc:prompt>
           <skillsc:tools>bash</skillsc:tools>
           <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>fileList,fileCount</skillsc:outputs>
+          <skillsc:outputs>fileList,fileCount,success</skillsc:outputs>
         </skillsc:config>
       </extensionElements>
     </serviceTask>
 
-    <boundaryEvent id="BoundaryError_FindFiles" attachedToRef="Task_FindFiles">
-      <errorEventDefinition/>
-    </boundaryEvent>
+    <exclusiveGateway id="Gateway_FindFilesSuccess" default="Flow_Error"/>
 
-    <sequenceFlow id="Flow_Error" sourceRef="BoundaryError_FindFiles" targetRef="Task_HandleError"/>
+    <sequenceFlow id="Flow_FindFilesCheck" sourceRef="Task_FindFiles" targetRef="Gateway_FindFilesSuccess"/>
 
     <serviceTask id="Task_HandleError" name="Handle find error" implementation="${environment.services.runAgent}">
       <extensionElements>
@@ -41,7 +39,10 @@
 
     <sequenceFlow id="Flow_ErrorToEnd" sourceRef="Task_HandleError" targetRef="End_1"/>
 
-    <sequenceFlow id="Flow_2" sourceRef="Task_FindFiles" targetRef="Task_Report"/>
+    <sequenceFlow id="Flow_2" sourceRef="Gateway_FindFilesSuccess" targetRef="Task_Report">
+      <conditionExpression xsi:type="tFormalExpression">success</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_Error" sourceRef="Gateway_FindFilesSuccess" targetRef="Task_HandleError"/>
 
     <serviceTask id="Task_Report" name="Report the count" implementation="${environment.services.runAgent}">
       <extensionElements>
