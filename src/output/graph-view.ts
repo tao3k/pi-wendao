@@ -134,10 +134,11 @@ export class GraphView implements Component {
 
 		dagre.layout(g);
 
-			const graphInfo = g.graph();
-			const gWidth = Math.ceil(graphInfo.width ?? 60);
-			const gHeight = Math.ceil(graphInfo.height ?? 10);
-			const gridW = Math.max(width, gWidth + width);
+		const graphInfo = g.graph();
+		const gWidth = Math.ceil(graphInfo.width ?? 60);
+		const gHeight = Math.ceil(graphInfo.height ?? 10);
+		const horizontalPadding = Math.floor(width / 2);
+		const gridW = Math.max(width, gWidth + horizontalPadding * 2);
 		const gridH = gHeight + 2;
 
 		// Build a plain char grid, then convert to styled lines
@@ -150,7 +151,13 @@ export class GraphView implements Component {
 		for (const edge of this.edges) {
 			const dagreEdge = g.edge(edge.source, edge.target);
 			if (!dagreEdge?.points) continue;
-			drawEdgeOnGrid(grid, dagreEdge.points, gridW, gridH, edge.taken);
+			drawEdgeOnGrid(
+				grid,
+				dagreEdge.points.map((point) => shiftX(point, horizontalPadding)),
+				gridW,
+				gridH,
+				edge.taken,
+			);
 		}
 
 		// Draw nodes and record positions
@@ -158,8 +165,9 @@ export class GraphView implements Component {
 		this.nodeColumns.clear();
 		this.nodeBounds.clear();
 		for (const [id, node] of this.nodes) {
-			const pos = g.node(id);
-			if (!pos) continue;
+			const rawPos = g.node(id);
+			if (!rawPos) continue;
+			const pos = shiftX(rawPos, horizontalPadding);
 			this.nodeRows.set(id, Math.round(pos.y));
 			this.nodeColumns.set(id, Math.round(pos.x));
 			const boxW = nodeBoxWidth(node, maxLabelWidth);
@@ -169,24 +177,29 @@ export class GraphView implements Component {
 		}
 
 		// Update active viewport anchor for the currently active node
+		let hasActiveNode = false;
 		for (const [id, node] of this.nodes) {
 			if (node.status === "active") {
+				hasActiveNode = true;
 				const row = this.nodeRows.get(id);
 				const column = this.nodeColumns.get(id);
 				if (row !== undefined) this.activeRow = row;
 				if (column !== undefined) this.activeColumn = column;
 			}
 		}
+		if (!hasActiveNode) {
+			this.activeColumn = horizontalPadding + Math.floor(gWidth / 2);
+		}
 
-			// Convert grid to lines, keeping the active node box intact.
-			const activeBounds = activeNodeBounds(this.nodes, this.nodeBounds);
-			const horizontalOffset = resolveHorizontalOffset({
-				width,
-				gridW,
-				activeColumn: this.activeColumn,
-				activeBounds,
-				nodeBounds: [...this.nodeBounds.values()],
-			});
+		// Convert grid to lines, keeping the active node box intact.
+		const activeBounds = activeNodeBounds(this.nodes, this.nodeBounds);
+		const horizontalOffset = resolveHorizontalOffset({
+			width,
+			gridW,
+			activeColumn: this.activeColumn,
+			activeBounds,
+			nodeBounds: [...this.nodeBounds.values()],
+		});
 		const lines: string[] = [];
 		for (const row of grid) {
 			lines.push(visibleSlice(row.join(""), horizontalOffset, width));
@@ -216,12 +229,16 @@ function resolveHorizontalOffset(options: {
 		const left = Math.max(0, bounds.left - padding);
 		const right = Math.min(options.gridW - 1, bounds.right + padding);
 		if (right - left + 1 <= options.width) {
-			offset = left;
+			if (left < offset) offset = left;
 			if (offset + options.width - 1 < right) offset = right - options.width + 1;
 		}
 	}
 
 	return avoidClippedNodeBoxes(clamp(offset, 0, maxOffset), options.width, maxOffset, options.nodeBounds, bounds);
+}
+
+function shiftX<T extends { x: number }>(value: T, offset: number): T {
+	return { ...value, x: value.x + offset };
 }
 
 function activeNodeBounds(

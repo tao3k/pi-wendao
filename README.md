@@ -72,8 +72,9 @@ Running `pi-wendao --tui` without a workflow opens the chat TUI. Type normally t
 talk with the configured LLM. Use `/run <workflow.bpmn>` to execute a workflow
 in the same TUI; the native chat stream stays primary, and the workflow graph
 appears as a compact running panel below the chat stream. The graph viewport
-follows the active BPMN node so the current task stays visible. Qianji trace
-events, subagent lifecycle updates, tool calls, assistant replies, thinking,
+centers on the active BPMN node and moves as execution advances, so the current
+task stays visible. Qianji trace events, subagent lifecycle updates, tool calls,
+assistant replies, thinking,
 and human/planner prompts stream through the normal chat roles: `agent>`,
 `tool>`, `assistant>`,
 `thinking>`, `system>`, and `user>`. Use `/show` or

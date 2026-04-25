@@ -89,6 +89,38 @@ describe("GraphView", () => {
 		]);
 	});
 
+	it("centers a compact active graph in a wide viewport", () => {
+		const view = new GraphView();
+		view.addNode({ id: "T1", label: "Centered", type: "task", status: "active" });
+
+		const line = stripAnsi(view.render(80).join("\n")).split("\n").find((item) => item.includes("Centered"));
+		const leading = line?.search(/\S/) ?? -1;
+
+		expect(leading).toBeGreaterThan(25);
+		expect(leading).toBeLessThan(45);
+	});
+
+	it("recenters the viewport when the active parallel branch changes", () => {
+		const view = new GraphView();
+		view.addNode({ id: "S1", label: "Start", type: "start", status: "done" });
+		view.addNode({ id: "G1", label: "Parallel", type: "gateway", status: "done" });
+		for (const id of ["A", "B", "C", "D", "E", "F"]) {
+			view.addNode({ id, label: `Branch ${id}`, type: "task", status: id === "A" ? "active" : "done" });
+			view.addEdge({ source: "G1", target: id, taken: id === "A" });
+		}
+		view.addEdge({ source: "S1", target: "G1", taken: true });
+
+		const leftViewport = stripAnsi(view.render(24).join("\n"));
+		view.setNodeStatus("A", "done");
+		view.setNodeStatus("F", "active");
+		const rightViewport = stripAnsi(view.render(24).join("\n"));
+
+		expect(leftViewport).toContain("Branch A");
+		expect(leftViewport).not.toContain("Branch F");
+		expect(rightViewport).toContain("Branch F");
+		expect(rightViewport).not.toContain("Branch A");
+	});
+
 	it("keeps the active branch visible in a narrow viewport", () => {
 		const view = new GraphView();
 		view.addNode({ id: "S1", label: "Start", type: "start", status: "done" });
