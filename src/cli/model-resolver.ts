@@ -11,7 +11,7 @@ import {
 import { resolvePiWendaoPackageRoot as resolvePiWendaoPackageRootFromResources } from "../pi-resources.js";
 
 const require = createRequire(import.meta.url);
-const BUILTIN_PI_EXTENSION_PACKAGES = ["@tintinweb/pi-subagents", "pi-intercom"] as const;
+const BUILTIN_PI_EXTENSION_PACKAGES = ["@tintinweb/pi-subagents"] as const;
 const PI_WENDAO_PI_EXTENSION_FILES = [
 	"pi-wendao-pi-intercom.js",
 	"pi-wendao-tool-event-bridge.js",
@@ -33,7 +33,8 @@ export interface ResolvedModel {
  * Resolve a model pattern into a Model object + API key.
  *
  * Loads pi extensions from:
- * - built-in pi-wendao extension packages from package.json
+ * - built-in package extensions such as pi-subagents
+ * - packaged pi-wendao .pi extension files
  * - ~/.pi/agent/extensions/ and .pi/extensions/ (auto-discovered)
  * - explicit -e paths (pi packages or single files)
  */
@@ -161,13 +162,11 @@ export async function createPiWendaoAgentServices(options: {
 
 export function resolveBuiltinPiExtensionPaths(): string[] {
 	const paths: string[] = [];
-	const subagentsRoot = resolvePackageRoot("@tintinweb/pi-subagents");
-	if (subagentsRoot) paths.push(subagentsRoot);
-	paths.push(...resolvePiWendaoPiExtensionPaths());
-	for (const packageName of BUILTIN_PI_EXTENSION_PACKAGES.filter((name) => name !== "@tintinweb/pi-subagents")) {
+	for (const packageName of BUILTIN_PI_EXTENSION_PACKAGES) {
 		const packageRoot = resolvePackageRoot(packageName);
 		if (packageRoot) paths.push(packageRoot);
 	}
+	paths.push(...resolvePiWendaoPiExtensionPaths());
 	return paths;
 }
 

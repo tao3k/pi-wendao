@@ -156,16 +156,17 @@ When real host execution is enabled, qianji still owns BPMN token scheduling,
 parallel gateways, joins, and checkpoint state. `pi-wendao` dispatches each
 pending service-task token through a `PiWendaoAgentHost` backend and returns the
 token-scoped output fixture to qianji. `pi-wendao` loads the packaged
-pi-subagents and pi-intercom extensions by default, then uses pi-subagents
-`Agent` and `get_subagent_result` tools as the host backend when available.
+pi-subagents extension and its own graph-local intercom extension by default,
+then uses pi-subagents `Agent` and `get_subagent_result` tools as the host
+backend when available.
 By default, these host calls use the packaged `pi-wendao-worker` pi-subagent type,
 which allows the built-in `intercom` extension tool alongside the usual
 read/write/search tools. Otherwise it falls back to the default
 `pi-ai` service-task host.
-pi-intercom is exposed as the `intercom` tool in the active pi extension
-context; graph mode logs `Extension tool: pi-intercom` at startup and shows
-actual calls as compact details such as `tool:intercom action=status` only when
-an LLM invokes the tool. When a pi-subagents worker calls
+The graph-local intercom bridge is exposed as the `intercom` tool in the active
+pi extension context; graph mode logs `Extension tool: pi-intercom` at startup
+and shows actual calls as compact details such as `tool:intercom action=status`
+only when an LLM invokes the tool. When a pi-subagents worker calls
 `intercom({ action: "ask", to: "planner", message: "..." })`, the chat stream
 opens an inline prompt; pressing Enter submits the
 planner approval or clarification and unblocks the worker tool call.
@@ -254,10 +255,10 @@ When loaded pi extensions provide the pi-intercom `intercom` tool, lower-level
 callers can use `createPiIntercomClientFromLoadedExtensions(...)` or
 `tryCreatePiIntercomClientFromLoadedExtensions(...)` to execute
 `list/send/ask/reply/pending/status` actions and optionally mirror message
-state into `PiWendaoIntercomCorrelationState`. `pi-wendao` packages pi-intercom as
-a built-in extension and also exposes project `.pi/extensions` and
-`.pi/agents/pi-wendao-worker.md` wrappers so pi-subagents child sessions can load
-the graph-local `intercom` tool surface. Under the default pi-ai host,
+state into `PiWendaoIntercomCorrelationState`. `pi-wendao` exposes project
+`.pi/extensions` and `.pi/agents/pi-wendao-worker.md` wrappers so pi-subagents
+child sessions can load the graph-local `intercom` tool surface without also
+loading a second `intercom` provider. Under the default pi-ai host,
 service tasks can declare `intercom` in `skillsc:tools`; under pi-subagents, the
 child agent sees `intercom` through the `pi-wendao-worker` allowed tool set and
 the native chat stream shows the call when the child agent uses it.

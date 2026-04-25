@@ -21,7 +21,6 @@
     "commander": "^13.0.0",
     "dagre": "^0.8.5",
     "fast-xml-parser": "^5.7.1",
-    "pi-intercom": "^0.2.0",
     "yoctocolors": "^2.1.2"
   },
   "devDependencies": {
