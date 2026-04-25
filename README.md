@@ -64,23 +64,21 @@ Options:
 - `-e, --extension <path>` — load an extra pi extension; built-in pi-subagents is already loaded from package dependencies
 - `--var key=value` — set workflow variables (repeatable)
 - `--show` — show qianji BPMN instances, or status plus graph snapshot for `--instance-id`, without executing the workflow
-- `--tui` — enable interactive graph TUI visualization (default); without a workflow argument, open the LLM chat TUI
+- `--tui` — enable interactive graph TUI visualization (default); without a workflow argument, open the native pi chat TUI
 - `--no-tui` — disable interactive graph TUI visualization
 - `--no-graph` — disable graph visualization (legacy alias for `--no-tui`)
 
-Running `pi-wendao --tui` without a workflow opens the chat TUI and resumes the
-most recent pi session for the current working directory. Type normally to talk
-with the configured LLM. Use `/session` to inspect the active session,
-`/sessions` to list recent sessions, and PageUp/PageDown or Alt+Up/Alt+Down to
-scroll chat history. Use `/run <workflow.bpmn>` to execute a workflow in the
-same TUI; the native chat stream stays primary, and the workflow graph appears
-as a compact running panel below the chat stream. The graph viewport centers on
-the active BPMN node and moves as execution advances, so the current task stays
-visible. Qianji trace events, subagent lifecycle updates, tool calls, assistant
-replies, thinking, and human/planner prompts stream through the normal chat
-roles: `agent>`, `tool>`, `assistant>`, `thinking>`, `system>`, and `user>`. Use
-`/show` or `/show <instance> [bpmn]` to inspect qianji BPMN instances, `/help`
-for commands, and `/quit` to exit.
+Running `pi-wendao --tui` without a workflow enters pi's native interactive
+session for the current working directory. Type normally to talk with the
+configured LLM; pi owns session persistence, history scrolling, `/session`,
+`/resume`, `/tree`, compaction, tool rendering, and extension UI. Use
+`/run <workflow.bpmn>` to execute a qianji BPMN workflow in that same session.
+The workflow graph is a pi extension widget above the editor, and qianji trace
+events, subagent lifecycle updates, tool calls, assistant replies, thinking, and
+human/planner prompts are written as pi custom messages. Use `/show` or
+`/show <instance> [bpmn]` to inspect qianji BPMN instances. Qianji still owns
+BPMN progression, parallel branches, checkpoints, retry, resume, and instance
+state; the pi layer only provides native chat/session/UI integration.
 
 ### Example workflow
 

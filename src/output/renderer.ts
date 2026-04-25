@@ -555,7 +555,7 @@ class SplitLayout implements Component {
 	}
 }
 
-class AgentEventLogBuffer {
+export class AgentEventLogBuffer {
 	private assistantText = "";
 	private thinkingText = "";
 
