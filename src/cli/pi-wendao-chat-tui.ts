@@ -3,6 +3,7 @@ import {
 	createAgentSessionFromServices,
 	SessionManager,
 	type AgentSession,
+	type SessionInfo,
 } from "@mariozechner/pi-coding-agent";
 import {
 	Editor,
@@ -62,6 +63,8 @@ export type PiWendaoChatCommand =
 	| { kind: "exit" }
 	| { kind: "run"; workflowPath: string }
 	| { kind: "show"; instanceId?: string; workflowPath?: string }
+	| { kind: "session" }
+	| { kind: "sessions" }
 	| { kind: "unknown"; text: string };
 
 export type PiWendaoChatTranscriptRole = "system" | "user" | "assistant" | "thinking" | "agent" | "tool" | "error";
@@ -84,7 +87,8 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 	const editor = new Editor(tui, createEditorTheme(), { paddingX: 1, autocompleteMaxVisible: 8 });
 	const graphView = new GraphView();
 	const view = new PiWendaoChatView(terminal, editor, options.invocationCwd, graphView);
-	const chatSession = await createPiWendaoChatSession(options);
+	const chatSessionState = await createPiWendaoChatSession(options);
+	const chatSession = chatSessionState.session;
 	const workflowContext = new WorkflowChatContextSession();
 	const unsubscribeChatEvents = chatSession.subscribe((event) => {
 		const agentEvent = toPiWendaoAgentEvent(event);
@@ -118,6 +122,16 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 		}
 
 		tui.addInputListener((data) => {
+			if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.alt(Key.up))) {
+				view.scrollTranscriptBy(transcriptScrollStep(terminal.rows));
+				tui.requestRender();
+				return { consume: true };
+			}
+			if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.alt(Key.down))) {
+				view.scrollTranscriptBy(-transcriptScrollStep(terminal.rows));
+				tui.requestRender();
+				return { consume: true };
+			}
 			if (!matchesKey(data, Key.ctrl("c"))) return undefined;
 			if (chatRunning) {
 				void chatSession.abort();
@@ -133,8 +147,14 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 			void handleSubmit(value);
 		};
 
-		view.append("system", "pi-wendao chat ready. Type normally to talk to the LLM, or use /run <workflow.bpmn>.");
-		view.append("system", "Commands: /run <workflow.bpmn>, /show, /show <instance> [bpmn], /help, /quit.");
+		view.loadSessionMessages(chatSession.messages);
+		view.setSessionLabel(formatSessionLabel(chatSession));
+		view.append("system", chatSessionState.hadHistory
+			? `resumed session ${shortSessionId(chatSession)} with ${chatSession.messages.length} messages.`
+			: `new session ${shortSessionId(chatSession)} ready.`);
+		if (chatSessionState.modelFallbackMessage) view.append("system", chatSessionState.modelFallbackMessage);
+		view.append("system", "Type normally to talk to the LLM, or use /run <workflow.bpmn>.");
+		view.append("system", "Commands: /run <workflow.bpmn>, /show, /session, /sessions, /help, /quit.");
 		tui.start();
 		tui.requestRender(true);
 
@@ -143,12 +163,14 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 			if (activeWorkflowReply) {
 				editor.addToHistory(input);
 				editor.setText("");
+				view.scrollTranscriptToBottom();
 				completeWorkflowReply(input || defaultWorkflowReply(activeWorkflowReply.request));
 				return;
 			}
 			if (!input || chatRunning) return;
 			editor.addToHistory(input);
 			editor.setText("");
+			view.scrollTranscriptToBottom();
 
 			const command = parsePiWendaoChatCommand(input);
 			switch (command.kind) {
@@ -159,6 +181,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 					view.append("system", "Type a normal message to chat with the configured LLM.");
 					view.append("system", "Use /run <workflow.bpmn> to execute that qianji BPMN workflow with the graph panel below the native chat stream.");
 					view.append("system", "Use /show or /show <instance> [bpmn] to inspect qianji BPMN instances.");
+					view.append("system", "Use /session to show the active pi session, /sessions to list recent sessions, and PageUp/PageDown or Alt+Up/Alt+Down to scroll chat history.");
 					tui.requestRender();
 					return;
 				case "exit":
@@ -181,6 +204,14 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 					return;
 				case "show":
 					await runShowCommand(input, command);
+					return;
+				case "session":
+					view.append("user", input);
+					view.append("tool", formatActiveSession(chatSession));
+					tui.requestRender();
+					return;
+				case "sessions":
+					await runSessionsCommand(input);
 					return;
 				case "unknown":
 					view.append("user", input);
@@ -270,6 +301,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 			} finally {
 				chatRunning = false;
 				editor.disableSubmit = false;
+				view.setSessionLabel(formatSessionLabel(chatSession));
 				view.setStatus("ready");
 				tui.requestRender();
 			}
@@ -294,9 +326,27 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 			}
 		}
 
+		async function runSessionsCommand(input: string): Promise<void> {
+			view.append("user", input);
+			view.setStatus("listing pi sessions");
+			editor.disableSubmit = true;
+			tui.requestRender();
+			try {
+				const sessions = await SessionManager.list(options.invocationCwd);
+				view.append("tool", formatSessionList(sessions));
+			} catch (error) {
+				view.append("error", error instanceof Error ? error.message : String(error));
+			} finally {
+				editor.disableSubmit = false;
+				view.setStatus("ready");
+				tui.requestRender();
+			}
+		}
+
 		async function persistWorkflowContext(): Promise<void> {
 			try {
 				await workflowContext.persistToSession(chatSession);
+				view.setSessionLabel(formatSessionLabel(chatSession));
 			} catch (error) {
 				view.append("error", `failed to save workflow context: ${error instanceof Error ? error.message : String(error)}`);
 			}
@@ -308,7 +358,13 @@ export function loadPiWendaoChatSystemPrompt(packageRoot?: string): string {
 	return readPiWendaoPrompt(CHAT_SYSTEM_PROMPT_FILE, packageRoot);
 }
 
-async function createPiWendaoChatSession(options: PiWendaoChatTuiOptions): Promise<AgentSession> {
+interface PiWendaoChatSessionState {
+	session: AgentSession;
+	hadHistory: boolean;
+	modelFallbackMessage?: string;
+}
+
+async function createPiWendaoChatSession(options: PiWendaoChatTuiOptions): Promise<PiWendaoChatSessionState> {
 	const services = await createPiWendaoAgentServices({
 		cwd: options.invocationCwd,
 		extensionPaths: options.resolvedModel.extensionPaths,
@@ -317,13 +373,19 @@ async function createPiWendaoChatSession(options: PiWendaoChatTuiOptions): Promi
 	if (options.resolvedModel.apiKey) {
 		services.authStorage.setRuntimeApiKey(options.resolvedModel.model.provider, options.resolvedModel.apiKey);
 	}
-	const { session } = await createAgentSessionFromServices({
+	const sessionManager = SessionManager.continueRecent(options.invocationCwd);
+	const hadHistory = sessionManager.getEntries().some((entry) => entry.type === "message" || entry.type === "custom_message");
+	const { session, modelFallbackMessage } = await createAgentSessionFromServices({
 		services,
-		sessionManager: SessionManager.create(options.invocationCwd),
+		sessionManager,
 		model: options.resolvedModel.model,
 		thinkingLevel: options.thinkingLevel,
 	});
-	return session;
+	return {
+		session,
+		hadHistory,
+		...(modelFallbackMessage ? { modelFallbackMessage } : {}),
+	};
 }
 
 export function parsePiWendaoChatCommand(input: string): PiWendaoChatCommand {
@@ -332,6 +394,8 @@ export function parsePiWendaoChatCommand(input: string): PiWendaoChatCommand {
 	if (!command.startsWith("/")) return { kind: "chat", text: command };
 	if (command === "/help" || command === "/h") return { kind: "help" };
 	if (command === "/quit" || command === "/exit" || command === "/q") return { kind: "exit" };
+	if (command === "/session") return { kind: "session" };
+	if (command === "/sessions") return { kind: "sessions" };
 	const runMatch = command.match(/^\/(?:run|open)\s+(.+)$/);
 	if (runMatch?.[1]) {
 		return { kind: "run", workflowPath: cleanCommandPath(runMatch[1]) };
@@ -514,6 +578,8 @@ function createChatRenderer(options: {
 export class PiWendaoChatView implements Component {
 	private readonly transcript: TranscriptEntry[] = [];
 	private status = "ready";
+	private sessionLabel = "session: unknown";
+	private transcriptScrollOffset = 0;
 	private activeAssistantIndex: number | undefined;
 	private activeThinkingIndex: number | undefined;
 	private workflowTitle: string | undefined;
@@ -527,6 +593,18 @@ export class PiWendaoChatView implements Component {
 		private readonly graphView: GraphView,
 	) {}
 
+	loadSessionMessages(messages: readonly AgentSession["messages"][number][]): void {
+		this.transcript.length = 0;
+		for (const message of messages) {
+			this.transcript.push(...transcriptEntriesFromSessionMessage(message));
+		}
+		this.activeAssistantIndex = undefined;
+		this.activeThinkingIndex = undefined;
+		this.workflowFormattedRole = undefined;
+		this.workflowFormattedIndex = undefined;
+		this.transcriptScrollOffset = 0;
+	}
+
 	append(role: TranscriptRole, text: string): void {
 		this.transcript.push({ role, text });
 		if (role !== "assistant") this.activeAssistantIndex = undefined;
@@ -537,6 +615,20 @@ export class PiWendaoChatView implements Component {
 
 	setStatus(status: string): void {
 		this.status = status;
+	}
+
+	setSessionLabel(label: string): void {
+		this.sessionLabel = label;
+	}
+
+	scrollTranscriptBy(deltaRows: number): void {
+		this.transcriptScrollOffset = Math.max(0, this.transcriptScrollOffset + deltaRows);
+		this.invalidate();
+	}
+
+	scrollTranscriptToBottom(): void {
+		this.transcriptScrollOffset = 0;
+		this.invalidate();
 	}
 
 	openWorkflow(workflowPath: string): void {
@@ -725,7 +817,8 @@ export class PiWendaoChatView implements Component {
 		const header = [
 			truncateToWidth(`${bold("pi-wendao")} ${dim("LLM chat + qianji workflow runner")}`, width),
 			truncateToWidth(dim(`cwd: ${this.cwd}`), width),
-			truncateToWidth(dim("Enter sends chat. Commands: /run <bpmn>, /show, /help, /quit. Ctrl+C aborts/exits."), width),
+			truncateToWidth(dim(`${this.sessionLabel}. PageUp/PageDown scroll chat. Alt+Up/Alt+Down scroll too.`), width),
+			truncateToWidth(dim("Enter sends chat. Commands: /run <bpmn>, /show, /session, /help, /quit. Ctrl+C aborts/exits."), width),
 			truncateToWidth(dim(`status: ${this.status}`), width),
 		];
 		const editorLines = this.editor.render(width);
@@ -734,7 +827,11 @@ export class PiWendaoChatView implements Component {
 		const footerRows = footerLines.length > 0 ? footerLines.length + 1 : 0;
 		const availableRows = Math.max(0, height - header.length - editorLines.length - 1 - footerRows);
 		const transcriptLines = this.renderTranscript(width);
-		const visibleTranscript = availableRows > 0 ? transcriptLines.slice(-availableRows) : [];
+		const maxScrollOffset = Math.max(0, transcriptLines.length - availableRows);
+		this.transcriptScrollOffset = Math.min(this.transcriptScrollOffset, maxScrollOffset);
+		const end = availableRows > 0 ? Math.max(0, transcriptLines.length - this.transcriptScrollOffset) : 0;
+		const start = Math.max(0, end - availableRows);
+		const visibleTranscript = availableRows > 0 ? transcriptLines.slice(start, end) : [];
 		while (visibleTranscript.length < availableRows) visibleTranscript.unshift("");
 		const lines = [
 			...header,
@@ -790,6 +887,113 @@ export class PiWendaoChatView implements Component {
 		}
 		return lines;
 	}
+}
+
+function transcriptEntriesFromSessionMessage(message: AgentSession["messages"][number]): TranscriptEntry[] {
+	if (!isObject(message) || typeof message.role !== "string") return [];
+	if (message.role === "user") {
+		return [{ role: "user", text: contentToText(message.content) }];
+	}
+	if (message.role === "assistant" && Array.isArray(message.content)) {
+		const entries: TranscriptEntry[] = [];
+		let assistantText = "";
+		for (const block of message.content) {
+			if (!isObject(block) || typeof block.type !== "string") continue;
+			if (block.type === "text" && typeof block.text === "string") {
+				assistantText += block.text;
+			} else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim()) {
+				if (assistantText.trim()) {
+					entries.push({ role: "assistant", text: assistantText });
+					assistantText = "";
+				}
+				entries.push({ role: "thinking", text: block.thinking });
+			} else if (block.type === "toolCall" && typeof block.name === "string") {
+				if (assistantText.trim()) {
+					entries.push({ role: "assistant", text: assistantText });
+					assistantText = "";
+				}
+				entries.push({ role: "tool", text: `${block.name}(${JSON.stringify(block.arguments ?? {})})` });
+			}
+		}
+		if (assistantText.trim()) entries.push({ role: "assistant", text: assistantText });
+		if (message.stopReason === "error" && typeof message.errorMessage === "string") {
+			entries.push({ role: "error", text: message.errorMessage });
+		}
+		return entries;
+	}
+	if (message.role === "toolResult" && typeof message.toolName === "string") {
+		return [{
+			role: message.isError ? "error" : "tool",
+			text: formatToolResultForLog(message.toolName, { content: message.content, details: message.details }, !!message.isError)
+				.map((line) => stripAnsi(line))
+				.join("\n"),
+		}];
+	}
+	if (message.role === "custom") {
+		if (message.display === false) return [];
+		return [{ role: "system", text: contentToText(message.content) }];
+	}
+	if (message.role === "bashExecution") {
+		const command = typeof message.command === "string" ? message.command : "";
+		const output = typeof message.output === "string" ? message.output.trim() : "";
+		const status = message.cancelled ? "cancelled" : `exit ${message.exitCode ?? "unknown"}`;
+		return [{ role: "tool", text: [`bash ${command}`, output, status].filter(Boolean).join("\n") }];
+	}
+	if (message.role === "compactionSummary" && typeof message.summary === "string") {
+		return [{ role: "system", text: `compacted previous history:\n${message.summary}` }];
+	}
+	if (message.role === "branchSummary" && typeof message.summary === "string") {
+		return [{ role: "system", text: `branch summary:\n${message.summary}` }];
+	}
+	return [];
+}
+
+function contentToText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((entry) => {
+			if (!isObject(entry)) return "";
+			if (entry.type === "text" && typeof entry.text === "string") return entry.text;
+			if (entry.type === "image" && typeof entry.mimeType === "string") return `[image ${entry.mimeType}]`;
+			return "";
+		})
+		.filter(Boolean)
+		.join("");
+}
+
+function transcriptScrollStep(rows: number): number {
+	return Math.max(3, Math.floor(rows * 0.5));
+}
+
+function shortSessionId(session: AgentSession): string {
+	return session.sessionId.slice(0, 8);
+}
+
+function formatSessionLabel(session: AgentSession): string {
+	const name = session.sessionName ? `${session.sessionName} ` : "";
+	return `session: ${name}${shortSessionId(session)} messages=${session.messages.length}`;
+}
+
+function formatActiveSession(session: AgentSession): string {
+	const model = session.model ? `${session.model.provider}/${session.model.id}` : "(none)";
+	return [
+		`session ${session.sessionId}`,
+		`file: ${session.sessionFile ?? "(not persisted)"}`,
+		`name: ${session.sessionName ?? "(unnamed)"}`,
+		`messages: ${session.messages.length}`,
+		`model: ${model}`,
+	].join("\n");
+}
+
+function formatSessionList(sessions: SessionInfo[]): string {
+	if (sessions.length === 0) return "No pi sessions found for this cwd.";
+	return sessions.slice(0, 12).map((session, index) => {
+		const id = session.id.slice(0, 8);
+		const name = session.name ? ` ${session.name}` : "";
+		const first = session.firstMessage ? ` - ${compactWorkflowContextLine(session.firstMessage)}` : "";
+		return `${index + 1}. ${id}${name} messages=${session.messageCount} modified=${session.modified.toISOString()}${first}`;
+	}).join("\n");
 }
 
 function workflowPromptLabel(request: PlannerReplyRequest): string {
@@ -939,17 +1143,17 @@ function roleLabel(role: TranscriptRole): string {
 	switch (role) {
 		case "system":
 			return dim("system>");
-			case "user":
-				return green("user>");
-			case "assistant":
-				return cyan("assistant>");
-			case "thinking":
-				return dim("thinking>");
-			case "agent":
-				return bold("agent>");
-			case "tool":
-				return yellow("tool>");
-			case "error":
-				return red("error>");
-		}
+		case "user":
+			return green("user>");
+		case "assistant":
+			return cyan("assistant>");
+		case "thinking":
+			return dim("thinking>");
+		case "agent":
+			return bold("agent>");
+		case "tool":
+			return yellow("tool>");
+		case "error":
+			return red("error>");
+	}
 }

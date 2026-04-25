@@ -37,6 +37,11 @@ describe("pi-wendao chat TUI commands", () => {
 		});
 	});
 
+	it("parses pi session commands", () => {
+		expect(parsePiWendaoChatCommand("/session")).toEqual({ kind: "session" });
+		expect(parsePiWendaoChatCommand("/sessions")).toEqual({ kind: "sessions" });
+	});
+
 	it("formats command output for chat transcript", () => {
 		expect(formatPiWendaoChatCommandOutput({
 			exitCode: 2,
@@ -130,6 +135,64 @@ describe("pi-wendao chat TUI commands", () => {
 		expect(plain).not.toContain("|");
 	});
 
+	it("hydrates prior pi session messages into the chat transcript", () => {
+		const view = new PiWendaoChatView(
+			{ rows: 14 } as never,
+			{
+				render: () => ["> "],
+				invalidate: () => {},
+			} as never,
+			"/repo",
+			new GraphView(),
+		);
+
+		view.loadSessionMessages([
+			{
+				role: "user",
+				content: "old question",
+			},
+			{
+				role: "assistant",
+				content: [{ type: "text", text: "old answer" }],
+			},
+		] as never);
+
+		const plain = stripAnsi(view.render(100).join("\n"));
+
+		expect(plain).toContain("user> old question");
+		expect(plain).toContain("assistant> old answer");
+	});
+
+	it("scrolls the chat transcript while keeping the editor visible", () => {
+		const view = new PiWendaoChatView(
+			{ rows: 12 } as never,
+			{
+				render: () => ["> "],
+				invalidate: () => {},
+			} as never,
+			"/repo",
+			new GraphView(),
+		);
+
+		for (let i = 0; i < 20; i += 1) {
+			view.append("system", `event ${i}`);
+		}
+
+		let plain = stripAnsi(view.render(80).join("\n"));
+		expect(plain).toContain("event 19");
+		expect(plain).toContain("> ");
+
+		view.scrollTranscriptBy(8);
+		plain = stripAnsi(view.render(80).join("\n"));
+		expect(plain).toContain("event 11");
+		expect(plain).not.toContain("event 19");
+		expect(plain).toContain("> ");
+
+		view.scrollTranscriptToBottom();
+		plain = stripAnsi(view.render(80).join("\n"));
+		expect(plain).toContain("event 19");
+	});
+
 	it("keeps workflow context bounded for large event streams", () => {
 		const context = new WorkflowChatContextSession();
 
@@ -148,3 +211,7 @@ describe("pi-wendao chat TUI commands", () => {
 		expect(content).not.toContain("\u001b[");
 	});
 });
+
+function stripAnsi(text: string): string {
+	return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
