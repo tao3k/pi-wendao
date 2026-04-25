@@ -1,5 +1,7 @@
 import type { Message, Model, ThinkingLevel as PiAiThinkingLevel, UserMessage } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	Editor,
 	Key,
@@ -15,7 +17,7 @@ import {
 } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
 import type { PiWendaoAgentEvent, PiWendaoAgentMessage } from "../executor/agent-runtime-types.js";
-import type { ResolvedModel } from "./model-resolver.js";
+import { resolvePiWendaoPackageRoot, type ResolvedModel } from "./model-resolver.js";
 import { GraphView } from "../output/graph-view.js";
 import {
 	formatArgsForLog,
@@ -63,15 +65,7 @@ interface TranscriptEntry {
 	text: string;
 }
 
-const CHAT_SYSTEM_PROMPT = `You are the pi-wendao TUI assistant.
-
-Help the user inspect, plan, and run qianji BPMN workflows. Keep workflow
-semantics owned by qianji. Do not pretend that chat messages execute workflow
-steps; tell the user to use /run when they want to execute a BPMN file in the
-right workflow graph sidebar. Workflow execution should appear as native chat
-stream items: subagent lifecycle as agent output, qianji and shell work as tool
-output, reasoning as thinking, and agent replies as assistant output.`;
-
+const CHAT_SYSTEM_PROMPT_PATH = join(".pi", "prompts", "pi-wendao-chat-system.md");
 const MAX_WORKFLOW_CONTEXT_LINES = 60;
 const MAX_WORKFLOW_CONTEXT_LINE_LENGTH = 160;
 const MAX_WORKFLOW_CONTEXT_EVENT_LINES = 8;
@@ -86,6 +80,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 	const messages: Message[] = [];
 	const workflowContext = new WorkflowChatContextSession(messages);
 	const chatSessionId = `pi-wendao-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+	const chatSystemPrompt = loadPiWendaoChatSystemPrompt();
 
 	let activeAbort: AbortController | undefined;
 	let activeWorkflowReply: {
@@ -148,7 +143,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 					return;
 				case "help":
 					view.append("system", "Type a normal message to chat with the configured LLM.");
-					view.append("system", "Use /run <workflow.bpmn> to execute that qianji BPMN workflow with graph on the right and native chat streaming on the left.");
+					view.append("system", "Use /run <workflow.bpmn> to execute that qianji BPMN workflow with the graph above the native chat stream.");
 					view.append("system", "Use /show or /show <instance> [bpmn] to inspect qianji BPMN instances.");
 					tui.requestRender();
 					return;
@@ -168,7 +163,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 						tui.requestRender();
 						return;
 					}
-					await runWorkflowInSidebar(command.workflowPath);
+					await runWorkflowInStack(command.workflowPath);
 					return;
 				case "show":
 					await runShowCommand(input, command);
@@ -182,7 +177,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 			}
 		}
 
-		async function runWorkflowInSidebar(workflowPath: string): Promise<void> {
+		async function runWorkflowInStack(workflowPath: string): Promise<void> {
 			workflowRunning = true;
 			view.openWorkflow(workflowPath);
 			workflowContext.start(workflowPath);
@@ -262,7 +257,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 				const stream = streamSimple(
 					options.resolvedModel.model as Model<string>,
 					{
-						systemPrompt: CHAT_SYSTEM_PROMPT,
+						systemPrompt: chatSystemPrompt,
 						messages,
 					},
 					{
@@ -333,6 +328,10 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 			}
 		}
 	});
+}
+
+export function loadPiWendaoChatSystemPrompt(packageRoot = resolvePiWendaoPackageRoot()): string {
+	return readFileSync(join(packageRoot, CHAT_SYSTEM_PROMPT_PATH), "utf-8").trim();
 }
 
 export function parsePiWendaoChatCommand(input: string): PiWendaoChatCommand {
@@ -538,7 +537,7 @@ function createChatRenderer(options: {
 	};
 }
 
-class PiWendaoChatView implements Component {
+export class PiWendaoChatView implements Component {
 	private readonly transcript: TranscriptEntry[] = [];
 	private status = "ready";
 	private activeAssistantIndex: number | undefined;
@@ -734,11 +733,8 @@ class PiWendaoChatView implements Component {
 
 	render(width: number): string[] {
 		const safeWidth = Math.max(20, width);
-		if (this.workflowTitle && safeWidth >= 110) {
-			return this.renderWithWorkflowSidebar(safeWidth);
-		}
 		if (this.workflowTitle) {
-			return this.renderWithWorkflowTopPanel(safeWidth);
+			return this.renderWithWorkflowStack(safeWidth);
 		}
 		return this.renderMain(safeWidth);
 	}
@@ -761,23 +757,7 @@ class PiWendaoChatView implements Component {
 		return lines.slice(0, height);
 	}
 
-	private renderWithWorkflowSidebar(width: number): string[] {
-		const sidebarWidth = Math.min(56, Math.max(28, Math.floor(width * 0.38)));
-		const separatorWidth = 1;
-		const mainWidth = Math.max(30, width - sidebarWidth - separatorWidth);
-		const main = this.renderMain(mainWidth).slice(0, this.terminal.rows);
-		const sidebar = this.renderWorkflowSidebar(sidebarWidth, this.terminal.rows);
-		const rows = Math.max(this.terminal.rows, main.length, sidebar.length);
-		const lines: string[] = [];
-		for (let i = 0; i < rows; i += 1) {
-			const left = padToWidth(main[i] ?? "", mainWidth);
-			const right = sidebar[i] ?? "";
-			lines.push(truncateToWidth(`${left}${dim("|")}${right}`, width));
-		}
-		return lines;
-	}
-
-	private renderWithWorkflowTopPanel(width: number): string[] {
+	private renderWithWorkflowStack(width: number): string[] {
 		const totalRows = this.terminal.rows;
 		const graphHeight = Math.max(7, Math.min(Math.floor(totalRows * 0.45), totalRows - 8));
 		const chatHeight = Math.max(1, totalRows - graphHeight - 1);
@@ -785,10 +765,6 @@ class PiWendaoChatView implements Component {
 		const separator = truncateToWidth(dim("-".repeat(Math.max(1, width))), width);
 		const main = this.renderMain(width, chatHeight);
 		return [...graph, separator, ...main].slice(0, totalRows);
-	}
-
-	private renderWorkflowSidebar(width: number, height: number): string[] {
-		return this.renderWorkflowGraphPanel(width, height);
 	}
 
 	private renderWorkflowGraphPanel(width: number, height: number): string[] {
@@ -837,12 +813,6 @@ function workflowPromptLabel(request: PlannerReplyRequest): string {
 
 function defaultWorkflowReply(request: PlannerReplyRequest): string {
 	return request.action === "workflow_path" ? "" : "approved";
-}
-
-function padToWidth(value: string, width: number): string {
-	const truncated = truncateToWidth(value, width);
-	const padding = Math.max(0, width - visibleWidth(truncated));
-	return `${truncated}${" ".repeat(padding)}`;
 }
 
 function sliceAround(lines: string[], budget: number, preferredRow: number): string[] {

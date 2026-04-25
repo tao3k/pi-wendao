@@ -70,14 +70,14 @@ Options:
 
 Running `pi-wendao --tui` without a workflow opens the chat TUI. Type normally to
 talk with the configured LLM. Use `/run <workflow.bpmn>` to execute a workflow
-in the same TUI; the workflow graph appears in the right sidebar on wide
-terminals and automatically moves to a top panel on narrower terminals. In both
-layouts the graph viewport follows the active BPMN node so the current task
-stays visible. Qianji trace events, subagent lifecycle updates, tool calls,
-assistant replies, thinking, and human/planner prompts stream through the normal
-chat roles on the left: `agent>`, `tool>`, `assistant>`, `thinking>`, `system>`,
-and `user>`. Use `/show` or `/show <instance> [bpmn]` to inspect qianji BPMN
-instances, `/help` for commands, and `/quit` to exit.
+in the same TUI; the workflow graph appears as a top panel and the native chat
+stream stays below it. The graph viewport follows the active BPMN node so the
+current task stays visible. Qianji trace events, subagent lifecycle updates,
+tool calls, assistant replies, thinking, and human/planner prompts stream
+through the normal chat roles below the graph: `agent>`, `tool>`, `assistant>`,
+`thinking>`, `system>`, and `user>`. Use `/show` or
+`/show <instance> [bpmn]` to inspect qianji BPMN instances, `/help` for
+commands, and `/quit` to exit.
 
 ### Example workflow
 
@@ -165,8 +165,8 @@ pi-intercom is exposed as the `intercom` tool in the active pi extension
 context; graph mode logs `Extension tool: pi-intercom` at startup and shows
 actual calls as compact details such as `tool:intercom action=status` only when
 an LLM invokes the tool. When a pi-subagents worker calls
-`intercom({ action: "ask", to: "planner", message: "..." })`, the left chat
-stream opens an inline prompt; pressing Enter submits the
+`intercom({ action: "ask", to: "planner", message: "..." })`, the chat stream
+opens an inline prompt; pressing Enter submits the
 planner approval or clarification and unblocks the worker tool call.
 For workflow-owned human checkpoints, compile or write an explicit BPMN
 `userTask` instead. When qianji blocks on that `userTask`, graph mode opens an

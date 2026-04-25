@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
 	classifyWorkflowChatLine,
 	formatPiWendaoChatCommandOutput,
+	loadPiWendaoChatSystemPrompt,
 	parsePiWendaoChatCommand,
+	PiWendaoChatView,
 	WorkflowChatContextSession,
 } from "../../src/cli/pi-wendao-chat-tui.js";
+import { GraphView } from "../../src/output/graph-view.js";
 
 describe("pi-wendao chat TUI commands", () => {
 	it("treats normal text as LLM chat", () => {
@@ -43,6 +46,13 @@ describe("pi-wendao chat TUI commands", () => {
 		})).toBe("instances\nwarning\ncommand exited with code 2");
 	});
 
+	it("loads the chat system prompt from packaged .pi prompts", () => {
+		const prompt = loadPiWendaoChatSystemPrompt();
+
+		expect(prompt).toContain("pi-wendao TUI assistant");
+		expect(prompt).toContain("top workflow graph panel");
+	});
+
 	it("routes workflow lines into native chat roles", () => {
 		expect(classifyWorkflowChatLine("subagent Task_5 12345678 completed")).toBe("agent");
 		expect(classifyWorkflowChatLine("user")).toBe("user");
@@ -70,6 +80,28 @@ describe("pi-wendao chat TUI commands", () => {
 		expect(messages[0]?.content).toContain("status: completed");
 		expect(messages[0]?.content).toContain("tool> parallel jobs Task_Review: 2 jobs tokens=11,12");
 		expect(messages[0]?.content).toContain("assistant> Branch A and Branch B finished.");
+	});
+
+	it("renders workflow graph above chat on wide terminals", () => {
+		const graphView = new GraphView();
+		const view = new PiWendaoChatView(
+			{ rows: 18 } as never,
+			{
+				render: () => ["> "],
+				invalidate: () => {},
+			} as never,
+			"/repo",
+			graphView,
+		);
+
+		view.openWorkflow("/tmp/pi-wendao-real-llm-complex.bpmn");
+		graphView.addNode({ id: "Task_1", label: "Run task", type: "task", status: "active" });
+		view.append("system", "workflow event");
+
+		const plain = view.render(140).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+
+		expect(plain.indexOf("workflow graph")).toBeLessThan(plain.indexOf("pi-wendao LLM chat"));
+		expect(plain).not.toContain("|");
 	});
 
 	it("keeps workflow context bounded for large event streams", () => {
