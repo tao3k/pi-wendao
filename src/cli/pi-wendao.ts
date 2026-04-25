@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { readFileSync } from "fs";
-import { resolve as resolvePath } from "node:path";
+import { readFileSync, writeFileSync } from "fs";
+import { extname, resolve as resolvePath } from "node:path";
 import { program } from "commander";
 import { XMLParser } from "fast-xml-parser";
 import type { SkillscThinkingLevel } from "../executor/agent-runtime-types.js";
 import { validateInstanceId } from "./instance-id.js";
+import { compileSkill } from "../compiler/compiler.js";
 import { execute } from "../executor/executor.js";
 import {
 	createRenderer,
@@ -78,6 +79,39 @@ interface PiWendaoCliOptions {
 	graph?: boolean;
 	tui?: boolean;
 }
+
+interface PiWendaoCompileOptions {
+	output?: string;
+	model?: string;
+	provider?: string;
+	apiKey?: string;
+	qianji?: string;
+	lintRetries?: string;
+	lint?: boolean;
+	extension?: string[];
+}
+
+program
+	.command("compile")
+	.description("Compile an agent skill into a qianji BPMN workflow")
+	.argument("<skill>", "Path to SKILL.md file")
+	.option("-o, --output <file>", "Output BPMN file path")
+	.option("--model <model>", "Model to use (e.g., anthropic/<model-id>)")
+	.option("--provider <provider>", "LLM provider")
+	.option("--api-key <key>", "API key override for model resolution")
+	.option("--qianji <command>", "Qianji CLI command for templates and compile lint (default: QIANJI_CLI or qianji on PATH)")
+	.option("--lint-retries <count>", "Model repair attempts after qianji lint failure", "2")
+	.option("--no-lint", "Disable qianji lint repair loop")
+	.option("-e, --extension <path>", "Load an extra pi extension (repeatable)", collect, [])
+	.action(async (skillPath: string, options: PiWendaoCompileOptions) => {
+		try {
+			await runCompileCommand(skillPath, options);
+			process.exit(0);
+		} catch (err) {
+			console.error("Error:", err instanceof Error ? err.message : String(err));
+			process.exit(1);
+		}
+	});
 
 program
 	.name("pi-wendao")
@@ -316,17 +350,17 @@ program
 				traceFrameDelayMs: options.traceFrameMs,
 				cwd: invocationCwd,
 				variables: options.var,
-					onCliOutput: (output) => {
-						for (const line of formatQianjiCliOutputForLog(output)) {
-							renderer.appendLog(line);
-						}
-					},
-					onHostWork: (event) => {
-						for (const line of formatQianjiHostWorkEventForLog(event)) {
-							renderer.appendLog(line);
-						}
-					},
-					onAgentEvent: renderer.onAgentEvent,
+				onCliOutput: (output) => {
+					for (const line of formatQianjiCliOutputForLog(output)) {
+						renderer.appendLog(line);
+					}
+				},
+				onHostWork: (event) => {
+					for (const line of formatQianjiHostWorkEventForLog(event)) {
+						renderer.appendLog(line);
+					}
+				},
+				onAgentEvent: renderer.onAgentEvent,
 				graphView: useGraph ? renderer.graphView : undefined,
 				onGraphReady: () => renderer.refresh(),
 				onGraphUpdate: () => renderer.refresh(),
@@ -342,10 +376,10 @@ program
 				renderer.printVariables(result.variables);
 			}
 
-				renderer.appendLog("\nPress any key to exit.");
-				await renderer.waitForKey();
-				renderer.stop();
-				process.exit(result.success ? 0 : 1);
+			renderer.appendLog("\nPress any key to exit.");
+			await renderer.waitForKey();
+			renderer.stop();
+			process.exit(result.success ? 0 : 1);
 			} catch (err) {
 				console.error("Error:", err instanceof Error ? err.message : String(err));
 				process.exit(1);
@@ -354,6 +388,54 @@ program
 
 function collect(value: string, prev: string[]): string[] {
 	return prev.concat([value]);
+}
+
+async function runCompileCommand(skillPath: string, options: PiWendaoCompileOptions): Promise<void> {
+	const skillContent = readFileSync(skillPath, "utf-8");
+	const outputPath = options.output ?? skillPath.replace(/\.md$/, ".bpmn");
+
+	if (!options.model) {
+		throw new Error("--model is required");
+	}
+
+	const { model, apiKey, headers } = await resolveModel(options.model, options.provider, options.apiKey, options.extension);
+
+	console.log(`Compiling ${skillPath} using ${model.provider}/${model.id}...`);
+
+	const result = await compileSkill({
+		skillContent,
+		model,
+		apiKey,
+		headers,
+		cwd: process.cwd(),
+		template: {
+			command: options.qianji,
+			onMessage: (message) => console.log(message),
+		},
+		target: {
+			onMessage: (message) => console.log(message),
+		},
+		lint: options.lint === false
+			? false
+			: {
+				command: options.qianji,
+				maxRepairAttempts: parseNonNegativeInt(options.lintRetries, "--lint-retries"),
+				onMessage: (message) => console.log(message),
+			},
+	});
+
+	if (!result.success) {
+		const errors = result.errors?.map((error) => `  - ${error}`).join("\n");
+		throw new Error(`Compilation failed${errors ? `:\n${errors}` : ""}`);
+	}
+
+	writeFileSync(outputPath, result.bpmnXml!);
+	console.log(`Compiled BPMN to ${outputPath}`);
+	if (result.dmnXml) {
+		const dmnOutputPath = replaceExtension(outputPath, ".dmn");
+		writeFileSync(dmnOutputPath, result.dmnXml);
+		console.log(`Compiled DMN to ${dmnOutputPath}`);
+	}
 }
 
 function resolveCliPath(cwd: string, path: string): string {
@@ -510,17 +592,17 @@ async function runWorkflowInRenderer(params: {
 			traceFrameDelayMs: params.options.traceFrameMs,
 			cwd: params.invocationCwd,
 			variables: params.options.var,
-				onCliOutput: (output) => {
-					for (const line of formatQianjiCliOutputForLog(output)) {
-						renderer.appendLog(line);
-					}
-				},
-				onHostWork: (event) => {
-					for (const line of formatQianjiHostWorkEventForLog(event)) {
-						renderer.appendLog(line);
-					}
-				},
-				onAgentEvent: renderer.onAgentEvent,
+			onCliOutput: (output) => {
+				for (const line of formatQianjiCliOutputForLog(output)) {
+					renderer.appendLog(line);
+				}
+			},
+			onHostWork: (event) => {
+				for (const line of formatQianjiHostWorkEventForLog(event)) {
+					renderer.appendLog(line);
+				}
+			},
+			onAgentEvent: renderer.onAgentEvent,
 			graphView: params.useGraph ? renderer.graphView : undefined,
 			onGraphReady: () => renderer.refresh(),
 			onGraphUpdate: () => renderer.refresh(),
@@ -569,6 +651,19 @@ function parseNonNegativeNumber(value: string): number {
 		throw new Error("--trace-frame-ms must be a non-negative number");
 	}
 	return parsed;
+}
+
+function parseNonNegativeInt(value: string | undefined, label: string): number {
+	const parsed = Number.parseInt(value ?? "0", 10);
+	if (!Number.isInteger(parsed) || parsed < 0) {
+		throw new Error(`${label} must be a non-negative integer`);
+	}
+	return parsed;
+}
+
+function replaceExtension(path: string, extension: string): string {
+	const currentExtension = extname(path);
+	return currentExtension ? `${path.slice(0, -currentExtension.length)}${extension}` : `${path}${extension}`;
 }
 
 function resolveQianjiCommand(explicitCommand: string | undefined): string {

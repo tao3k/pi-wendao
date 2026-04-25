@@ -1,5 +1,5 @@
-# Justfile for skillsc/qianji BPMN integration tests.
-# Run from .data/skillsc.
+# Justfile for pi-wendao/qianji BPMN integration tests.
+# Run from the pi-wendao package root.
 
 set dotenv-load := false
 set shell := ["bash", "-uc"]
@@ -11,11 +11,11 @@ pi_wendao := "npx --no-install pi-wendao"
 default:
     @just --list
 
-# Typecheck skillsc.
+# Typecheck pi-wendao.
 check:
     npm run check
 
-# Build skillsc.
+# Build pi-wendao.
 build:
     npm run build
 
@@ -23,7 +23,7 @@ build:
 test:
     npm test
 
-# Check whitespace in the skillsc nested repo.
+# Check whitespace in the pi-wendao nested repo.
 diff-check:
     git diff --check
 
@@ -35,11 +35,11 @@ qianji-path:
     command -v qianji
 
 # Show qianji BPMN checkpoint instances through pi-wendao.
-show-instances workflow="/tmp/skillsc-real-llm-complex.bpmn":
+show-instances workflow="/tmp/pi-wendao-real-llm-complex.bpmn":
     {{pi_wendao}} "{{workflow}}" --show
 
 # Show one qianji BPMN checkpoint instance through pi-wendao.
-show-instance instance workflow="/tmp/skillsc-real-llm-complex.bpmn":
+show-instance instance workflow="/tmp/pi-wendao-real-llm-complex.bpmn":
     {{pi_wendao}} "{{workflow}}" --show --instance-id "{{instance}}"
 
 # Lint one BPMN file with qianji.
@@ -54,7 +54,7 @@ lint-bpmn bpmn:
 
     {{qianji}} lint --bpmn "$bpmn"
 
-# Lint the BPMN fixtures that cover the supported skillsc subset.
+# Lint the BPMN fixtures that cover the supported pi-wendao subset.
 lint-fixtures:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -75,8 +75,8 @@ run-simple-fixture:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    fixture="/tmp/skillsc-simple-host-fixture.json"
-    instance="skillsc-simple-fixture-$(date +%Y%m%d%H%M%S)"
+    fixture="/tmp/pi-wendao-simple-host-fixture.json"
+    instance="pi-wendao-simple-fixture-$(date +%Y%m%d%H%M%S)"
     cat > "$fixture" <<'JSON'
     {
       "service_tasks": {
@@ -99,8 +99,8 @@ run-complex-fixture:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    fixture="/tmp/skillsc-complex-host-fixture.json"
-    instance="skillsc-complex-fixture-$(date +%Y%m%d%H%M%S)"
+    fixture="/tmp/pi-wendao-complex-host-fixture.json"
+    instance="pi-wendao-complex-fixture-$(date +%Y%m%d%H%M%S)"
     bpmn="$PWD/test/fixtures/complex-workflow.bpmn"
     cat > "$fixture" <<'JSON'
     {
@@ -131,8 +131,8 @@ parallel-boundary:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    fixture="/tmp/skillsc-complex-init-fixture.json"
-    instance="skillsc-parallel-boundary-$(date +%Y%m%d%H%M%S)"
+    fixture="/tmp/pi-wendao-complex-init-fixture.json"
+    instance="pi-wendao-parallel-boundary-$(date +%Y%m%d%H%M%S)"
     bpmn="$PWD/test/fixtures/complex-workflow.bpmn"
     cat > "$fixture" <<'JSON'
     {
@@ -161,7 +161,7 @@ parallel-boundary:
       --external-host
 
 # Run the real LLM simple workflow generated during integration testing.
-real-llm-simple workflow="/tmp/skillsc-real-llm-simple.bpmn" thinking="low":
+real-llm-simple workflow="/tmp/pi-wendao-real-llm-simple.bpmn" thinking="low":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -174,15 +174,15 @@ real-llm-simple workflow="/tmp/skillsc-real-llm-simple.bpmn" thinking="low":
     {{pi_wendao}} "{{workflow}}" \
       --no-graph \
       --thinking "{{thinking}}" \
-      --instance-id "skillsc-real-llm-$(date +%Y%m%d%H%M%S)"
+      --instance-id "pi-wendao-real-llm-$(date +%Y%m%d%H%M%S)"
 
 # Run the checked complex workflow through pi-wendao with deterministic host data.
 pi-wendao-complex-fixture:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    fixture="/tmp/skillsc-complex-host-fixture.json"
-    instance="skillsc-pi-wendao-complex-$(date +%Y%m%d%H%M%S)"
+    fixture="/tmp/pi-wendao-complex-host-fixture.json"
+    instance="pi-wendao-complex-$(date +%Y%m%d%H%M%S)"
     cat > "$fixture" <<'JSON'
     {
       "service_tasks": {
@@ -208,7 +208,7 @@ pi-wendao-complex-fixture:
 human-approval-demo idea="Ship graph-local approval":
     {{pi_wendao}} test/fixtures/human-approval.bpmn \
       --var "idea={{idea}}" \
-      --instance-id "skillsc-human-approval-$(date +%Y%m%d%H%M%S)"
+      --instance-id "pi-wendao-human-approval-$(date +%Y%m%d%H%M%S)"
 
 # Print representative commands for pi-subagents/manual extension checks.
 pi-subagents-notes:

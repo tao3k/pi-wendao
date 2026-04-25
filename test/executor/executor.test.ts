@@ -264,8 +264,8 @@ describe("executor", () => {
 		expect(result.success).toBe(true);
 		expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
 		expect(executions).toEqual([
-			{ activityId: "Task_Review", tokenId: 11, item: "alpha", subagentType: "skillsc-worker" },
-			{ activityId: "Task_Review", tokenId: 12, item: "beta", subagentType: "skillsc-worker" },
+			{ activityId: "Task_Review", tokenId: 11, item: "alpha", subagentType: "pi-wendao-worker" },
+			{ activityId: "Task_Review", tokenId: 12, item: "beta", subagentType: "pi-wendao-worker" },
 		]);
 		expect(result.variables).toMatchObject({
 			results: ["alpha_done", "beta_done"],
@@ -278,7 +278,7 @@ describe("executor", () => {
 			"host:2 pi-subagents",
 			"parallel:2 jobs tokens=11,12",
 			"checkpoint:duckdb/fresh/saved",
-			"subagent:skillsc-worker",
+			"subagent:pi-wendao-worker",
 		]);
 		expect(hostWorkEvents).toEqual([{
 			activityId: "Task_Review",
@@ -899,7 +899,7 @@ function tokenScopedServiceTaskWorkflow(): string {
           <skillsc:tools></skillsc:tools>
           <skillsc:inputs>item</skillsc:inputs>
           <skillsc:outputs>result</skillsc:outputs>
-          <skillsc:agentType>skillsc-worker</skillsc:agentType>
+          <skillsc:agentType>pi-wendao-worker</skillsc:agentType>
           <skillsc:runInBackground>true</skillsc:runInBackground>
           <skillsc:maxTurns>8</skillsc:maxTurns>
         </skillsc:config>

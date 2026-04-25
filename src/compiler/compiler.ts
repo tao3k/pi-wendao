@@ -208,7 +208,7 @@ function parseCompileTargetDecision(text: string): CompileTargetDecision {
 	if (rawTarget === "dmn") {
 		return {
 			target: "bpmn-dmn",
-			reason: `${reason} Pure DMN is normalized to BPMN+DMN because skillsc executes BPMN workflows.`,
+			reason: `${reason} Pure DMN is normalized to BPMN+DMN because pi-wendao executes BPMN workflows.`,
 			dmnDecisions,
 			normalizedFrom: "dmn",
 		};
@@ -227,7 +227,7 @@ function normalizeCompileTargetDecision(decision: CompileTargetDecision): Compil
 	}
 	return {
 		target: "bpmn-dmn",
-		reason: `${decision.reason || "Model selected pure DMN."} Pure DMN is normalized to BPMN+DMN because skillsc executes BPMN workflows.`,
+		reason: `${decision.reason || "Model selected pure DMN."} Pure DMN is normalized to BPMN+DMN because pi-wendao executes BPMN workflows.`,
 		dmnDecisions: decision.dmnDecisions ?? [],
 		normalizedFrom: "dmn",
 	};
@@ -270,7 +270,7 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 			success: false,
 			output: renderSkillscCompileContractIssues([{
 				code: "SKILLSC001",
-				title: "BPMN XML must be parseable for skillsc contract validation",
+				title: "BPMN XML must be parseable for pi-wendao contract validation",
 				summary: err instanceof Error ? err.message : String(err),
 				llmFixPrompt: "Repair the XML syntax, preserve the workflow intent, and run qianji_lint again.",
 			}]),
@@ -288,7 +288,7 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 		if (attachedToRef && hostTaskIds.has(attachedToRef) && hasErrorDefinition) {
 			issues.push({
 				code: "SKILLSC_TASK_ERROR_BOUNDARY_UNSUPPORTED",
-				title: "task-level error boundary is outside the skillsc compiler subset",
+				title: "task-level error boundary is outside the pi-wendao compiler subset",
 				summary: `boundaryEvent '${boundaryId}' attaches an errorEventDefinition directly to task '${attachedToRef}'.`,
 				llmFixPrompt: `Remove boundaryEvent '${boundaryId}'. Have task '${attachedToRef}' output a boolean status such as success or valid, route it through an exclusiveGateway, and put the fallback serviceTask on the default or negative branch. If BPMN error propagation is required, wrap the risky work in a qianji-supported subprocess shell instead of attaching the error boundary directly to a task.`,
 			});
@@ -299,7 +299,7 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 		if (task.element === "serviceTask" && readString(task.implementation) !== SERVICE_TASK_IMPLEMENTATION) {
 			issues.push({
 				code: "SKILLSC_SERVICE_IMPLEMENTATION",
-				title: "serviceTask must dispatch through skillsc runAgent",
+				title: "serviceTask must dispatch through pi-wendao runAgent",
 				summary: `serviceTask '${taskId}' does not use implementation="${SERVICE_TASK_IMPLEMENTATION}".`,
 				llmFixPrompt: `Set serviceTask '${taskId}' implementation to "${SERVICE_TASK_IMPLEMENTATION}" without changing its id or sequence-flow references.`,
 			});
@@ -373,7 +373,7 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 	}
 
 	if (issues.length === 0) {
-		return { success: true, output: "skillsc compile contract passed" };
+		return { success: true, output: "pi-wendao compile contract passed" };
 	}
 
 	return {
@@ -524,7 +524,7 @@ function buildLintRepairPrompt(
 
 Repair attempt: ${attempt}
 
-Return corrected artifact XML only. skillsc will run qianji lint after your
+Return corrected artifact XML only. pi-wendao compile will run qianji lint after your
 answer and feed any remaining lint output back into this repair loop.
 
 Preserve the raw skill intent and skillsc extension config, but make the
@@ -571,11 +571,11 @@ ${renderArtifactBundleForPrompt(previousArtifacts)}
 function buildAgentSystemPrompt(systemPrompt: string, targetDecision: CompileTargetDecision): string {
 	return `${systemPrompt}
 
-You are running inside the skillsc compile agent loop.
+You are running inside the pi-wendao compile agent loop.
 
 Protocol:
 - Draft complete qianji artifact XML for target ${targetDecision.target}.
-- skillsc will run qianji lint after every draft and feed structured lint
+- pi-wendao compile will run qianji lint after every draft and feed structured lint
   output back to you when repair is needed.
 - Final output must contain only the required code block(s), with no explanation.
 	`;
@@ -584,7 +584,7 @@ Protocol:
 function buildAgentCompilePrompt(userMessage: string, targetDecision: CompileTargetDecision): string {
 	return `${userMessage}
 
-Generate target ${targetDecision.target}. skillsc will run the qianji lint step
+Generate target ${targetDecision.target}. pi-wendao compile will run the qianji lint step
 after your response and will ask you to repair any structured lint failure.`;
 }
 

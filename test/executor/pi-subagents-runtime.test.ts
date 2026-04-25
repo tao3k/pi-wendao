@@ -62,7 +62,7 @@ describe("pi-subagents runtime tool adapter", () => {
 				inputs: ["item"],
 				outputs: ["result"],
 				subagent: {
-					type: "skillsc-worker",
+					type: "pi-wendao-worker",
 					runInBackground: true,
 				},
 			},
@@ -79,7 +79,7 @@ describe("pi-subagents runtime tool adapter", () => {
 			ctx,
 			params: {
 				description: "Run BPMN service task Task_Runtime",
-				subagent_type: "skillsc-worker",
+				subagent_type: "pi-wendao-worker",
 				run_in_background: true,
 			},
 		});

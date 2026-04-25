@@ -34,7 +34,7 @@ export interface ResolvedModel {
  * Resolve a model pattern into a Model object + API key.
  *
  * Loads pi extensions from:
- * - built-in skillsc extension packages from package.json
+ * - built-in pi-wendao extension packages from package.json
  * - ~/.pi/agent/extensions/ and .pi/extensions/ (auto-discovered)
  * - explicit -e paths (pi packages or single files)
  */

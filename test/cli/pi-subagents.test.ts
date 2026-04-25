@@ -119,7 +119,7 @@ describe("CLI pi-subagents host integration", () => {
 		delete process.env.PI_WENDAO_SUBAGENTS_RUN_STORE;
 
 		expect(defaultPiSubagentsRunStorePath("/repo")).toBe(
-			join("/tmp/prj-cache", "skillsc", "pi-subagents-run-store.json"),
+			join("/tmp/prj-cache", "pi-wendao", "pi-subagents-run-store.json"),
 		);
 	});
 });

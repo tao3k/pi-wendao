@@ -50,7 +50,7 @@ describe("createPiSubagentsHost", () => {
 				inputs: ["item"],
 				outputs: ["result"],
 				subagent: {
-					type: "skillsc-worker",
+					type: "pi-wendao-worker",
 					description: "Run Branch A",
 					runInBackground: true,
 					maxTurns: 8,
@@ -76,7 +76,7 @@ describe("createPiSubagentsHost", () => {
 		expect(spawns).toHaveLength(1);
 		expect(spawns[0]).toMatchObject({
 			description: "Run Branch A",
-			subagent_type: "skillsc-worker",
+			subagent_type: "pi-wendao-worker",
 			run_in_background: true,
 			max_turns: 8,
 			isolation: "worktree",

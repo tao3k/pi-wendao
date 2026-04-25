@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { executeBpmnWithPiSubagents } from "../../src/executor/pi-subagents-skillsc.js";
+import { executeBpmnWithPiSubagents } from "../../src/executor/pi-subagents-pi-wendao.js";
 import type {
 	PiLoadedExtensionsLike,
 	PiRegisteredToolDefinition,
@@ -10,7 +10,7 @@ import type {
 
 const tempDirs: string[] = [];
 
-describe("pi-subagents skillsc runtime bridge", () => {
+describe("pi-subagents pi-wendao runtime bridge", () => {
 	afterEach(() => {
 		for (const dir of tempDirs.splice(0)) {
 			rmSync(dir, { recursive: true, force: true });
@@ -18,7 +18,7 @@ describe("pi-subagents skillsc runtime bridge", () => {
 	});
 
 	it("executes qianji host work through loaded pi-subagents tools and reuses cached results", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "skillsc-pi-bridge-"));
+		const dir = mkdtempSync(join(tmpdir(), "pi-wendao-pi-bridge-"));
 		tempDirs.push(dir);
 		const workflowPath = join(dir, "workflow.bpmn");
 		const storePath = join(dir, "subagents.json");
@@ -60,7 +60,7 @@ describe("pi-subagents skillsc runtime bridge", () => {
 			loadResult,
 			ctx,
 			qianjiCommand: makeFakeExternalHostQianjiCommand(),
-			instanceId: "skillsc-pi-bridge-instance",
+			instanceId: "pi-wendao-pi-bridge-instance",
 			processId: "Process_1",
 			context: { items: ["alpha", "beta"] },
 			runStorePath: storePath,
@@ -82,7 +82,7 @@ describe("pi-subagents skillsc runtime bridge", () => {
 			loadResult: throwingLoadedExtensions(),
 			ctx,
 			qianjiCommand: makeFakeExternalHostQianjiCommand(),
-			instanceId: "skillsc-pi-bridge-instance",
+			instanceId: "pi-wendao-pi-bridge-instance",
 			processId: "Process_1",
 			context: { items: ["alpha", "beta"] },
 			runStorePath: storePath,
@@ -140,7 +140,7 @@ function tool(name: string, execute: ToolExecute): PiRegisteredToolDefinition {
 }
 
 function makeFakeExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-pi-bridge-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-pi-bridge-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji-external-host.cjs");
 	writeFakeExternalHostQianjiScript(scriptPath);
@@ -222,7 +222,7 @@ function tokenScopedServiceTaskWorkflow(): string {
           <skillsc:tools>bash, read</skillsc:tools>
           <skillsc:inputs>item</skillsc:inputs>
           <skillsc:outputs>result</skillsc:outputs>
-          <skillsc:agentType>skillsc-worker</skillsc:agentType>
+          <skillsc:agentType>pi-wendao-worker</skillsc:agentType>
           <skillsc:agentDescription>Review one parallel item</skillsc:agentDescription>
           <skillsc:runInBackground>true</skillsc:runInBackground>
           <skillsc:maxTurns>4</skillsc:maxTurns>

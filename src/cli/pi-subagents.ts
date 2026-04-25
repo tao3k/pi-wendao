@@ -19,7 +19,7 @@ import {
 } from "../executor/pi-subagents-runtime.js";
 
 const TOOL_EVENT_BRIDGE_KEY = "__PI_WENDAO_PI_SUBAGENTS_TOOL_EVENT_BRIDGE__";
-export const DEFAULT_PI_WENDAO_SUBAGENT_TYPE = "skillsc-worker";
+export const DEFAULT_PI_WENDAO_SUBAGENT_TYPE = "pi-wendao-worker";
 
 export interface CreateCliExtensionContextOptions {
 	loadResult: LoadExtensionsResult;
@@ -184,5 +184,5 @@ export function defaultPiSubagentsRunStorePath(cwd: string): string {
 	const explicitPath = process.env.PI_WENDAO_SUBAGENTS_RUN_STORE?.trim();
 	if (explicitPath) return explicitPath;
 	const cacheHome = process.env.PRJ_CACHE_HOME?.trim();
-	return join(cacheHome || join(cwd, ".cache"), "skillsc", "pi-subagents-run-store.json");
+	return join(cacheHome || join(cwd, ".cache"), "pi-wendao", "pi-subagents-run-store.json");
 }

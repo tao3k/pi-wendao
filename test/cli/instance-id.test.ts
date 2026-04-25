@@ -3,8 +3,8 @@ import { validateInstanceId } from "../../src/cli/instance-id.js";
 
 describe("validateInstanceId", () => {
 	it("accepts stable descriptive ids", () => {
-		expect(validateInstanceId("skillsc-real-llm-complex-20260424")).toBe(
-			"skillsc-real-llm-complex-20260424",
+		expect(validateInstanceId("pi-wendao-real-llm-complex-20260424")).toBe(
+			"pi-wendao-real-llm-complex-20260424",
 		);
 		expect(validateInstanceId("wf_test")).toBe("wf_test");
 	});

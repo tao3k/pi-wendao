@@ -5,8 +5,8 @@
 Compile agent skills into qianji-owned BPMN 2.0 workflows, or BPMN+DMN
 bundles, then run them through the `pi-wendao` TUI with qianji checkpoint,
 parallel scheduling, graph trace, and pi-subagents host execution. The package
-currently exposes the `skillsc` compiler and `pi-wendao` workflow runner CLI
-commands.
+exposes one `pi-wendao` CLI. Use `pi-wendao compile` to compile skills and
+`pi-wendao <workflow.bpmn>` to run workflows.
 
 ## Install
 
@@ -19,10 +19,10 @@ npm install -g pi-wendao
 ### Compile a skill
 
 ```bash
-skillsc my-skill.md --model anthropic/<model-id>
+pi-wendao compile my-skill.md --model anthropic/<model-id>
 ```
 
-This reads `my-skill.md`, asks the large model whether the raw skill should compile to BPMN or BPMN+DMN, then fetches qianji's target-specific XML templates before generation. It writes `my-skill.bpmn`; if the model chooses BPMN+DMN, `skillsc` also writes `my-skill.dmn`.
+This reads `my-skill.md`, asks the large model whether the raw skill should compile to BPMN or BPMN+DMN, then fetches qianji's target-specific XML templates before generation. It writes `my-skill.bpmn`; if the model chooses BPMN+DMN, `pi-wendao compile` also writes `my-skill.dmn`.
 
 Options:
 - `-o, --output <file>` — output path (default: same name as input with `.bpmn` extension)
@@ -95,7 +95,7 @@ Review the current project for common issues.
 EOF
 
 # 2. Compile with a large model
-skillsc review-skill.md --model anthropic/<model-id>
+pi-wendao compile review-skill.md --model anthropic/<model-id>
 
 # 3. Edit the BPMN if needed (open in bpmn.io)
 
@@ -107,7 +107,7 @@ pi-wendao review-skill.bpmn
 
 ### Compile phase
 
-Compile sends the raw `SKILL.md` to the large model for target selection: BPMN for procedural workflow, or BPMN+DMN when the skill contains stable deterministic decision-table logic. Pure DMN is normalized to BPMN+DMN because skillsc execution still needs a BPMN workflow. After target selection, skillsc calls `qianji template --bpmn` and, when needed, `qianji template --dmn`, then gives those lint-clean templates to the compile agent as the XML skeleton. Compile then runs as an agent loop with an internal `qianji_lint` tool. The model must lint the generated BPMN and, when present, the generated DMN, repair from qianji lint feedback, and return only XML after qianji lint passes.
+Compile sends the raw `SKILL.md` to the large model for target selection: BPMN for procedural workflow, or BPMN+DMN when the skill contains stable deterministic decision-table logic. Pure DMN is normalized to BPMN+DMN because pi-wendao execution still needs a BPMN workflow. After target selection, `pi-wendao compile` calls `qianji template --bpmn` and, when needed, `qianji template --dmn`, then gives those lint-clean templates to the compile agent as the XML skeleton. Compile then runs as an agent loop with an internal `qianji_lint` tool. The model must lint the generated BPMN and, when present, the generated DMN, repair from qianji lint feedback, and return only XML after qianji lint passes.
 
 Each step becomes a `serviceTask` with:
 
@@ -157,7 +157,7 @@ pending service-task token through a `SkillscAgentHost` backend and returns the
 token-scoped output fixture to qianji. `pi-wendao` loads the packaged
 pi-subagents and pi-intercom extensions by default, then uses pi-subagents
 `Agent` and `get_subagent_result` tools as the host backend when available.
-By default, these host calls use the packaged `skillsc-worker` pi-subagent type,
+By default, these host calls use the packaged `pi-wendao-worker` pi-subagent type,
 which allows the built-in `intercom` extension tool alongside the usual
 read/write/search tools. Otherwise it falls back to the default
 `pi-ai` service-task host.
@@ -185,7 +185,7 @@ token-scoped completion fixture; qianji then evaluates BPMN conditions, retries,
 parallel joins, checkpoints, and resume state.
 
 When no `--host-fixture` is provided and no real host is active, `pi-wendao`
-derives a temporary qianji host fixture for `skillsc` host tasks from their
+derives a temporary qianji host fixture for pi-wendao host tasks from their
 declared output names. This keeps generated workflows runnable through the
 qianji CLI while preserving explicit `--host-fixture` as the override for
 deterministic host data.
@@ -203,7 +203,7 @@ The compiled output is valid BPMN 2.0 XML, loadable in [bpmn.io](https://bpmn.io
       <skillsc:tools>bash</skillsc:tools>
       <skillsc:inputs></skillsc:inputs>
       <skillsc:outputs>testsPassed</skillsc:outputs>
-      <skillsc:agentType>skillsc-worker</skillsc:agentType>
+      <skillsc:agentType>pi-wendao-worker</skillsc:agentType>
       <skillsc:runInBackground>true</skillsc:runInBackground>
       <skillsc:maxTurns>8</skillsc:maxTurns>
     </skillsc:config>
@@ -255,19 +255,19 @@ callers can use `createPiIntercomClientFromLoadedExtensions(...)` or
 `list/send/ask/reply/pending/status` actions and optionally mirror message
 state into `SkillscIntercomCorrelationState`. `pi-wendao` packages pi-intercom as
 a built-in extension and also exposes project `.pi/extensions` and
-`.pi/agents/skillsc-worker.md` wrappers so pi-subagents child sessions can load
+`.pi/agents/pi-wendao-worker.md` wrappers so pi-subagents child sessions can load
 the graph-local `intercom` tool surface. Under the default pi-ai host,
 service tasks can declare `intercom` in `skillsc:tools`; under pi-subagents, the
-child agent sees `intercom` through the `skillsc-worker` allowed tool set and
+child agent sees `intercom` through the `pi-wendao-worker` allowed tool set and
 the native chat stream shows the call when the child agent uses it.
 Graph-local `ask` calls target the inline planner inbox; `send` calls are
 fire-and-forget chat messages.
 CLI execution resolves workflow, fixture, DMN, and explicit extension paths
-before switching pi extension discovery to the packaged skillsc root, so qianji
+before switching pi extension discovery to the packaged pi-wendao root, so qianji
 still runs from the original launch directory while pi-subagents consistently
 finds the packaged `.pi` resources.
 
-Plain `npx pi-wendao` loads built-in skillsc pi packages, configured pi packages,
+Plain `npx pi-wendao` loads built-in pi-wendao pi packages, configured pi packages,
 and explicit `--extension` paths during model resolution. It automatically
 injects the pi-subagents host when those tools are available. A separate pi
 runtime wrapper can also call
@@ -320,12 +320,12 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 ```
 
-For Claude-compatible gateways, `skillsc` also honors:
+For Claude-compatible gateways, `pi-wendao compile` also honors:
 
 ```bash
 export ANTHROPIC_BASE_URL=https://your-anthropic-compatible-gateway
 export ANTHROPIC_AUTH_TOKEN=...
-skillsc my-skill.md --model anthropic/your-gateway-model
+pi-wendao compile my-skill.md --model anthropic/your-gateway-model
 ```
 
 Or pass directly with `--api-key`.

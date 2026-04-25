@@ -1,6 +1,6 @@
 ---
-display_name: Skillsc Worker
-description: Run one qianji-scheduled skillsc BPMN service task
+display_name: Pi Wendao Worker
+description: Run one qianji-scheduled pi-wendao BPMN service task
 tools: read, bash, edit, write, grep, find, ls, intercom
 extensions: true
 skills: true

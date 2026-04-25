@@ -16,9 +16,9 @@ describe("pi-wendao chat TUI commands", () => {
 	});
 
 	it("parses workflow execution commands", () => {
-		expect(parsePiWendaoChatCommand("/run /tmp/skillsc-real-llm-complex.bpmn")).toEqual({
+		expect(parsePiWendaoChatCommand("/run /tmp/pi-wendao-real-llm-complex.bpmn")).toEqual({
 			kind: "run",
-			workflowPath: "/tmp/skillsc-real-llm-complex.bpmn",
+			workflowPath: "/tmp/pi-wendao-real-llm-complex.bpmn",
 		});
 		expect(parsePiWendaoChatCommand('/open "fixtures/human approval.bpmn"')).toEqual({
 			kind: "run",
@@ -28,9 +28,9 @@ describe("pi-wendao chat TUI commands", () => {
 
 	it("parses qianji show commands", () => {
 		expect(parsePiWendaoChatCommand("/show")).toEqual({ kind: "show" });
-		expect(parsePiWendaoChatCommand("/show skillsc-instance test/fixtures/simple.bpmn")).toEqual({
+		expect(parsePiWendaoChatCommand("/show pi-wendao-instance test/fixtures/simple.bpmn")).toEqual({
 			kind: "show",
-			instanceId: "skillsc-instance",
+			instanceId: "pi-wendao-instance",
 			workflowPath: "test/fixtures/simple.bpmn",
 		});
 	});
@@ -58,7 +58,7 @@ describe("pi-wendao chat TUI commands", () => {
 		const messages: Message[] = [];
 		const context = new WorkflowChatContextSession(messages);
 
-		context.start("/tmp/skillsc-real-llm-complex.bpmn");
+		context.start("/tmp/pi-wendao-real-llm-complex.bpmn");
 		context.record("tool", "parallel jobs Task_Review: 2 jobs tokens=11,12");
 		context.record("assistant", "Branch A and Branch B finished.");
 		context.finish(true);
@@ -66,7 +66,7 @@ describe("pi-wendao chat TUI commands", () => {
 		expect(messages).toHaveLength(1);
 		expect(messages[0]).toMatchObject({ role: "user" });
 		expect(messages[0]?.content).toContain("[pi-wendao workflow context]");
-		expect(messages[0]?.content).toContain("workflowPath: /tmp/skillsc-real-llm-complex.bpmn");
+		expect(messages[0]?.content).toContain("workflowPath: /tmp/pi-wendao-real-llm-complex.bpmn");
 		expect(messages[0]?.content).toContain("status: completed");
 		expect(messages[0]?.content).toContain("tool> parallel jobs Task_Review: 2 jobs tokens=11,12");
 		expect(messages[0]?.content).toContain("assistant> Branch A and Branch B finished.");

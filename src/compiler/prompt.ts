@@ -75,14 +75,14 @@ Allowed targets:
 There is no Markdown semantic parser in this decision. Read the raw SKILL.md
 text and decide from the actual process intent.
 
-Pure DMN is not an executable workflow for skillsc. If the skill is mostly a decision table, choose "bpmn-dmn" so BPMN can invoke it with a businessRuleTask.
+Pure DMN is not an executable workflow for pi-wendao. If the skill is mostly a decision table, choose "bpmn-dmn" so BPMN can invoke it with a businessRuleTask.
 
 Return this exact shape:
 {"target":"bpmn","reason":"...","dmnDecisions":[]}
 or:
 {"target":"bpmn-dmn","reason":"...","dmnDecisions":["decision-id"]}`;
 
-const COMPILE_SYSTEM_PROMPT = `You are a qianji artifact compiler. Your job is to render natural SKILL.md instructions into executable artifact(s) that can be run step-by-step by qianji and skillsc.
+const COMPILE_SYSTEM_PROMPT = `You are a qianji artifact compiler. Your job is to render natural SKILL.md instructions into executable artifact(s) that can be run step-by-step by qianji and pi-wendao.
 
 ## Output Format
 
@@ -92,7 +92,7 @@ If target is "bpmn-dmn", output exactly two code blocks and no explanation:
 1. A code block labeled bpmn with executable BPMN 2.0 XML.
 2. A code block labeled dmn with one valid DMN decision table XML.
 
-Pure DMN output is invalid for skillsc because execution still needs a BPMN workflow.
+Pure DMN output is invalid for pi-wendao because execution still needs a BPMN workflow.
 
 ## BPMN Subset
 
@@ -111,7 +111,7 @@ Use only these BPMN elements:
 
 Do NOT generate task-level \`boundaryEvent\` or \`errorEventDefinition\` nodes.
 The qianji runtime only accepts bounded error boundaries on supported
-subprocess-like owners, which are outside this skillsc compiler subset.
+subprocess-like owners, which are outside this pi-wendao compiler subset.
 
 ## Architecture Ownership
 
