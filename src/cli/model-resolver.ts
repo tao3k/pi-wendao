@@ -166,7 +166,7 @@ export function resolveBuiltinPiExtensionPaths(): string[] {
 	const paths: string[] = [];
 	const subagentsRoot = resolvePackageRoot("@tintinweb/pi-subagents");
 	if (subagentsRoot) paths.push(subagentsRoot);
-	paths.push(...resolveSkillscPiExtensionPaths());
+	paths.push(...resolvePiWendaoPiExtensionPaths());
 	for (const packageName of BUILTIN_PI_EXTENSION_PACKAGES.filter((name) => name !== "@tintinweb/pi-subagents")) {
 		const packageRoot = resolvePackageRoot(packageName);
 		if (packageRoot) paths.push(packageRoot);
@@ -174,11 +174,11 @@ export function resolveBuiltinPiExtensionPaths(): string[] {
 	return paths;
 }
 
-export function resolveSkillscPackageRoot(): string {
+export function resolvePiWendaoPackageRoot(): string {
 	return resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 }
 
-export function resolveSkillscPiExtensionPaths(packageRoot = resolveSkillscPackageRoot()): string[] {
+export function resolvePiWendaoPiExtensionPaths(packageRoot = resolvePiWendaoPackageRoot()): string[] {
 	return PI_WENDAO_PI_EXTENSION_FILES
 		.map((file) => join(packageRoot, ".pi", "extensions", file))
 		.filter((path) => existsSync(path));

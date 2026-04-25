@@ -21,7 +21,7 @@ describe("createPiSubagentsHost", () => {
 		}
 	});
 
-	it("maps skillsc service task metadata to a pi-subagents request", async () => {
+	it("maps pi-wendao service task metadata to a pi-subagents request", async () => {
 		const spawns: PiSubagentsSpawnRequest[] = [];
 		const host = createPiSubagentsHost({
 			client: {
@@ -287,7 +287,7 @@ describe("createPiSubagentsHost", () => {
 	});
 
 	it("persists completed subagent output in a JSON file store", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "skillsc-subagent-store-"));
+		const dir = mkdtempSync(join(tmpdir(), "pi-wendao-subagent-store-"));
 		tempDirs.push(dir);
 		const storePath = join(dir, "subagents.json");
 		const request = {

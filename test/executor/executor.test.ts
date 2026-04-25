@@ -4,7 +4,7 @@ import { delimiter, join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fauxAssistantMessage, registerFauxProvider, type Context } from "@mariozechner/pi-ai";
 import { execute, mapHumanTaskReplyToOutputs, type QianjiHostWorkEvent } from "../../src/executor/executor.js";
-import type { SkillscAgentHost } from "../../src/executor/agent-host.js";
+import type { PiWendaoAgentHost } from "../../src/executor/agent-host.js";
 import { GraphView } from "../../src/output/graph-view.js";
 
 const fixturesDir = join(import.meta.dirname, "../fixtures");
@@ -234,7 +234,7 @@ describe("executor", () => {
 		const executions: Array<{ activityId: string; tokenId?: number; item: unknown; subagentType?: string }> = [];
 		const hostWorkEvents: QianjiHostWorkEvent[] = [];
 		const graphView = new GraphView();
-		const agentHost: SkillscAgentHost = {
+		const agentHost: PiWendaoAgentHost = {
 			async run(request) {
 				const item = request.variables.item as string;
 				starts[item] = performance.now();
@@ -361,7 +361,7 @@ describe("executor", () => {
 
 	it("feeds host retry outputs back to qianji checkpoints without local scheduling", async () => {
 		const executions: Array<{ activityId: string; retryCount: unknown }> = [];
-		const agentHost: SkillscAgentHost = {
+		const agentHost: PiWendaoAgentHost = {
 			async run(request) {
 				executions.push({
 					activityId: request.activityId,
@@ -405,7 +405,7 @@ describe("executor", () => {
 	});
 
 	it("does not synthesize task outputs from service-task prompt text", async () => {
-		const agentHost: SkillscAgentHost = {
+		const agentHost: PiWendaoAgentHost = {
 			async run() {
 				return { status: "host-owned" };
 			},
@@ -439,7 +439,7 @@ describe("executor", () => {
 });
 
 function makeFakeQianjiCommand(options: { exitCode?: number; stderr?: string } = {}): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji.cjs");
 	writeFakeQianjiScript(scriptPath, options);
@@ -447,7 +447,7 @@ function makeFakeQianjiCommand(options: { exitCode?: number; stderr?: string } =
 }
 
 function makeFakeQianjiGraphSnapshotCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-snapshot-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-snapshot-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji-snapshot.cjs");
 	writeFakeQianjiGraphSnapshotScript(scriptPath);
@@ -455,7 +455,7 @@ function makeFakeQianjiGraphSnapshotCommand(): string {
 }
 
 function makeFakeQianjiPathDir(options: { exitCode?: number; stderr?: string } = {}): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-path-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-path-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "qianji");
 	writeFakeQianjiScript(scriptPath, options, true);
@@ -464,7 +464,7 @@ function makeFakeQianjiPathDir(options: { exitCode?: number; stderr?: string } =
 }
 
 function makeFakeExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-external-host-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-external-host-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji-external-host.cjs");
 	writeFakeExternalHostQianjiScript(scriptPath);
@@ -472,7 +472,7 @@ function makeFakeExternalHostQianjiCommand(): string {
 }
 
 function makeFakeUserTaskExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-user-host-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-user-host-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji-user-host.cjs");
 	writeFakeUserTaskExternalHostQianjiScript(scriptPath);
@@ -480,7 +480,7 @@ function makeFakeUserTaskExternalHostQianjiCommand(): string {
 }
 
 function makeFakeSequentialExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-sequential-host-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-sequential-host-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji-sequential-host.cjs");
 	writeFakeSequentialExternalHostQianjiScript(scriptPath);
@@ -488,7 +488,7 @@ function makeFakeSequentialExternalHostQianjiCommand(): string {
 }
 
 function makeFakeRetryLoopExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-retry-host-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-retry-host-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji-retry-host.cjs");
 	writeFakeRetryLoopExternalHostQianjiScript(scriptPath);
@@ -496,7 +496,7 @@ function makeFakeRetryLoopExternalHostQianjiCommand(): string {
 }
 
 function makeFakeSingleHostBoundaryQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "skillsc-fake-qianji-single-host-"));
+	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-single-host-"));
 	tempDirs.push(dir);
 	const scriptPath = join(dir, "fake-qianji-single-host.cjs");
 	writeFakeSingleHostBoundaryQianjiScript(scriptPath);

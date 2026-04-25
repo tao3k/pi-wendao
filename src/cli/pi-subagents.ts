@@ -7,7 +7,7 @@ import {
 	type LoadExtensionsResult,
 	type ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
-import type { SkillscAgentHost } from "../executor/agent-host.js";
+import type { PiWendaoAgentHost } from "../executor/agent-host.js";
 import type {
 	PiSubagentsHostEvent,
 	PiSubagentsHostToolEvent,
@@ -41,7 +41,7 @@ export interface CreateCliPiSubagentsHostOptions extends CreateCliExtensionConte
 
 export function createCliPiSubagentsHost(
 	options: CreateCliPiSubagentsHostOptions,
-): SkillscAgentHost | undefined {
+): PiWendaoAgentHost | undefined {
 	installGlobalToolEventBridge(options.onToolEvent);
 	const ctx = createCliExtensionContext(options);
 	return tryCreatePiSubagentsHostFromLoadedExtensions({
@@ -108,7 +108,7 @@ export function createCliExtensionContext(
 	};
 
 	runner = new ExtensionRunner(
-		withSkillscToolEventBridge(options.loadResult.extensions, options.onToolEvent),
+		withPiWendaoToolEventBridge(options.loadResult.extensions, options.onToolEvent),
 		options.loadResult.runtime,
 		options.cwd,
 		SessionManager.inMemory(options.cwd),
@@ -118,7 +118,7 @@ export function createCliExtensionContext(
 	return runner.createContext();
 }
 
-function withSkillscToolEventBridge(
+function withPiWendaoToolEventBridge(
 	extensions: LoadExtensionsResult["extensions"],
 	onToolEvent: ((event: PiSubagentsHostToolEvent) => void) | undefined,
 ): LoadExtensionsResult["extensions"] {

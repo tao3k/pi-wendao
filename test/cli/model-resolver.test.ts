@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	resolveBuiltinPiExtensionPaths,
 	resolveModel,
-	resolveSkillscPackageRoot,
-	resolveSkillscPiExtensionPaths,
+	resolvePiWendaoPackageRoot,
+	resolvePiWendaoPiExtensionPaths,
 } from "../../src/cli/model-resolver.js";
 
 describe("resolveModel", () => {
@@ -58,8 +58,8 @@ describe("resolveModel", () => {
 		const graphIntercomIndex = paths.findIndex((path) => path.endsWith("pi-wendao-pi-intercom.js"));
 		const packagedIntercomIndex = paths.findIndex((path) => path.includes("node_modules/pi-intercom"));
 
-		expect(resolveSkillscPackageRoot()).toContain("skillsc");
-		expect(resolveSkillscPiExtensionPaths()).toEqual(expect.arrayContaining([
+		expect(resolvePiWendaoPackageRoot()).toContain(".data");
+		expect(resolvePiWendaoPiExtensionPaths()).toEqual(expect.arrayContaining([
 			expect.stringContaining("pi-wendao-pi-intercom.js"),
 			expect.stringContaining("pi-wendao-tool-event-bridge.js"),
 		]));

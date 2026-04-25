@@ -1,12 +1,12 @@
 import { createInterface } from "node:readline/promises";
 import { type Component, matchesKey, ProcessTerminal, truncateToWidth, TUI } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
-import type { SkillscAgentEvent, SkillscAgentMessage } from "../executor/agent-runtime-types.js";
+import type { PiWendaoAgentEvent, PiWendaoAgentMessage } from "../executor/agent-runtime-types.js";
 import { GraphView, LogView } from "./graph-view.js";
 
 export interface Renderer {
 	graphView: GraphView;
-	onAgentEvent: (event: SkillscAgentEvent) => void;
+	onAgentEvent: (event: PiWendaoAgentEvent) => void;
 	onNodeStart: (activityId: string, activityName: string) => void;
 	onNodeEnd: (activityId: string, activityName: string) => void;
 	onFlowTake: (flowId: string) => void;
@@ -118,7 +118,7 @@ export function createViewRenderer(options: {
 		},
 		requestPlannerReply: options.requestPlannerReply,
 		waitForKey: options.waitForKey ?? (async () => {}),
-		onAgentEvent(event: SkillscAgentEvent) {
+		onAgentEvent(event: PiWendaoAgentEvent) {
 			const lines = agentLog.handle(event);
 			if (lines.length === 0) return;
 			for (const line of lines) {
@@ -229,7 +229,7 @@ function createTuiRenderer(): Renderer {
 			});
 		},
 
-		onAgentEvent(event: SkillscAgentEvent) {
+		onAgentEvent(event: PiWendaoAgentEvent) {
 			const lines = agentLog.handle(event);
 			if (lines.length === 0) return;
 			for (const line of lines) {
@@ -384,7 +384,7 @@ function createPlainRenderer(): Renderer {
 			await waitForTerminalKey();
 		},
 
-		onAgentEvent(event: SkillscAgentEvent) {
+		onAgentEvent(event: PiWendaoAgentEvent) {
 			for (const line of agentLog.handle(event)) {
 				console.log(line);
 			}
@@ -559,7 +559,7 @@ class AgentEventLogBuffer {
 	private assistantText = "";
 	private thinkingText = "";
 
-	handle(event: SkillscAgentEvent): string[] {
+	handle(event: PiWendaoAgentEvent): string[] {
 		switch (event.type) {
 			case "message_start": {
 				if (event.message.role === "assistant") {
@@ -1028,7 +1028,7 @@ export function formatArgsForLog(args: unknown): string {
 	return parts.join(", ");
 }
 
-function extractMessageText(message: SkillscAgentMessage): string {
+function extractMessageText(message: PiWendaoAgentMessage): string {
 	if (!isRecord(message)) return "";
 	const content = message.content;
 	if (!Array.isArray(content)) return "";

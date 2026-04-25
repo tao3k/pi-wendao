@@ -7,14 +7,14 @@ import { XMLParser } from "fast-xml-parser";
 import type { Model } from "@mariozechner/pi-ai";
 import type { GraphNode, GraphView, NodeStatus } from "../output/graph-view.js";
 import type {
-	SkillscAgentExecutionMetadata,
-	SkillscAgentHost,
-	SkillscConfig,
-	SkillscHostWorkKind,
-	SkillscQianjiCheckpointFeedback,
-	SkillscSubagentConfig,
+	PiWendaoAgentExecutionMetadata,
+	PiWendaoAgentHost,
+	PiWendaoConfig,
+	PiWendaoHostWorkKind,
+	PiWendaoQianjiCheckpointFeedback,
+	PiWendaoSubagentConfig,
 } from "./agent-host.js";
-import type { SkillscAgentEvent, SkillscAgentTool, SkillscThinkingLevel } from "./agent-runtime-types.js";
+import type { PiWendaoAgentEvent, PiWendaoAgentTool, PiWendaoThinkingLevel } from "./agent-runtime-types.js";
 import { createPiAiHost } from "./node-runner.js";
 
 export interface ExecuteOptions {
@@ -41,15 +41,15 @@ export interface ExecuteOptions {
 	/** Deprecated compatibility field; qianji CLI execution does not read API keys directly. */
 	apiKey?: string;
 	/** LLM thinking level for real host-side skill execution. */
-	thinkingLevel?: SkillscThinkingLevel;
+	thinkingLevel?: PiWendaoThinkingLevel;
 	/** Optional service-task agent host override. Defaults to pi-ai when model is provided. */
-	agentHost?: SkillscAgentHost;
+	agentHost?: PiWendaoAgentHost;
 	/** Handles BPMN userTask host work as graph-local human input. */
 	humanTaskHandler?: (request: HumanTaskPromptRequest) => Promise<string>;
 	/** Display name for the active real-host backend in graph node runtime details. */
 	hostBackend?: string;
 	/** Extra tools exposed to the default pi-ai service-task host. */
-	agentTools?: SkillscAgentTool<any>[];
+	agentTools?: PiWendaoAgentTool<any>[];
 	/** Working directory for the qianji process */
 	cwd?: string;
 	/** Initial variables as key=value pairs */
@@ -57,7 +57,7 @@ export interface ExecuteOptions {
 	/** Called with qianji stdout/stderr once the CLI exits. */
 	onCliOutput?: (output: string) => void;
 	/** Retained for API compatibility; qianji CLI execution does not emit agent events. */
-	onAgentEvent?: (event: SkillscAgentEvent) => void;
+	onAgentEvent?: (event: PiWendaoAgentEvent) => void;
 	/** Called from qianji execution trace when a BPMN node starts executing. */
 	onActivityStart?: (activityId: string, activityName: string) => void;
 	/** Called from qianji execution trace when a BPMN node reaches a terminal status. */
@@ -92,9 +92,9 @@ export interface ExecuteResult {
 
 export interface HumanTaskPromptRequest {
 	activityId: string;
-	config: SkillscConfig;
+	config: PiWendaoConfig;
 	variables: Record<string, unknown>;
-	execution?: SkillscAgentExecutionMetadata;
+	execution?: PiWendaoAgentExecutionMetadata;
 }
 
 interface QianjiCliResult {
@@ -112,7 +112,7 @@ export interface QianjiHostWorkEvent {
 	hostWorkCount: number;
 	batchHostWorkCount: number;
 	tokenIds: number[];
-	hostKinds: SkillscHostWorkKind[];
+	hostKinds: PiWendaoHostWorkKind[];
 	parallel: boolean;
 	repeatKinds: string[];
 	repeatSummaries: string[];
@@ -121,7 +121,7 @@ export interface QianjiHostWorkEvent {
 type QianjiHostWork = QianjiBaseHostWork;
 
 interface QianjiBaseHostWork {
-	kind: SkillscHostWorkKind;
+	kind: PiWendaoHostWorkKind;
 	node_id: string;
 	node_index?: number;
 	token_id: number;
@@ -422,7 +422,7 @@ async function applyCheckpointGraphSnapshot(options: {
 }
 
 async function writeTempBpmnSource(source: string): Promise<{ dir: string; path: string }> {
-	const dir = await mkdtemp(join(tmpdir(), "skillsc-qianji-"));
+	const dir = await mkdtemp(join(tmpdir(), "pi-wendao-qianji-"));
 	const path = join(dir, "workflow.bpmn");
 	await writeFile(path, source, "utf-8");
 	return { dir, path };
@@ -435,7 +435,7 @@ async function writeDefaultHostFixture(
 	const fixture = buildDefaultHostFixture(source, context);
 	if (!fixture) return undefined;
 
-	const dir = await mkdtemp(join(tmpdir(), "skillsc-qianji-host-"));
+	const dir = await mkdtemp(join(tmpdir(), "pi-wendao-qianji-host-"));
 	const path = join(dir, "host-fixture.json");
 	await writeFile(path, `${JSON.stringify(fixture, null, 2)}\n`, "utf-8");
 	return { dir, path };
@@ -455,7 +455,7 @@ async function runQianjiExternalHostLoop(options: {
 	onTraceEvent: (event: QianjiTraceEvent) => void | Promise<void>;
 	tempDirs: string[];
 }): Promise<QianjiCliResult> {
-	const skillscConfigs = buildSkillscConfigMap(options.source, options.processId);
+	const piWendaoConfigs = buildPiWendaoConfigMap(options.source, options.processId);
 	const agentHost = options.options.agentHost ?? (options.options.model
 		? createPiAiHost({
 			model: options.options.model,
@@ -500,7 +500,7 @@ async function runQianjiExternalHostLoop(options: {
 			emitQianjiHostWorkEvents(latest.hostWork, options.options);
 			applyQianjiHostWorkGraph({
 				hostWork: latest.hostWork,
-				skillscConfigs,
+				piWendaoConfigs,
 				checkpoint,
 				hostBackend: resolveHostBackendLabel(options.options),
 				options: options.options,
@@ -508,7 +508,7 @@ async function runQianjiExternalHostLoop(options: {
 		const hostData = await runPendingHostWork({
 			agentHost,
 			humanTaskHandler: options.options.humanTaskHandler,
-			skillscConfigs,
+			piWendaoConfigs,
 			pendingHostWork: latest.hostWork,
 			pendingActivityIds: Array.from(pendingActivities),
 			variables: options.context,
@@ -552,22 +552,22 @@ interface HostCompletionFixture {
 }
 
 async function runPendingHostWork(options: {
-	agentHost: SkillscAgentHost;
+	agentHost: PiWendaoAgentHost;
 	humanTaskHandler?: (request: HumanTaskPromptRequest) => Promise<string>;
-	skillscConfigs: Map<string, SkillscConfig>;
+	piWendaoConfigs: Map<string, PiWendaoConfig>;
 	pendingHostWork: QianjiHostWork[];
 	pendingActivityIds: string[];
 	variables: Record<string, unknown>;
 	processId: string;
 	instanceId: string;
-	checkpoint?: SkillscQianjiCheckpointFeedback;
+	checkpoint?: PiWendaoQianjiCheckpointFeedback;
 }): Promise<HostCompletionFixture | undefined> {
 	const tokenResults = await Promise.all(options.pendingHostWork.map(async (work) => {
 		const tokenVariables = { ...options.variables, ...(work.variables ?? {}) };
-		const data = await runSkillscActivity({
+		const data = await runPiWendaoActivity({
 			agentHost: options.agentHost,
 			humanTaskHandler: options.humanTaskHandler,
-			skillscConfigs: options.skillscConfigs,
+			piWendaoConfigs: options.piWendaoConfigs,
 			activityId: work.node_id,
 			hostKind: work.kind,
 			variables: tokenVariables,
@@ -593,10 +593,10 @@ async function runPendingHostWork(options: {
 
 	const activityResults = await Promise.all(options.pendingActivityIds.map(async (activityId) => {
 		const activityVariables = { ...options.variables };
-		const data = await runSkillscActivity({
+		const data = await runPiWendaoActivity({
 			agentHost: options.agentHost,
 			humanTaskHandler: options.humanTaskHandler,
-			skillscConfigs: options.skillscConfigs,
+			piWendaoConfigs: options.piWendaoConfigs,
 			activityId,
 			variables: activityVariables,
 			execution: {
@@ -621,7 +621,7 @@ async function runPendingHostWork(options: {
 async function writeHostCompletionFixture(
 	fixture: HostCompletionFixture,
 ): Promise<{ dir: string; path: string }> {
-	const dir = await mkdtemp(join(tmpdir(), "skillsc-qianji-host-"));
+	const dir = await mkdtemp(join(tmpdir(), "pi-wendao-qianji-host-"));
 	const path = join(dir, "host-fixture.json");
 	await writeFile(path, `${JSON.stringify(fixture, null, 2)}\n`, "utf-8");
 	return { dir, path };
@@ -630,7 +630,7 @@ async function writeHostCompletionFixture(
 function addHostCompletionResult(
 	fixture: HostCompletionFixture,
 	result: {
-		kind: SkillscHostWorkKind;
+		kind: PiWendaoHostWorkKind;
 		nodeId: string;
 		tokenId: string;
 		data: Record<string, unknown>;
@@ -665,18 +665,18 @@ function hasHostCompletionResults(fixture: HostCompletionFixture): boolean {
 	return Object.values(fixture).some((bucket) => bucket && Object.keys(bucket).length > 0);
 }
 
-async function runSkillscActivity(
+async function runPiWendaoActivity(
 	options: {
-		agentHost: SkillscAgentHost;
+		agentHost: PiWendaoAgentHost;
 		humanTaskHandler?: (request: HumanTaskPromptRequest) => Promise<string>;
-		skillscConfigs: Map<string, SkillscConfig>;
+		piWendaoConfigs: Map<string, PiWendaoConfig>;
 		activityId: string;
-		hostKind?: SkillscHostWorkKind;
+		hostKind?: PiWendaoHostWorkKind;
 		variables: Record<string, unknown>;
-		execution: SkillscAgentExecutionMetadata;
+		execution: PiWendaoAgentExecutionMetadata;
 	},
 ): Promise<Record<string, unknown>> {
-	const config = options.skillscConfigs.get(options.activityId) ?? {
+	const config = options.piWendaoConfigs.get(options.activityId) ?? {
 		prompt: "",
 		tools: [],
 		inputs: [],
@@ -774,8 +774,8 @@ function updatePendingActivities(pendingActivities: Set<string>, event: QianjiTr
 
 function applyQianjiHostWorkGraph(options: {
 	hostWork: QianjiHostWork[];
-	skillscConfigs: Map<string, SkillscConfig>;
-	checkpoint?: SkillscQianjiCheckpointFeedback;
+	piWendaoConfigs: Map<string, PiWendaoConfig>;
+	checkpoint?: PiWendaoQianjiCheckpointFeedback;
 	hostBackend?: string;
 	options: ExecuteOptions;
 }): void {
@@ -791,7 +791,7 @@ function applyQianjiHostWorkGraph(options: {
 			options.options.graphView.setNodeDetails(nodeId, buildGraphRuntimeDetails({
 				hostWorkCount: work.length,
 				hostKinds: [...new Set(work.map((item) => item.kind))],
-				config: options.skillscConfigs.get(nodeId),
+					config: options.piWendaoConfigs.get(nodeId),
 				checkpoint: options.checkpoint,
 				hostBackend: options.hostBackend,
 				hostWork: work,
@@ -803,9 +803,9 @@ function applyQianjiHostWorkGraph(options: {
 
 function buildGraphRuntimeDetails(options: {
 	hostWorkCount: number;
-	hostKinds?: SkillscHostWorkKind[];
-	config?: SkillscConfig;
-	checkpoint?: SkillscQianjiCheckpointFeedback;
+	hostKinds?: PiWendaoHostWorkKind[];
+	config?: PiWendaoConfig;
+	checkpoint?: PiWendaoQianjiCheckpointFeedback;
 	hostBackend?: string;
 	hostWork?: QianjiHostWork[];
 	batchHostWorkCount?: number;
@@ -892,7 +892,7 @@ function summarizeRepeat(repeat: unknown): string | undefined {
 	return undefined;
 }
 
-function uniqueHostKinds(values: SkillscHostWorkKind[]): SkillscHostWorkKind[] {
+function uniqueHostKinds(values: PiWendaoHostWorkKind[]): PiWendaoHostWorkKind[] {
 	return [...new Set(values)];
 }
 
@@ -912,7 +912,7 @@ function resolveHostBackendLabel(options: ExecuteOptions): string | undefined {
 	return undefined;
 }
 
-function createMissingAgentHost(): SkillscAgentHost {
+function createMissingAgentHost(): PiWendaoAgentHost {
 	return {
 		async run(request) {
 			throw new Error(`BPMN serviceTask '${request.activityId}' requires a model or agent host`);
@@ -933,7 +933,7 @@ function buildDefaultHostFixture(
 	context: Record<string, unknown>,
 ): HostCompletionFixture | undefined {
 	const document = parser.parse(source) as { definitions?: { process?: unknown } };
-	const tasks = collectSkillscHostTasks(document.definitions?.process)
+	const tasks = collectPiWendaoHostTasks(document.definitions?.process)
 		.filter((task) => task.hostKind === "service" || task.hostKind === "user" || task.hostKind === "manual");
 	if (tasks.length === 0) return undefined;
 
@@ -942,7 +942,7 @@ function buildDefaultHostFixture(
 		const taskId = typeof task.id === "string" ? task.id.trim() : "";
 		if (!taskId) continue;
 		const data: Record<string, unknown> = {};
-		for (const outputName of extractSkillscOutputs(task)) {
+		for (const outputName of extractPiWendaoOutputs(task)) {
 			data[outputName] = Object.prototype.hasOwnProperty.call(context, outputName)
 				? context[outputName]
 				: defaultFixtureValue(outputName);
@@ -953,13 +953,13 @@ function buildDefaultHostFixture(
 	return hasHostCompletionResults(fixture) ? fixture : undefined;
 }
 
-function buildSkillscConfigMap(source: string, processId: string): Map<string, SkillscConfig> {
+function buildPiWendaoConfigMap(source: string, processId: string): Map<string, PiWendaoConfig> {
 	const document = parser.parse(source) as { definitions?: { process?: unknown } };
 	const process = findProcess(document.definitions?.process, processId);
-	const configs = new Map<string, SkillscConfig>();
+	const configs = new Map<string, PiWendaoConfig>();
 	if (!process) return configs;
 
-	for (const task of collectSkillscHostTasks(process)) {
+	for (const task of collectPiWendaoHostTasks(process)) {
 		const id = readString(task.id);
 		if (!id) continue;
 		const extensionElements = task.extensionElements;
@@ -972,7 +972,7 @@ function buildSkillscConfigMap(source: string, processId: string): Map<string, S
 			tools: csv(readText(config.tools)),
 			inputs: csv(readText(config.inputs)),
 			outputs: csv(readText(config.outputs)),
-			subagent: readSkillscSubagentConfig(config),
+			subagent: readPiWendaoSubagentConfig(config),
 		});
 	}
 
@@ -981,7 +981,7 @@ function buildSkillscConfigMap(source: string, processId: string): Map<string, S
 
 function addStaticHostFixtureEntry(
 	fixture: HostCompletionFixture,
-	hostKind: SkillscHostWorkKind,
+	hostKind: PiWendaoHostWorkKind,
 	taskId: string,
 	data: Record<string, unknown>,
 ): void {
@@ -1002,8 +1002,8 @@ function addStaticHostFixtureEntry(
 	}
 }
 
-function readSkillscSubagentConfig(config: Record<string, unknown>): SkillscSubagentConfig | undefined {
-	const subagent: SkillscSubagentConfig = {};
+function readPiWendaoSubagentConfig(config: Record<string, unknown>): PiWendaoSubagentConfig | undefined {
+	const subagent: PiWendaoSubagentConfig = {};
 	const type = readText(config.agentType).trim();
 	const description = readText(config.agentDescription).trim();
 	const runInBackground = readOptionalBoolean(config.runInBackground);
@@ -1096,20 +1096,20 @@ function defaultFixtureValue(outputName: string): unknown {
 	return null;
 }
 
-type SkillscHostTaskElement = Record<string, unknown> & { hostKind: SkillscHostWorkKind };
+type PiWendaoHostTaskElement = Record<string, unknown> & { hostKind: PiWendaoHostWorkKind };
 
-const SKILLSC_HOST_TASK_ELEMENTS: Array<{ element: string; hostKind: SkillscHostWorkKind }> = [
+const PI_WENDAO_HOST_TASK_ELEMENTS: Array<{ element: string; hostKind: PiWendaoHostWorkKind }> = [
 	{ element: "serviceTask", hostKind: "service" },
 	{ element: "userTask", hostKind: "user" },
 	{ element: "manualTask", hostKind: "manual" },
 	{ element: "sendTask", hostKind: "send" },
 ];
 
-function collectSkillscHostTasks(processes: unknown): SkillscHostTaskElement[] {
-	const tasks: SkillscHostTaskElement[] = [];
+function collectPiWendaoHostTasks(processes: unknown): PiWendaoHostTaskElement[] {
+	const tasks: PiWendaoHostTaskElement[] = [];
 	for (const process of asArray(processes)) {
 		if (!isObject(process)) continue;
-		for (const spec of SKILLSC_HOST_TASK_ELEMENTS) {
+		for (const spec of PI_WENDAO_HOST_TASK_ELEMENTS) {
 			for (const task of asArray(process[spec.element])) {
 				if (isObject(task)) tasks.push({ ...task, hostKind: spec.hostKind });
 			}
@@ -1118,7 +1118,7 @@ function collectSkillscHostTasks(processes: unknown): SkillscHostTaskElement[] {
 	return tasks;
 }
 
-function extractSkillscOutputs(task: Record<string, unknown>): string[] {
+function extractPiWendaoOutputs(task: Record<string, unknown>): string[] {
 	const extensionElements = task.extensionElements;
 	if (!isObject(extensionElements)) return [];
 	const config = firstObject(extensionElements.config);
@@ -1256,8 +1256,8 @@ function parseQianjiOutcome(output: string): string | undefined {
 function parseQianjiCheckpointFeedback(
 	output: string,
 	hostWorkCount = 0,
-): SkillscQianjiCheckpointFeedback | undefined {
-	const feedback: SkillscQianjiCheckpointFeedback = {
+): PiWendaoQianjiCheckpointFeedback | undefined {
+	const feedback: PiWendaoQianjiCheckpointFeedback = {
 		...(extractQianjiReportField(output, "Outcome") ? { outcome: extractQianjiReportField(output, "Outcome") } : {}),
 		...(extractQianjiReportField(output, "Checkpoint backend") ? { backend: extractQianjiReportField(output, "Checkpoint backend") } : {}),
 		...(extractQianjiReportField(output, "Checkpoint source") ? { source: extractQianjiReportField(output, "Checkpoint source") } : {}),
@@ -1450,7 +1450,7 @@ function parseQianjiHostWorkStreamLine(line: string): QianjiHostWork | undefined
 
 function isQianjiHostWork(value: unknown): value is QianjiHostWork {
 	if (!isObject(value)) return false;
-	if (!isSkillscHostWorkKind(value.kind)) return false;
+	if (!isPiWendaoHostWorkKind(value.kind)) return false;
 	if (typeof value.node_id !== "string" || !value.node_id.trim()) return false;
 	if (typeof value.token_id !== "number" || !Number.isFinite(value.token_id)) return false;
 	if (value.node_index !== undefined && typeof value.node_index !== "number") return false;
@@ -1458,11 +1458,11 @@ function isQianjiHostWork(value: unknown): value is QianjiHostWork {
 	return true;
 }
 
-function isSkillscHostWorkKind(value: unknown): value is SkillscHostWorkKind {
-	return typeof value === "string" && SKILLSC_HOST_WORK_KINDS.has(value as SkillscHostWorkKind);
+function isPiWendaoHostWorkKind(value: unknown): value is PiWendaoHostWorkKind {
+	return typeof value === "string" && PI_WENDAO_HOST_WORK_KINDS.has(value as PiWendaoHostWorkKind);
 }
 
-const SKILLSC_HOST_WORK_KINDS = new Set<SkillscHostWorkKind>([
+const PI_WENDAO_HOST_WORK_KINDS = new Set<PiWendaoHostWorkKind>([
 	"send",
 	"service",
 	"script",

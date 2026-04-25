@@ -1,10 +1,10 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
-	buildSkillscAgentPrompt,
+	buildPiWendaoAgentPrompt,
 	extractOutputVariablesFromText,
-	type SkillscAgentHost,
-	type SkillscAgentRequest,
+	type PiWendaoAgentHost,
+	type PiWendaoAgentRequest,
 } from "./agent-host.js";
 
 export interface PiSubagentsSpawnRequest {
@@ -172,7 +172,7 @@ export function createJsonFilePiSubagentsRunStore(path: string): PiSubagentsRunS
 	};
 }
 
-export function createPiSubagentsHost(options: PiSubagentsHostOptions): SkillscAgentHost {
+export function createPiSubagentsHost(options: PiSubagentsHostOptions): PiWendaoAgentHost {
 	return {
 		run: async (request) => runPiSubagentTask(options, request),
 	};
@@ -180,7 +180,7 @@ export function createPiSubagentsHost(options: PiSubagentsHostOptions): SkillscA
 
 async function runPiSubagentTask(
 	options: PiSubagentsHostOptions,
-	request: SkillscAgentRequest,
+	request: PiWendaoAgentRequest,
 ): Promise<Record<string, unknown>> {
 	const config = request.config;
 	const key = buildRunKey(request);
@@ -268,7 +268,7 @@ function emitHostEvent(options: PiSubagentsHostOptions, event: PiSubagentsHostEv
 
 function emitHostUpdate(
 	options: PiSubagentsHostOptions,
-	request: SkillscAgentRequest,
+	request: PiWendaoAgentRequest,
 	spawnRequest: PiSubagentsSpawnRequest,
 	agentId: string | undefined,
 	update: unknown,
@@ -284,7 +284,7 @@ function emitHostUpdate(
 
 async function storeFailedRun(
 	options: PiSubagentsHostOptions,
-	request: SkillscAgentRequest,
+	request: PiWendaoAgentRequest,
 	key: string | undefined,
 	agentId: string,
 	spawnRequest: PiSubagentsSpawnRequest,
@@ -310,7 +310,7 @@ async function storeFailedRun(
 
 async function spawnAndStoreSubagent(
 	options: PiSubagentsHostOptions,
-	request: SkillscAgentRequest,
+	request: PiWendaoAgentRequest,
 	key: string | undefined,
 	spawnRequest: PiSubagentsSpawnRequest,
 	callbacks: PiSubagentsClientCallbacks,
@@ -337,11 +337,11 @@ async function spawnAndStoreSubagent(
 
 function buildSpawnRequest(
 	options: PiSubagentsHostOptions,
-	request: SkillscAgentRequest,
+	request: PiWendaoAgentRequest,
 ): PiSubagentsSpawnRequest {
 	const subagent = request.config.subagent;
 	return {
-		prompt: buildSkillscAgentPrompt(request.config, request.variables, {
+		prompt: buildPiWendaoAgentPrompt(request.config, request.variables, {
 			...request.execution,
 			activityId: request.activityId,
 		}),
@@ -357,7 +357,7 @@ function buildSpawnRequest(
 	};
 }
 
-function buildRunKey(request: SkillscAgentRequest): string | undefined {
+function buildRunKey(request: PiWendaoAgentRequest): string | undefined {
 	const instanceId = request.execution?.instanceId;
 	if (!instanceId) return undefined;
 	return JSON.stringify({
@@ -368,7 +368,7 @@ function buildRunKey(request: SkillscAgentRequest): string | undefined {
 	});
 }
 
-function buildRunInputSnapshot(request: SkillscAgentRequest): Array<[string, unknown]> {
+function buildRunInputSnapshot(request: PiWendaoAgentRequest): Array<[string, unknown]> {
 	const inputNames = request.config.inputs.length > 0
 		? request.config.inputs
 		: Object.keys(request.variables).sort();

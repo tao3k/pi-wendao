@@ -1,14 +1,14 @@
 import { createCodingTools, createReadOnlyTools } from "@mariozechner/pi-coding-agent";
-import type { SkillscAgentTool } from "../executor/agent-runtime-types.js";
+import type { PiWendaoAgentTool } from "../executor/agent-runtime-types.js";
 
-export function createSkillscToolRegistry(
+export function createPiWendaoToolRegistry(
 	cwd: string,
-	extraTools: SkillscAgentTool<any>[] = [],
-): Map<string, SkillscAgentTool<any>> {
-	const registry = new Map<string, SkillscAgentTool<any>>();
+	extraTools: PiWendaoAgentTool<any>[] = [],
+): Map<string, PiWendaoAgentTool<any>> {
+	const registry = new Map<string, PiWendaoAgentTool<any>>();
 	const tools = [
-		...(createCodingTools(cwd) as SkillscAgentTool<any>[]),
-		...(createReadOnlyTools(cwd) as SkillscAgentTool<any>[]),
+		...(createCodingTools(cwd) as PiWendaoAgentTool<any>[]),
+		...(createReadOnlyTools(cwd) as PiWendaoAgentTool<any>[]),
 		...extraTools,
 	];
 	for (const tool of tools) {
@@ -17,6 +17,6 @@ export function createSkillscToolRegistry(
 	return registry;
 }
 
-export function getSkillscToolNames(cwd: string, extraTools: SkillscAgentTool<any>[] = []): string[] {
-	return [...createSkillscToolRegistry(cwd, extraTools).keys()];
+export function getPiWendaoToolNames(cwd: string, extraTools: PiWendaoAgentTool<any>[] = []): string[] {
+	return [...createPiWendaoToolRegistry(cwd, extraTools).keys()];
 }

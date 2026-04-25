@@ -1,6 +1,6 @@
 import type { Model } from "@mariozechner/pi-ai";
 import type { LoadExtensionsResult, ModelRegistry } from "@mariozechner/pi-coding-agent";
-import type { SkillscAgentTool } from "../executor/agent-runtime-types.js";
+import type { PiWendaoAgentTool } from "../executor/agent-runtime-types.js";
 import type { PiSubagentsToolExecutionContext } from "../executor/pi-subagents-runtime.js";
 import {
 	collectPiIntercomRegisteredTools,
@@ -49,7 +49,7 @@ declare global {
 
 export function createCliPiIntercomAgentTool(
 	options: CreateCliPiIntercomAgentToolOptions,
-): SkillscAgentTool<any> | undefined {
+): PiWendaoAgentTool<any> | undefined {
 	const ctx = createCliExtensionContext(options);
 	const client = tryCreatePiIntercomClientFromLoadedExtensions(options.loadResult, {
 		ctx,

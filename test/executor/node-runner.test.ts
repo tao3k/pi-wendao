@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fauxAssistantMessage, fauxToolCall, registerFauxProvider } from "@mariozechner/pi-ai";
 import type { FauxProviderRegistration } from "@mariozechner/pi-ai";
-import type { SkillscAgentEvent, SkillscAgentTool } from "../../src/executor/agent-runtime-types.js";
+import type { PiWendaoAgentEvent, PiWendaoAgentTool } from "../../src/executor/agent-runtime-types.js";
 import { createPiAiHost, createRunAgentService } from "../../src/executor/node-runner.js";
 
 describe("createRunAgentService", () => {
@@ -22,7 +22,7 @@ describe("createRunAgentService", () => {
 		const service = createRunAgentService({
 			model: faux.getModel(),
 			cwd: process.cwd(),
-			onEvent: (event: SkillscAgentEvent) => {
+			onEvent: (event: PiWendaoAgentEvent) => {
 				events.push(event.type);
 			},
 			getConfig: (id) =>
@@ -132,7 +132,7 @@ describe("createRunAgentService", () => {
 			),
 			fauxAssistantMessage('Done.\n```json\n{"result":"intercom_available"}\n```'),
 		]);
-		const intercomTool: SkillscAgentTool<any> = {
+		const intercomTool: PiWendaoAgentTool<any> = {
 			name: "intercom",
 			label: "Intercom",
 			description: "Fixture intercom tool",

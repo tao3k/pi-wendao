@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	SkillscIntercomCorrelationState,
-	createInMemorySkillscIntercomRecordStore,
+	PiWendaoIntercomCorrelationState,
+	createInMemoryPiWendaoIntercomRecordStore,
 } from "../../src/executor/intercom-correlation.js";
 import {
 	collectPiIntercomRegisteredTools,
@@ -168,8 +168,8 @@ describe("pi-intercom runtime tool adapter", () => {
 	});
 
 	it("mirrors successful send and ask results into correlation state", async () => {
-		const store = createInMemorySkillscIntercomRecordStore();
-		const correlation = new SkillscIntercomCorrelationState({
+		const store = createInMemoryPiWendaoIntercomRecordStore();
+		const correlation = new PiWendaoIntercomCorrelationState({
 			self: { id: "session-worker", name: "worker" },
 			store,
 		});
@@ -220,8 +220,8 @@ describe("pi-intercom runtime tool adapter", () => {
 	});
 
 	it("marks a mirrored ask as failed when the tool returns an error result", async () => {
-		const store = createInMemorySkillscIntercomRecordStore();
-		const correlation = new SkillscIntercomCorrelationState({
+		const store = createInMemoryPiWendaoIntercomRecordStore();
+		const correlation = new PiWendaoIntercomCorrelationState({
 			self: { id: "session-worker", name: "worker" },
 			store,
 		});
@@ -258,8 +258,8 @@ describe("pi-intercom runtime tool adapter", () => {
 	});
 
 	it("mirrors replies when correlation already has a pending inbound ask", async () => {
-		const store = createInMemorySkillscIntercomRecordStore();
-		const correlation = new SkillscIntercomCorrelationState({
+		const store = createInMemoryPiWendaoIntercomRecordStore();
+		const correlation = new PiWendaoIntercomCorrelationState({
 			self: { id: "session-worker", name: "worker" },
 			store,
 		});

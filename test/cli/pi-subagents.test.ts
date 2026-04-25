@@ -31,7 +31,7 @@ describe("CLI pi-subagents host integration", () => {
 	});
 
 	it("creates a real extension context and pi-subagents host from loaded tools", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "skillsc-cli-pi-subagents-"));
+		const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-pi-subagents-"));
 		tempDirs.push(dir);
 		const modelRegistry = ModelRegistry.create(AuthStorage.create());
 		const calls: Array<{ name: string; cwd: string; hasUI: boolean; subagentType?: unknown }> = [];

@@ -1,31 +1,31 @@
 import type { AssistantMessage, Model, ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { createSkillscToolRegistry } from "../tools/registry.js";
+import { createPiWendaoToolRegistry } from "../tools/registry.js";
 import {
-	buildSkillscAgentPrompt,
-	EMPTY_SKILLSC_CONFIG,
+	buildPiWendaoAgentPrompt,
+	EMPTY_PI_WENDAO_CONFIG,
 	extractOutputVariablesFromText,
-	type SkillscAgentHost,
-	type SkillscAgentRequest,
-	type SkillscConfig,
+	type PiWendaoAgentHost,
+	type PiWendaoAgentRequest,
+	type PiWendaoConfig,
 } from "./agent-host.js";
 import type {
-	SkillscAgentEvent,
-	SkillscAgentMessage,
-	SkillscAgentTool,
-	SkillscAgentToolResult,
-	SkillscThinkingLevel,
+	PiWendaoAgentEvent,
+	PiWendaoAgentMessage,
+	PiWendaoAgentTool,
+	PiWendaoAgentToolResult,
+	PiWendaoThinkingLevel,
 } from "./agent-runtime-types.js";
 
 export interface NodeRunnerOptions {
 	model: Model<string>;
 	apiKey?: string;
 	cwd?: string;
-	extraTools?: SkillscAgentTool<any>[];
-	onEvent?: (event: SkillscAgentEvent) => void;
-	thinkingLevel?: SkillscThinkingLevel;
-	/** Lookup function to get the skillsc config for an activity by ID */
-	getConfig?: (activityId: string) => SkillscConfig | undefined;
+	extraTools?: PiWendaoAgentTool<any>[];
+	onEvent?: (event: PiWendaoAgentEvent) => void;
+	thinkingLevel?: PiWendaoThinkingLevel;
+	/** Lookup function to get the pi-wendao config for an activity by ID */
+	getConfig?: (activityId: string) => PiWendaoConfig | undefined;
 }
 
 /**
@@ -44,9 +44,9 @@ export function createRunAgentService(options: NodeRunnerOptions) {
 			output: Record<string, unknown>;
 		};
 
-		// Get skillsc config for this activity
+		// Get pi-wendao config for this activity
 		const activityId = content.id as string;
-		const config = options.getConfig?.(activityId) ?? EMPTY_SKILLSC_CONFIG;
+		const config = options.getConfig?.(activityId) ?? EMPTY_PI_WENDAO_CONFIG;
 
 		try {
 			const outputVars = await host.run({
@@ -70,7 +70,7 @@ export function createRunAgentService(options: NodeRunnerOptions) {
 	};
 }
 
-export function createPiAiHost(options: NodeRunnerOptions): SkillscAgentHost {
+export function createPiAiHost(options: NodeRunnerOptions): PiWendaoAgentHost {
 	return {
 		run: (request) => runPiAiTask(options, request),
 	};
@@ -78,16 +78,16 @@ export function createPiAiHost(options: NodeRunnerOptions): SkillscAgentHost {
 
 async function runPiAiTask(
 	options: NodeRunnerOptions,
-	request: SkillscAgentRequest,
+	request: PiWendaoAgentRequest,
 ): Promise<Record<string, unknown>> {
 	const cwd = options.cwd ?? process.cwd();
-	const toolRegistry = createSkillscToolRegistry(cwd, options.extraTools);
+	const toolRegistry = createPiWendaoToolRegistry(cwd, options.extraTools);
 
-	const tools: SkillscAgentTool<any>[] = request.config.tools
+	const tools: PiWendaoAgentTool<any>[] = request.config.tools
 		.map((name) => toolRegistry.get(name))
-		.filter((t): t is SkillscAgentTool<any> => t !== undefined);
+		.filter((t): t is PiWendaoAgentTool<any> => t !== undefined);
 
-	const systemPrompt = buildSkillscAgentPrompt(request.config, request.variables, {
+	const systemPrompt = buildPiWendaoAgentPrompt(request.config, request.variables, {
 		...request.execution,
 		activityId: request.activityId,
 	});
@@ -108,16 +108,16 @@ async function runPiAiToolLoop(options: {
 	model: Model<string>;
 	apiKey?: string;
 	systemPrompt: string;
-	tools: SkillscAgentTool<any>[];
-	thinkingLevel: SkillscThinkingLevel;
-	onEvent?: (event: SkillscAgentEvent) => void;
-}): Promise<SkillscAgentMessage[]> {
-	const messages: SkillscAgentMessage[] = [{
+	tools: PiWendaoAgentTool<any>[];
+	thinkingLevel: PiWendaoThinkingLevel;
+	onEvent?: (event: PiWendaoAgentEvent) => void;
+}): Promise<PiWendaoAgentMessage[]> {
+	const messages: PiWendaoAgentMessage[] = [{
 		role: "user",
 		content: "Execute the task described in your instructions.",
 		timestamp: Date.now(),
 	}];
-	const emit = (event: SkillscAgentEvent) => options.onEvent?.(event);
+	const emit = (event: PiWendaoAgentEvent) => options.onEvent?.(event);
 	const toolMap = new Map(options.tools.map((tool) => [tool.name, tool]));
 
 	emit({ type: "agent_start" });
@@ -158,11 +158,11 @@ async function requestAssistantTurn(
 		model: Model<string>;
 		apiKey?: string;
 		systemPrompt: string;
-		tools: SkillscAgentTool<any>[];
-		thinkingLevel: SkillscThinkingLevel;
+		tools: PiWendaoAgentTool<any>[];
+		thinkingLevel: PiWendaoThinkingLevel;
 	},
-	messages: SkillscAgentMessage[],
-	emit: (event: SkillscAgentEvent) => void,
+	messages: PiWendaoAgentMessage[],
+	emit: (event: PiWendaoAgentEvent) => void,
 ): Promise<AssistantMessage> {
 	const stream = streamSimple(
 		options.model,
@@ -206,14 +206,14 @@ async function requestAssistantTurn(
 }
 
 async function executeToolCall(
-	toolMap: Map<string, SkillscAgentTool<any>>,
+	toolMap: Map<string, PiWendaoAgentTool<any>>,
 	toolCall: ToolCall,
-	emit: (event: SkillscAgentEvent) => void,
+	emit: (event: PiWendaoAgentEvent) => void,
 ): Promise<ToolResultMessage> {
 	const tool = toolMap.get(toolCall.name);
 	const args = tool?.prepareArguments ? tool.prepareArguments(toolCall.arguments) : toolCall.arguments;
 	emit({ type: "tool_execution_start", toolCallId: toolCall.id, toolName: toolCall.name, args });
-	let result: SkillscAgentToolResult;
+	let result: PiWendaoAgentToolResult;
 	let isError = false;
 	if (!tool) {
 		result = {
@@ -252,7 +252,7 @@ async function executeToolCall(
 	};
 }
 
-function reasoningOption(level: SkillscThinkingLevel): { reasoning?: Exclude<SkillscThinkingLevel, "off"> } {
+function reasoningOption(level: PiWendaoThinkingLevel): { reasoning?: Exclude<PiWendaoThinkingLevel, "off"> } {
 	return level === "off" ? {} : { reasoning: level };
 }
 
@@ -261,7 +261,7 @@ function reasoningOption(level: SkillscThinkingLevel): { reasoning?: Exclude<Ski
  * Looks for a JSON code block in the last assistant message.
  */
 function extractOutputVariables(
-	messages: SkillscAgentMessage[],
+	messages: PiWendaoAgentMessage[],
 	outputNames: string[],
 ): Record<string, unknown> {
 	if (outputNames.length === 0) return {};

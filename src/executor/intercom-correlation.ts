@@ -1,137 +1,137 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { SkillscAgentExecutionMetadata } from "./agent-host.js";
+import type { PiWendaoAgentExecutionMetadata } from "./agent-host.js";
 
-export const DEFAULT_SKILLSC_INTERCOM_ASK_TIMEOUT_MS = 10 * 60 * 1000;
+export const DEFAULT_PI_WENDAO_INTERCOM_ASK_TIMEOUT_MS = 10 * 60 * 1000;
 
-export interface SkillscIntercomSession {
+export interface PiWendaoIntercomSession {
 	id: string;
 	name?: string;
 	cwd?: string;
 	model?: string;
 }
 
-export interface SkillscIntercomAttachment {
+export interface PiWendaoIntercomAttachment {
 	type: "file" | "snippet" | "context";
 	name: string;
 	content: string;
 	language?: string;
 }
 
-export interface SkillscIntercomMessage {
+export interface PiWendaoIntercomMessage {
 	id: string;
 	text: string;
 	timestamp: number;
 	replyTo?: string;
 	expectsReply?: boolean;
-	attachments?: SkillscIntercomAttachment[];
+	attachments?: PiWendaoIntercomAttachment[];
 }
 
-export interface SkillscIntercomExecutionRef extends SkillscAgentExecutionMetadata {
+export interface PiWendaoIntercomExecutionRef extends PiWendaoAgentExecutionMetadata {
 	activityId?: string;
 }
 
-export interface SkillscIntercomContext {
-	from: SkillscIntercomSession;
-	to?: SkillscIntercomSession;
-	message: SkillscIntercomMessage;
+export interface PiWendaoIntercomContext {
+	from: PiWendaoIntercomSession;
+	to?: PiWendaoIntercomSession;
+	message: PiWendaoIntercomMessage;
 	receivedAt: number;
-	execution?: SkillscIntercomExecutionRef;
+	execution?: PiWendaoIntercomExecutionRef;
 }
 
-export type SkillscIntercomRecordDirection = "inbound" | "outbound";
-export type SkillscIntercomRecordStatus = "sent" | "waiting" | "replied" | "expired" | "failed";
+export type PiWendaoIntercomRecordDirection = "inbound" | "outbound";
+export type PiWendaoIntercomRecordStatus = "sent" | "waiting" | "replied" | "expired" | "failed";
 
-export interface SkillscIntercomRecord {
+export interface PiWendaoIntercomRecord {
 	key: string;
-	direction: SkillscIntercomRecordDirection;
-	status: SkillscIntercomRecordStatus;
-	context: SkillscIntercomContext;
-	reply?: SkillscIntercomMessage;
+	direction: PiWendaoIntercomRecordDirection;
+	status: PiWendaoIntercomRecordStatus;
+	context: PiWendaoIntercomContext;
+	reply?: PiWendaoIntercomMessage;
 	error?: string;
 	createdAt: string;
 	updatedAt: string;
 }
 
-export interface SkillscIntercomRecordStore {
-	get(key: string): Promise<SkillscIntercomRecord | undefined>;
-	put(record: SkillscIntercomRecord): Promise<void>;
-	list(): Promise<SkillscIntercomRecord[]>;
+export interface PiWendaoIntercomRecordStore {
+	get(key: string): Promise<PiWendaoIntercomRecord | undefined>;
+	put(record: PiWendaoIntercomRecord): Promise<void>;
+	list(): Promise<PiWendaoIntercomRecord[]>;
 	delete(key: string): Promise<void>;
 }
 
-export interface SkillscIntercomReplyTrackerOptions {
+export interface PiWendaoIntercomReplyTrackerOptions {
 	askTimeoutMs?: number;
-	initialPending?: SkillscIntercomContext[];
+	initialPending?: PiWendaoIntercomContext[];
 }
 
-export interface ResolveSkillscIntercomReplyTargetOptions {
+export interface ResolvePiWendaoIntercomReplyTargetOptions {
 	replyTo?: string;
 	to?: string;
 	now?: number;
 }
 
-export interface SkillscIntercomStateOptions {
-	self: SkillscIntercomSession;
+export interface PiWendaoIntercomStateOptions {
+	self: PiWendaoIntercomSession;
 	askTimeoutMs?: number;
-	store?: SkillscIntercomRecordStore;
+	store?: PiWendaoIntercomRecordStore;
 	now?: () => number;
 }
 
-export interface SkillscIntercomSendRequest {
-	to: SkillscIntercomSession;
+export interface PiWendaoIntercomSendRequest {
+	to: PiWendaoIntercomSession;
 	text: string;
 	messageId?: string;
-	attachments?: SkillscIntercomAttachment[];
-	execution?: SkillscIntercomExecutionRef;
+	attachments?: PiWendaoIntercomAttachment[];
+	execution?: PiWendaoIntercomExecutionRef;
 	now?: number;
 }
 
-export interface SkillscIntercomReceiveAskRequest {
-	from: SkillscIntercomSession;
+export interface PiWendaoIntercomReceiveAskRequest {
+	from: PiWendaoIntercomSession;
 	text: string;
 	messageId?: string;
-	attachments?: SkillscIntercomAttachment[];
-	execution?: SkillscIntercomExecutionRef;
+	attachments?: PiWendaoIntercomAttachment[];
+	execution?: PiWendaoIntercomExecutionRef;
 	now?: number;
 }
 
-export interface SkillscIntercomReplyRequest {
+export interface PiWendaoIntercomReplyRequest {
 	text: string;
 	replyTo?: string;
 	to?: string;
 	messageId?: string;
-	attachments?: SkillscIntercomAttachment[];
-	execution?: SkillscIntercomExecutionRef;
+	attachments?: PiWendaoIntercomAttachment[];
+	execution?: PiWendaoIntercomExecutionRef;
 	now?: number;
 }
 
-export class SkillscIntercomReplyTracker {
+export class PiWendaoIntercomReplyTracker {
 	private readonly askTimeoutMs: number;
-	private readonly pendingAsks = new Map<string, SkillscIntercomContext>();
-	private readonly turnQueue: SkillscIntercomContext[] = [];
-	private currentTurnContext: SkillscIntercomContext | undefined;
+	private readonly pendingAsks = new Map<string, PiWendaoIntercomContext>();
+	private readonly turnQueue: PiWendaoIntercomContext[] = [];
+	private currentTurnContext: PiWendaoIntercomContext | undefined;
 
-	constructor(options: SkillscIntercomReplyTrackerOptions = {}) {
-		this.askTimeoutMs = options.askTimeoutMs ?? DEFAULT_SKILLSC_INTERCOM_ASK_TIMEOUT_MS;
+	constructor(options: PiWendaoIntercomReplyTrackerOptions = {}) {
+		this.askTimeoutMs = options.askTimeoutMs ?? DEFAULT_PI_WENDAO_INTERCOM_ASK_TIMEOUT_MS;
 		for (const context of options.initialPending ?? []) {
 			this.recordIncomingAsk(context);
 		}
 	}
 
-	recordIncomingAsk(context: SkillscIntercomContext): SkillscIntercomContext {
+	recordIncomingAsk(context: PiWendaoIntercomContext): PiWendaoIntercomContext {
 		const normalized = normalizeIntercomContext(context);
 		this.pendingAsks.set(normalized.message.id, normalized);
 		return normalized;
 	}
 
-	queueTurnContext(context: SkillscIntercomContext): void {
+	queueTurnContext(context: PiWendaoIntercomContext): void {
 		const normalized = this.recordIncomingAsk(context);
 		this.turnQueue.push(normalized);
 	}
 
-	beginTurn(now = Date.now()): SkillscIntercomContext | undefined {
+	beginTurn(now = Date.now()): PiWendaoIntercomContext | undefined {
 		this.pruneExpired(now);
 		this.currentTurnContext = this.turnQueue.shift();
 		return this.currentTurnContext;
@@ -142,8 +142,8 @@ export class SkillscIntercomReplyTracker {
 	}
 
 	resolveReplyTarget(
-		options: ResolveSkillscIntercomReplyTargetOptions = {},
-	): SkillscIntercomContext {
+		options: ResolvePiWendaoIntercomReplyTargetOptions = {},
+	): PiWendaoIntercomContext {
 		const now = options.now ?? Date.now();
 		this.pruneExpired(now);
 
@@ -186,14 +186,14 @@ export class SkillscIntercomReplyTracker {
 		return deleted;
 	}
 
-	listPending(now = Date.now()): SkillscIntercomContext[] {
+	listPending(now = Date.now()): PiWendaoIntercomContext[] {
 		this.pruneExpired(now);
 		return Array.from(this.pendingAsks.values())
 			.sort((a, b) => a.receivedAt - b.receivedAt || a.message.id.localeCompare(b.message.id));
 	}
 
-	pruneExpired(now = Date.now()): SkillscIntercomContext[] {
-		const expired: SkillscIntercomContext[] = [];
+	pruneExpired(now = Date.now()): PiWendaoIntercomContext[] {
+		const expired: PiWendaoIntercomContext[] = [];
 		for (const [messageId, context] of this.pendingAsks.entries()) {
 			if (isExpired(context, now, this.askTimeoutMs)) {
 				this.pendingAsks.delete(messageId);
@@ -216,22 +216,22 @@ export class SkillscIntercomReplyTracker {
 	}
 }
 
-export class SkillscIntercomCorrelationState {
-	private readonly self: SkillscIntercomSession;
-	private readonly store: SkillscIntercomRecordStore | undefined;
+export class PiWendaoIntercomCorrelationState {
+	private readonly self: PiWendaoIntercomSession;
+	private readonly store: PiWendaoIntercomRecordStore | undefined;
 	private readonly now: () => number;
-	private readonly tracker: SkillscIntercomReplyTracker;
+	private readonly tracker: PiWendaoIntercomReplyTracker;
 
-	constructor(options: SkillscIntercomStateOptions) {
+	constructor(options: PiWendaoIntercomStateOptions) {
 		this.self = options.self;
 		this.store = options.store;
 		this.now = options.now ?? Date.now;
-		this.tracker = new SkillscIntercomReplyTracker({
+		this.tracker = new PiWendaoIntercomReplyTracker({
 			askTimeoutMs: options.askTimeoutMs,
 		});
 	}
 
-	async send(request: SkillscIntercomSendRequest): Promise<SkillscIntercomRecord> {
+	async send(request: PiWendaoIntercomSendRequest): Promise<PiWendaoIntercomRecord> {
 		const now = request.now ?? this.now();
 		return this.writeRecord({
 			direction: "outbound",
@@ -252,7 +252,7 @@ export class SkillscIntercomCorrelationState {
 		});
 	}
 
-	async ask(request: SkillscIntercomSendRequest): Promise<SkillscIntercomRecord> {
+	async ask(request: PiWendaoIntercomSendRequest): Promise<PiWendaoIntercomRecord> {
 		const now = request.now ?? this.now();
 		return this.writeRecord({
 			direction: "outbound",
@@ -274,7 +274,7 @@ export class SkillscIntercomCorrelationState {
 		});
 	}
 
-	async receiveAsk(request: SkillscIntercomReceiveAskRequest): Promise<SkillscIntercomRecord> {
+	async receiveAsk(request: PiWendaoIntercomReceiveAskRequest): Promise<PiWendaoIntercomRecord> {
 		const now = request.now ?? this.now();
 		const context = this.tracker.recordIncomingAsk({
 			from: request.from,
@@ -297,7 +297,7 @@ export class SkillscIntercomCorrelationState {
 		});
 	}
 
-	async reply(request: SkillscIntercomReplyRequest): Promise<SkillscIntercomRecord> {
+	async reply(request: PiWendaoIntercomReplyRequest): Promise<PiWendaoIntercomRecord> {
 		const now = request.now ?? this.now();
 		const target = this.tracker.resolveReplyTarget({
 			replyTo: request.replyTo,
@@ -342,7 +342,7 @@ export class SkillscIntercomCorrelationState {
 		});
 	}
 
-	async pending(now = this.now()): Promise<SkillscIntercomContext[]> {
+	async pending(now = this.now()): Promise<PiWendaoIntercomContext[]> {
 		const expired = this.tracker.pruneExpired(now);
 		if (this.store) {
 			for (const context of expired) {
@@ -362,12 +362,12 @@ export class SkillscIntercomCorrelationState {
 
 	async markRecordReplied(
 		key: string,
-		reply: SkillscIntercomMessage,
+		reply: PiWendaoIntercomMessage,
 		now = this.now(),
-	): Promise<SkillscIntercomRecord | undefined> {
+	): Promise<PiWendaoIntercomRecord | undefined> {
 		const previous = this.store ? await this.store.get(key) : undefined;
 		if (!previous) return undefined;
-		const record: SkillscIntercomRecord = {
+		const record: PiWendaoIntercomRecord = {
 			...previous,
 			status: "replied",
 			reply,
@@ -381,10 +381,10 @@ export class SkillscIntercomCorrelationState {
 		key: string,
 		error: string,
 		now = this.now(),
-	): Promise<SkillscIntercomRecord | undefined> {
+	): Promise<PiWendaoIntercomRecord | undefined> {
 		const previous = this.store ? await this.store.get(key) : undefined;
 		if (!previous) return undefined;
-		const record: SkillscIntercomRecord = {
+		const record: PiWendaoIntercomRecord = {
 			...previous,
 			status: "failed",
 			error,
@@ -395,12 +395,12 @@ export class SkillscIntercomCorrelationState {
 	}
 
 	private async writeRecord(options: {
-		direction: SkillscIntercomRecordDirection;
-		status: SkillscIntercomRecordStatus;
-		context: SkillscIntercomContext;
+		direction: PiWendaoIntercomRecordDirection;
+		status: PiWendaoIntercomRecordStatus;
+		context: PiWendaoIntercomContext;
 		now: number;
-	}): Promise<SkillscIntercomRecord> {
-		const record: SkillscIntercomRecord = {
+	}): Promise<PiWendaoIntercomRecord> {
+		const record: PiWendaoIntercomRecord = {
 			key: recordKey(options.context),
 			direction: options.direction,
 			status: options.status,
@@ -413,9 +413,9 @@ export class SkillscIntercomCorrelationState {
 	}
 }
 
-export function createInMemorySkillscIntercomRecordStore(
-	initialRecords: SkillscIntercomRecord[] = [],
-): SkillscIntercomRecordStore {
+export function createInMemoryPiWendaoIntercomRecordStore(
+	initialRecords: PiWendaoIntercomRecord[] = [],
+): PiWendaoIntercomRecordStore {
 	const records = new Map(initialRecords.map((record) => [record.key, record]));
 	return {
 		async get(key) {
@@ -433,7 +433,7 @@ export function createInMemorySkillscIntercomRecordStore(
 	};
 }
 
-export function createJsonFileSkillscIntercomRecordStore(path: string): SkillscIntercomRecordStore {
+export function createJsonFilePiWendaoIntercomRecordStore(path: string): PiWendaoIntercomRecordStore {
 	let queue = Promise.resolve();
 	const withLock = async <T>(operation: () => Promise<T>): Promise<T> => {
 		const next = queue.then(operation, operation);
@@ -460,8 +460,8 @@ export function createJsonFileSkillscIntercomRecordStore(path: string): SkillscI
 	};
 }
 
-export function buildSkillscIntercomCorrelationKey(
-	execution: SkillscIntercomExecutionRef | undefined,
+export function buildPiWendaoIntercomCorrelationKey(
+	execution: PiWendaoIntercomExecutionRef | undefined,
 	messageId: string,
 ): string | undefined {
 	const instanceId = execution?.instanceId;
@@ -478,11 +478,11 @@ export function buildSkillscIntercomCorrelationKey(
 function createMessage(options: {
 	text: string;
 	messageId?: string;
-	attachments?: SkillscIntercomAttachment[];
+	attachments?: PiWendaoIntercomAttachment[];
 	timestamp: number;
 	replyTo?: string;
 	expectsReply?: boolean;
-}): SkillscIntercomMessage {
+}): PiWendaoIntercomMessage {
 	return {
 		id: options.messageId ?? randomUUID(),
 		text: options.text,
@@ -493,7 +493,7 @@ function createMessage(options: {
 	};
 }
 
-function normalizeIntercomContext(context: SkillscIntercomContext): SkillscIntercomContext {
+function normalizeIntercomContext(context: PiWendaoIntercomContext): PiWendaoIntercomContext {
 	const receivedAt = context.receivedAt;
 	return {
 		...context,
@@ -505,20 +505,20 @@ function normalizeIntercomContext(context: SkillscIntercomContext): SkillscInter
 	};
 }
 
-function recordKey(context: SkillscIntercomContext): string {
-	return buildSkillscIntercomCorrelationKey(context.execution, context.message.id)
+function recordKey(context: PiWendaoIntercomContext): string {
+	return buildPiWendaoIntercomCorrelationKey(context.execution, context.message.id)
 		?? context.message.id;
 }
 
 function isExpired(
-	context: SkillscIntercomContext,
+	context: PiWendaoIntercomContext,
 	now: number,
 	askTimeoutMs: number,
 ): boolean {
 	return askTimeoutMs >= 0 && now - context.receivedAt > askTimeoutMs;
 }
 
-function matchesSession(session: SkillscIntercomSession, target: string): boolean {
+function matchesSession(session: PiWendaoIntercomSession, target: string): boolean {
 	return session.id === target || session.name === target;
 }
 
@@ -526,12 +526,12 @@ function isoFromMillis(value: number): string {
 	return new Date(value).toISOString();
 }
 
-interface SkillscIntercomRecordStoreFile {
+interface PiWendaoIntercomRecordStoreFile {
 	version: 1;
-	records: Record<string, SkillscIntercomRecord>;
+	records: Record<string, PiWendaoIntercomRecord>;
 }
 
-async function readStoreFile(path: string): Promise<Record<string, SkillscIntercomRecord>> {
+async function readStoreFile(path: string): Promise<Record<string, PiWendaoIntercomRecord>> {
 	try {
 		const parsed = JSON.parse(await readFile(path, "utf-8")) as unknown;
 		if (!isRecordStoreFile(parsed)) return {};
@@ -544,16 +544,16 @@ async function readStoreFile(path: string): Promise<Record<string, SkillscInterc
 
 async function writeStoreFile(
 	path: string,
-	records: Record<string, SkillscIntercomRecord>,
+	records: Record<string, PiWendaoIntercomRecord>,
 ): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
 	const tempPath = `${path}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-	const file: SkillscIntercomRecordStoreFile = { version: 1, records };
+	const file: PiWendaoIntercomRecordStoreFile = { version: 1, records };
 	await writeFile(tempPath, `${JSON.stringify(file, null, 2)}\n`, "utf-8");
 	await rename(tempPath, path);
 }
 
-function isRecordStoreFile(value: unknown): value is SkillscIntercomRecordStoreFile {
+function isRecordStoreFile(value: unknown): value is PiWendaoIntercomRecordStoreFile {
 	return typeof value === "object"
 		&& value !== null
 		&& !Array.isArray(value)

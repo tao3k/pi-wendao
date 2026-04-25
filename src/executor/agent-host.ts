@@ -1,13 +1,13 @@
-export interface SkillscConfig {
-	hostKind?: SkillscHostWorkKind;
+export interface PiWendaoConfig {
+	hostKind?: PiWendaoHostWorkKind;
 	prompt: string;
 	tools: string[];
 	inputs: string[];
 	outputs: string[];
-	subagent?: SkillscSubagentConfig;
+	subagent?: PiWendaoSubagentConfig;
 }
 
-export type SkillscHostWorkKind =
+export type PiWendaoHostWorkKind =
 	| "send"
 	| "service"
 	| "script"
@@ -15,7 +15,7 @@ export type SkillscHostWorkKind =
 	| "manual"
 	| "business_rule";
 
-export interface SkillscSubagentConfig {
+export interface PiWendaoSubagentConfig {
 	type?: string;
 	description?: string;
 	runInBackground?: boolean;
@@ -27,7 +27,7 @@ export interface SkillscSubagentConfig {
 	inheritContext?: boolean;
 }
 
-export interface SkillscQianjiCheckpointFeedback {
+export interface PiWendaoQianjiCheckpointFeedback {
 	outcome?: string;
 	backend?: string;
 	source?: string;
@@ -37,38 +37,38 @@ export interface SkillscQianjiCheckpointFeedback {
 	pendingHostWork?: string;
 }
 
-export interface SkillscAgentExecutionMetadata {
+export interface PiWendaoAgentExecutionMetadata {
 	activityId?: string;
 	processId?: string;
 	instanceId?: string;
 	nodeIndex?: number;
 	tokenId?: number;
 	repeat?: unknown;
-	checkpoint?: SkillscQianjiCheckpointFeedback;
+	checkpoint?: PiWendaoQianjiCheckpointFeedback;
 }
 
-export interface SkillscAgentRequest {
+export interface PiWendaoAgentRequest {
 	activityId: string;
-	config: SkillscConfig;
+	config: PiWendaoConfig;
 	variables: Record<string, unknown>;
-	execution?: SkillscAgentExecutionMetadata;
+	execution?: PiWendaoAgentExecutionMetadata;
 }
 
-export interface SkillscAgentHost {
-	run(request: SkillscAgentRequest): Promise<Record<string, unknown>>;
+export interface PiWendaoAgentHost {
+	run(request: PiWendaoAgentRequest): Promise<Record<string, unknown>>;
 }
 
-export const EMPTY_SKILLSC_CONFIG: SkillscConfig = {
+export const EMPTY_PI_WENDAO_CONFIG: PiWendaoConfig = {
 	prompt: "",
 	tools: [],
 	inputs: [],
 	outputs: [],
 };
 
-export function buildSkillscAgentPrompt(
-	config: SkillscConfig,
+export function buildPiWendaoAgentPrompt(
+	config: PiWendaoConfig,
 	variables: Record<string, unknown>,
-	execution?: SkillscAgentExecutionMetadata,
+	execution?: PiWendaoAgentExecutionMetadata,
 ): string {
 	const scopedVars: Record<string, unknown> = {};
 	for (const inputName of config.inputs) {
@@ -107,7 +107,7 @@ export function buildSkillscAgentPrompt(
 	return promptParts.join("");
 }
 
-function formatExecutionContext(execution: SkillscAgentExecutionMetadata | undefined): string {
+function formatExecutionContext(execution: PiWendaoAgentExecutionMetadata | undefined): string {
 	if (!execution) return "";
 	const lines: string[] = [];
 	appendField(lines, "processId", execution.processId);

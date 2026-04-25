@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import { XMLParser } from "fast-xml-parser";
-import { getSkillscToolNames } from "../tools/registry.js";
+import { getPiWendaoToolNames } from "../tools/registry.js";
 import {
 	buildCompilePrompt,
 	buildTargetDecisionPrompt,
@@ -86,9 +86,9 @@ export interface BpmnLintResult {
 export type BpmnLintRunner = (xml: string) => Promise<BpmnLintResult>;
 
 const SERVICE_TASK_IMPLEMENTATION = "${environment.services.runAgent}";
-const SKILLSC_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const PI_WENDAO_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-const skillscContractParser = new XMLParser({
+const piWendaoContractParser = new XMLParser({
 	ignoreAttributes: false,
 	attributeNamePrefix: "",
 	removeNSPrefix: true,
@@ -247,12 +247,12 @@ function createCompileLintRunner(qianjiLintRunner: BpmnLintRunner, options: { cw
 		const qianjiLint = await qianjiLintRunner(xml);
 		if (!qianjiLint.success) return qianjiLint;
 
-		const skillscLint = lintSkillscCompileContract(xml, options);
-		if (skillscLint.success) return qianjiLint;
+		const piWendaoLint = lintPiWendaoCompileContract(xml, options);
+		if (piWendaoLint.success) return qianjiLint;
 
 		const output = [
 			qianjiLint.output.trim(),
-			skillscLint.output.trim(),
+			piWendaoLint.output.trim(),
 		].filter(Boolean).join("\n\n");
 		return {
 			success: false,
@@ -261,15 +261,15 @@ function createCompileLintRunner(qianjiLintRunner: BpmnLintRunner, options: { cw
 	};
 }
 
-function lintSkillscCompileContract(xml: string, options: { cwd: string }): BpmnLintResult {
+function lintPiWendaoCompileContract(xml: string, options: { cwd: string }): BpmnLintResult {
 	let document: { definitions?: { process?: unknown } };
 	try {
-		document = skillscContractParser.parse(xml) as { definitions?: { process?: unknown } };
+		document = piWendaoContractParser.parse(xml) as { definitions?: { process?: unknown } };
 	} catch (err) {
 		return {
 			success: false,
-			output: renderSkillscCompileContractIssues([{
-				code: "SKILLSC001",
+			output: renderPiWendaoCompileContractIssues([{
+				code: "PI_WENDAO001",
 				title: "BPMN XML must be parseable for pi-wendao contract validation",
 				summary: err instanceof Error ? err.message : String(err),
 				llmFixPrompt: "Repair the XML syntax, preserve the workflow intent, and run qianji_lint again.",
@@ -277,28 +277,28 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 		};
 	}
 
-	const issues: SkillscCompileContractIssue[] = [];
-	const supportedToolNames = getSkillscToolNames(options.cwd);
+	const issues: PiWendaoCompileContractIssue[] = [];
+	const supportedToolNames = getPiWendaoToolNames(options.cwd);
 	const supportedToolNameSet = new Set(supportedToolNames);
-	const hostTaskIds = collectSkillscTaskIds(document.definitions?.process);
+	const hostTaskIds = collectPiWendaoTaskIds(document.definitions?.process);
 	for (const boundaryEvent of collectBoundaryEvents(document.definitions?.process)) {
 		const boundaryId = readString(boundaryEvent.id) || "(missing boundaryEvent id)";
 		const attachedToRef = readString(boundaryEvent.attachedToRef);
 		const hasErrorDefinition = asArray(boundaryEvent.errorEventDefinition).length > 0;
 		if (attachedToRef && hostTaskIds.has(attachedToRef) && hasErrorDefinition) {
 			issues.push({
-				code: "SKILLSC_TASK_ERROR_BOUNDARY_UNSUPPORTED",
+				code: "PI_WENDAO_TASK_ERROR_BOUNDARY_UNSUPPORTED",
 				title: "task-level error boundary is outside the pi-wendao compiler subset",
 				summary: `boundaryEvent '${boundaryId}' attaches an errorEventDefinition directly to task '${attachedToRef}'.`,
 				llmFixPrompt: `Remove boundaryEvent '${boundaryId}'. Have task '${attachedToRef}' output a boolean status such as success or valid, route it through an exclusiveGateway, and put the fallback serviceTask on the default or negative branch. If BPMN error propagation is required, wrap the risky work in a qianji-supported subprocess shell instead of attaching the error boundary directly to a task.`,
 			});
 		}
 	}
-	for (const task of collectSkillscTasks(document.definitions?.process)) {
+	for (const task of collectPiWendaoTasks(document.definitions?.process)) {
 		const taskId = readString(task.id) || `(missing ${task.element} id)`;
 		if (task.element === "serviceTask" && readString(task.implementation) !== SERVICE_TASK_IMPLEMENTATION) {
 			issues.push({
-				code: "SKILLSC_SERVICE_IMPLEMENTATION",
+				code: "PI_WENDAO_SERVICE_IMPLEMENTATION",
 				title: "serviceTask must dispatch through pi-wendao runAgent",
 				summary: `serviceTask '${taskId}' does not use implementation="${SERVICE_TASK_IMPLEMENTATION}".`,
 				llmFixPrompt: `Set serviceTask '${taskId}' implementation to "${SERVICE_TASK_IMPLEMENTATION}" without changing its id or sequence-flow references.`,
@@ -308,8 +308,8 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 		const config = firstObject(firstObject(task.extensionElements)?.config);
 		if (!config) {
 			issues.push({
-				code: "SKILLSC_TASK_CONFIG",
-				title: `${task.element} must include skillsc config`,
+				code: "PI_WENDAO_TASK_CONFIG",
+				title: `${task.element} must include pi-wendao config`,
 				summary: `${task.element} '${taskId}' is missing extensionElements/skillsc:config.`,
 				llmFixPrompt: `Add extensionElements with skillsc:config to ${task.element} '${taskId}', including prompt, tools, inputs, and outputs fields.`,
 			});
@@ -319,8 +319,8 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 		for (const field of ["prompt", "tools", "inputs", "outputs"]) {
 			if (!Object.prototype.hasOwnProperty.call(config, field)) {
 				issues.push({
-					code: "SKILLSC_CONFIG_FIELD",
-					title: "skillsc config must include required fields",
+					code: "PI_WENDAO_CONFIG_FIELD",
+					title: "pi-wendao config must include required fields",
 					summary: `${task.element} '${taskId}' skillsc:config is missing '${field}'.`,
 					llmFixPrompt: `Add skillsc:${field} to ${task.element} '${taskId}' skillsc:config. Empty tools, inputs, or outputs are allowed when appropriate.`,
 				});
@@ -329,8 +329,8 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 
 		if (!readText(config.prompt).trim()) {
 			issues.push({
-				code: "SKILLSC_PROMPT_EMPTY",
-				title: "skillsc prompt must not be empty",
+				code: "PI_WENDAO_PROMPT_EMPTY",
+				title: "pi-wendao prompt must not be empty",
 				summary: `${task.element} '${taskId}' has an empty skillsc:prompt.`,
 				llmFixPrompt: `Write a focused task instruction in skillsc:prompt for ${task.element} '${taskId}'.`,
 			});
@@ -340,7 +340,7 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 			const declaredTools = csv(readText(config.tools));
 			if (task.element === "userTask" && declaredTools.length > 0) {
 				issues.push({
-					code: "SKILLSC_USER_TASK_TOOLS",
+					code: "PI_WENDAO_USER_TASK_TOOLS",
 					title: "userTask tools must be empty",
 					summary: `userTask '${taskId}' declares tool(s): ${declaredTools.join(", ")}.`,
 					llmFixPrompt: `Clear skillsc:tools on userTask '${taskId}'. A userTask is resolved by graph-local human input, not by runtime tools or an LLM agent.`,
@@ -350,8 +350,8 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 			const unsupportedTools = declaredTools.filter((tool) => !supportedToolNameSet.has(tool));
 			if (unsupportedTools.length > 0) {
 				issues.push({
-					code: "SKILLSC_TOOL_UNSUPPORTED",
-					title: "skillsc tools must be executable by the runtime",
+					code: "PI_WENDAO_TOOL_UNSUPPORTED",
+					title: "pi-wendao tools must be executable by the runtime",
 					summary: `${task.element} '${taskId}' declares unsupported tool(s): ${unsupportedTools.join(", ")}.`,
 					llmFixPrompt: `Replace or remove unsupported tool(s) on ${task.element} '${taskId}'. Runtime-registered tools are: ${supportedToolNames.join(", ")}.`,
 				});
@@ -360,13 +360,13 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 
 		for (const field of ["inputs", "outputs"]) {
 			if (!Object.prototype.hasOwnProperty.call(config, field)) continue;
-			const invalidNames = csv(readText(config[field])).filter((name) => !SKILLSC_VARIABLE_NAME_PATTERN.test(name));
+			const invalidNames = csv(readText(config[field])).filter((name) => !PI_WENDAO_VARIABLE_NAME_PATTERN.test(name));
 			if (invalidNames.length > 0) {
 				issues.push({
-					code: "SKILLSC_VARIABLE_IDENTIFIER",
-					title: "skillsc variable references must be simple identifiers",
+					code: "PI_WENDAO_VARIABLE_IDENTIFIER",
+					title: "pi-wendao variable references must be simple identifiers",
 					summary: `serviceTask '${taskId}' skillsc:${field} contains invalid variable name(s): ${invalidNames.join(", ")}.`,
-					llmFixPrompt: `Rename skillsc:${field} entries on serviceTask '${taskId}' to comma-separated identifiers matching ${SKILLSC_VARIABLE_NAME_PATTERN.source}, and update any downstream references consistently.`,
+					llmFixPrompt: `Rename skillsc:${field} entries on serviceTask '${taskId}' to comma-separated identifiers matching ${PI_WENDAO_VARIABLE_NAME_PATTERN.source}, and update any downstream references consistently.`,
 				});
 			}
 		}
@@ -378,7 +378,7 @@ function lintSkillscCompileContract(xml: string, options: { cwd: string }): Bpmn
 
 	return {
 		success: false,
-		output: renderSkillscCompileContractIssues(issues),
+		output: renderPiWendaoCompileContractIssues(issues),
 	};
 }
 
@@ -527,7 +527,7 @@ Repair attempt: ${attempt}
 Return corrected artifact XML only. pi-wendao compile will run qianji lint after your
 answer and feed any remaining lint output back into this repair loop.
 
-Preserve the raw skill intent and skillsc extension config, but make the
+Preserve the raw skill intent and pi-wendao extension config, but make the
 artifact(s) pass the qianji lint report below. Use the qianji template(s) as the
 supported executable skeleton.
 
@@ -588,16 +588,16 @@ Generate target ${targetDecision.target}. pi-wendao compile will run the qianji 
 after your response and will ask you to repair any structured lint failure.`;
 }
 
-interface SkillscCompileContractIssue {
+interface PiWendaoCompileContractIssue {
 	code: string;
 	title: string;
 	summary: string;
 	llmFixPrompt: string;
 }
 
-function renderSkillscCompileContractIssues(issues: SkillscCompileContractIssue[]): string {
+function renderPiWendaoCompileContractIssues(issues: PiWendaoCompileContractIssue[]): string {
 	const lines = [
-		"# Skillsc Compile Contract Failed",
+		"# PiWendao Compile Contract Failed",
 		"",
 		`Issues: ${issues.length}`,
 	];
@@ -626,15 +626,15 @@ function collectBoundaryEvents(processes: unknown): Record<string, unknown>[] {
 	return boundaryEvents;
 }
 
-type SkillscTaskElement = Record<string, unknown> & { element: string };
+type PiWendaoTaskElement = Record<string, unknown> & { element: string };
 
-const SKILLSC_CONFIG_TASK_ELEMENTS = ["serviceTask", "userTask"] as const;
+const PI_WENDAO_CONFIG_TASK_ELEMENTS = ["serviceTask", "userTask"] as const;
 
-function collectSkillscTasks(processes: unknown): SkillscTaskElement[] {
-	const tasks: SkillscTaskElement[] = [];
+function collectPiWendaoTasks(processes: unknown): PiWendaoTaskElement[] {
+	const tasks: PiWendaoTaskElement[] = [];
 	for (const process of asArray(processes)) {
 		if (!isObject(process)) continue;
-		for (const element of SKILLSC_CONFIG_TASK_ELEMENTS) {
+		for (const element of PI_WENDAO_CONFIG_TASK_ELEMENTS) {
 			for (const task of asArray(process[element])) {
 				if (isObject(task)) tasks.push({ ...task, element });
 			}
@@ -643,9 +643,9 @@ function collectSkillscTasks(processes: unknown): SkillscTaskElement[] {
 	return tasks;
 }
 
-function collectSkillscTaskIds(processes: unknown): Set<string> {
+function collectPiWendaoTaskIds(processes: unknown): Set<string> {
 	return new Set(
-		collectSkillscTasks(processes)
+		collectPiWendaoTasks(processes)
 			.map((task) => readString(task.id))
 			.filter(Boolean),
 	);
@@ -808,7 +808,7 @@ function createQianjiLintRunner(options: {
 }): BpmnLintRunner {
 	return async (xml: string) => {
 		const domain = options.domain ?? "bpmn";
-		const dir = await mkdtemp(join(tmpdir(), "skillsc-qianji-lint-"));
+		const dir = await mkdtemp(join(tmpdir(), "pi-wendao-qianji-lint-"));
 		const path = join(dir, domain === "bpmn" ? "workflow.bpmn" : "decision.dmn");
 		try {
 			await writeFile(path, xml, "utf-8");

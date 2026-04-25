@@ -57,7 +57,7 @@ Options:
 - `--event-fixture <path>` — qianji event fixture JSON
 - `--context-json <json>` — merge a JSON object after `--var` pairs
 - `--trace-frame-ms <ms>` — delay between streamed graph trace frames
-- `--model <model>` — accepted compatibility option for real host execution (defaults through `PI_WENDAO_MODEL`, `SKILLSC_MODEL`, or Anthropic model environment variables when set)
+- `--model <model>` — accepted compatibility option for real host execution (defaults through `PI_WENDAO_MODEL` or Anthropic model environment variables when set)
 - `--provider <provider>` — accepted compatibility option for model resolution
 - `--api-key <key>` — accepted compatibility option for model resolution
 - `--thinking <level>` — LLM thinking level for real host execution
@@ -153,7 +153,7 @@ snapshot before resuming execution.
 
 When real host execution is enabled, qianji still owns BPMN token scheduling,
 parallel gateways, joins, and checkpoint state. `pi-wendao` dispatches each
-pending service-task token through a `SkillscAgentHost` backend and returns the
+pending service-task token through a `PiWendaoAgentHost` backend and returns the
 token-scoped output fixture to qianji. `pi-wendao` loads the packaged
 pi-subagents and pi-intercom extensions by default, then uses pi-subagents
 `Agent` and `get_subagent_result` tools as the host backend when available.
@@ -244,7 +244,7 @@ host output. This is host recovery metadata, not a qianji checkpoint mode or CLI
 flag.
 
 Inter-session coordination follows the same ownership rule. The executor
-provides a `SkillscIntercomCorrelationState` boundary for `send`, `ask`,
+provides a `PiWendaoIntercomCorrelationState` boundary for `send`, `ask`,
 `reply`, and `pending` message state inspired by pi-intercom. Records are keyed
 by qianji instance id, activity id, token id, and message id when BPMN execution
 metadata is available. This lets a host adapter attach direct-message or
@@ -253,7 +253,7 @@ When loaded pi extensions provide the pi-intercom `intercom` tool, lower-level
 callers can use `createPiIntercomClientFromLoadedExtensions(...)` or
 `tryCreatePiIntercomClientFromLoadedExtensions(...)` to execute
 `list/send/ask/reply/pending/status` actions and optionally mirror message
-state into `SkillscIntercomCorrelationState`. `pi-wendao` packages pi-intercom as
+state into `PiWendaoIntercomCorrelationState`. `pi-wendao` packages pi-intercom as
 a built-in extension and also exposes project `.pi/extensions` and
 `.pi/agents/pi-wendao-worker.md` wrappers so pi-subagents child sessions can load
 the graph-local `intercom` tool surface. Under the default pi-ai host,

@@ -10,19 +10,19 @@ import type {
 	TSchema,
 } from "@mariozechner/pi-ai";
 
-export type SkillscThinkingLevel = "off" | PiAiThinkingLevel;
-export type SkillscAgentMessage = Message;
+export type PiWendaoThinkingLevel = "off" | PiAiThinkingLevel;
+export type PiWendaoAgentMessage = Message;
 
-export interface SkillscAgentToolResult<TDetails = unknown> {
+export interface PiWendaoAgentToolResult<TDetails = unknown> {
 	content: (TextContent | ImageContent)[];
 	details?: TDetails;
 }
 
-export type SkillscAgentToolUpdateCallback<TDetails = unknown> = (
-	partialResult: SkillscAgentToolResult<TDetails>,
+export type PiWendaoAgentToolUpdateCallback<TDetails = unknown> = (
+	partialResult: PiWendaoAgentToolResult<TDetails>,
 ) => void;
 
-export interface SkillscAgentTool<
+export interface PiWendaoAgentTool<
 	TParameters extends TSchema = TSchema,
 	TDetails = unknown,
 > extends Tool<TParameters> {
@@ -32,35 +32,35 @@ export interface SkillscAgentTool<
 		toolCallId: string,
 		params: Static<TParameters>,
 		signal?: AbortSignal,
-		onUpdate?: SkillscAgentToolUpdateCallback<TDetails>,
-	) => Promise<SkillscAgentToolResult<TDetails>>;
+		onUpdate?: PiWendaoAgentToolUpdateCallback<TDetails>,
+	) => Promise<PiWendaoAgentToolResult<TDetails>>;
 	executionMode?: "parallel" | "sequential";
 }
 
-export type SkillscAgentEvent =
+export type PiWendaoAgentEvent =
 	| { type: "agent_start" }
-	| { type: "agent_end"; messages: SkillscAgentMessage[] }
+	| { type: "agent_end"; messages: PiWendaoAgentMessage[] }
 	| { type: "turn_start" }
-	| { type: "turn_end"; message: SkillscAgentMessage; toolResults: ToolResultMessage[] }
-	| { type: "message_start"; message: SkillscAgentMessage }
+	| { type: "turn_end"; message: PiWendaoAgentMessage; toolResults: ToolResultMessage[] }
+	| { type: "message_start"; message: PiWendaoAgentMessage }
 	| {
 		type: "message_update";
-		message: SkillscAgentMessage;
+		message: PiWendaoAgentMessage;
 		assistantMessageEvent: AssistantMessageEvent;
 	}
-	| { type: "message_end"; message: SkillscAgentMessage }
+	| { type: "message_end"; message: PiWendaoAgentMessage }
 	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
 	| {
 		type: "tool_execution_update";
 		toolCallId: string;
 		toolName: string;
 		args: unknown;
-		partialResult: SkillscAgentToolResult;
+		partialResult: PiWendaoAgentToolResult;
 	}
 	| {
 		type: "tool_execution_end";
 		toolCallId: string;
 		toolName: string;
-		result: SkillscAgentToolResult;
+		result: PiWendaoAgentToolResult;
 		isError: boolean;
 	};

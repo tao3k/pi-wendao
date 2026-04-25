@@ -1,4 +1,4 @@
-import type { SkillscAgentTool } from "./agent-runtime-types.js";
+import type { PiWendaoAgentTool } from "./agent-runtime-types.js";
 import type {
 	PiLoadedExtensionsLike,
 	PiRegisteredToolDefinition,
@@ -6,11 +6,11 @@ import type {
 	PiToolResultLike,
 } from "./pi-subagents-runtime.js";
 import type {
-	SkillscIntercomAttachment,
-	SkillscIntercomCorrelationState,
-	SkillscIntercomExecutionRef,
-	SkillscIntercomMessage,
-	SkillscIntercomSession,
+	PiWendaoIntercomAttachment,
+	PiWendaoIntercomCorrelationState,
+	PiWendaoIntercomExecutionRef,
+	PiWendaoIntercomMessage,
+	PiWendaoIntercomSession,
 } from "./intercom-correlation.js";
 
 export type PiIntercomAction = "list" | "send" | "ask" | "reply" | "pending" | "status";
@@ -19,25 +19,25 @@ export interface PiIntercomToolParams {
 	action: PiIntercomAction;
 	to?: string;
 	message?: string;
-	attachments?: SkillscIntercomAttachment[];
+	attachments?: PiWendaoIntercomAttachment[];
 	replyTo?: string;
 }
 
 export interface PiIntercomMessageRequest {
 	to: string;
 	message: string;
-	attachments?: SkillscIntercomAttachment[];
+	attachments?: PiWendaoIntercomAttachment[];
 	replyTo?: string;
-	execution?: SkillscIntercomExecutionRef;
+	execution?: PiWendaoIntercomExecutionRef;
 	now?: number;
 }
 
 export interface PiIntercomReplyRequest {
 	message: string;
 	to?: string;
-	attachments?: SkillscIntercomAttachment[];
+	attachments?: PiWendaoIntercomAttachment[];
 	replyTo?: string;
-	execution?: SkillscIntercomExecutionRef;
+	execution?: PiWendaoIntercomExecutionRef;
 	now?: number;
 }
 
@@ -70,7 +70,7 @@ export interface PiIntercomRegisteredToolClientOptions {
 	signal?: AbortSignal;
 	toolCallIdPrefix?: string;
 	onUpdate?: unknown;
-	correlation?: SkillscIntercomCorrelationState;
+	correlation?: PiWendaoIntercomCorrelationState;
 }
 
 interface PiIntercomToolResultLike extends PiToolResultLike {
@@ -221,7 +221,7 @@ export function createPiIntercomClientFromRegisteredTools(
 	};
 }
 
-export function createPiIntercomAgentTool(client: PiIntercomClient): SkillscAgentTool<any> {
+export function createPiIntercomAgentTool(client: PiIntercomClient): PiWendaoAgentTool<any> {
 	return {
 		name: "intercom",
 		label: "Intercom",
@@ -281,7 +281,7 @@ async function executeRegisteredTool(
 	options: PiIntercomRegisteredToolClientOptions,
 ): Promise<PiIntercomToolResultLike> {
 	return tool.execute(
-		`${options.toolCallIdPrefix ?? "skillsc"}:intercom:${params.action}:${Date.now()}`,
+		`${options.toolCallIdPrefix ?? "pi-wendao"}:intercom:${params.action}:${Date.now()}`,
 		params as unknown as Record<string, unknown>,
 		options.signal,
 		options.onUpdate,
@@ -351,7 +351,7 @@ function normalizePiIntercomToolParams(params: unknown): PiIntercomToolParams {
 	};
 }
 
-function isIntercomAttachments(value: unknown): value is SkillscIntercomAttachment[] {
+function isIntercomAttachments(value: unknown): value is PiWendaoIntercomAttachment[] {
 	if (value === undefined) return false;
 	if (!Array.isArray(value)) {
 		throw new Error("intercom attachments must be an array");
@@ -378,7 +378,7 @@ function isIntercomAttachments(value: unknown): value is SkillscIntercomAttachme
 	return true;
 }
 
-function sessionFromTarget(target: string): SkillscIntercomSession {
+function sessionFromTarget(target: string): PiWendaoIntercomSession {
 	return {
 		id: target,
 		name: target,
@@ -389,7 +389,7 @@ function replyMessageFromResult(
 	result: PiIntercomToolResult,
 	replyTo: string,
 	now: number,
-): SkillscIntercomMessage {
+): PiWendaoIntercomMessage {
 	return {
 		id: result.messageId ?? `${replyTo}:reply`,
 		text: result.text,

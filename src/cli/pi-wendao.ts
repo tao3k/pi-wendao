@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { extname, resolve as resolvePath } from "node:path";
 import { program } from "commander";
 import { XMLParser } from "fast-xml-parser";
-import type { SkillscThinkingLevel } from "../executor/agent-runtime-types.js";
+import type { PiWendaoThinkingLevel } from "../executor/agent-runtime-types.js";
 import { validateInstanceId } from "./instance-id.js";
 import { compileSkill } from "../compiler/compiler.js";
 import { execute } from "../executor/executor.js";
@@ -19,7 +19,7 @@ import {
 	formatQianjiHostWorkEventForLog,
 	type Renderer,
 } from "../output/renderer.js";
-import { resolveModel, resolveSkillscPackageRoot, type ResolvedModel } from "./model-resolver.js";
+import { resolveModel, resolvePiWendaoPackageRoot, type ResolvedModel } from "./model-resolver.js";
 import {
 	createCliPiIntercomAgentTool,
 	hasLoadedPiIntercomTool,
@@ -30,7 +30,7 @@ import { createCliPiSubagentsHost } from "./pi-subagents.js";
 import { launchPiWendaoChatTui } from "./pi-wendao-chat-tui.js";
 
 const DEFAULT_EXECUTION_MODEL = "anthropic/claude-sonnet-4-20250514";
-const DEFAULT_THINKING_LEVEL: SkillscThinkingLevel = "medium";
+const DEFAULT_THINKING_LEVEL: PiWendaoThinkingLevel = "medium";
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 const parser = new XMLParser({
 	ignoreAttributes: false,
@@ -138,7 +138,7 @@ program
 	.action(async (workflowPath: string | undefined, options: PiWendaoCliOptions) => {
 		try {
 			const invocationCwd = process.cwd();
-			const piContextCwd = resolveSkillscPackageRoot();
+			const piContextCwd = resolvePiWendaoPackageRoot();
 			const resolvedDmnPaths = resolveCliPaths(invocationCwd, options.dmn ?? []);
 			const resolvedExtensionPaths = resolveCliPaths(invocationCwd, options.extension ?? []);
 			const resolvedHostFixturePath = resolveOptionalCliPath(invocationCwd, options.hostFixture);
@@ -471,7 +471,7 @@ async function runWorkflowInRenderer(params: {
 	resolvedHostFixturePath?: string;
 	resolvedEventFixturePath?: string;
 	resolvedModel?: ResolvedModel;
-	thinkingLevel: SkillscThinkingLevel;
+	thinkingLevel: PiWendaoThinkingLevel;
 }): Promise<{ success: boolean }> {
 	const source = readFileSync(params.resolvedWorkflowPath, "utf-8");
 	const renderer = params.renderer;
@@ -690,7 +690,7 @@ async function resolveWorkflowArgument(
 		piContextCwd: string;
 		resolvedDmnPaths: string[];
 		resolvedExtensionPaths: string[];
-		thinkingLevel: SkillscThinkingLevel;
+		thinkingLevel: PiWendaoThinkingLevel;
 	},
 ): Promise<WorkflowArgumentResolution> {
 	if (workflowPath) return { kind: "workflow", workflowPath };
@@ -837,7 +837,6 @@ function readString(value: unknown): string {
 function resolveExecutionModelPattern(explicitModel: string | undefined): string {
 	if (explicitModel) return explicitModel;
 	const envModel = process.env.PI_WENDAO_MODEL
-		?? process.env.SKILLSC_MODEL
 		?? process.env.ANTHROPIC_MODEL
 		?? process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
 		?? process.env.ANTHROPIC_SMALL_FAST_MODEL;
@@ -846,15 +845,14 @@ function resolveExecutionModelPattern(explicitModel: string | undefined): string
 	return `anthropic/${envModel}`;
 }
 
-function resolveExecutionThinkingLevel(explicitLevel: string | undefined): SkillscThinkingLevel {
+function resolveExecutionThinkingLevel(explicitLevel: string | undefined): PiWendaoThinkingLevel {
 	const raw = explicitLevel
 		?? process.env.PI_WENDAO_THINKING_LEVEL
-		?? process.env.SKILLSC_THINKING_LEVEL
 		?? DEFAULT_THINKING_LEVEL;
 	if (!THINKING_LEVELS.has(raw)) {
 		throw new Error(`invalid thinking level "${raw}"; expected off, minimal, low, medium, high, or xhigh`);
 	}
-	return raw as SkillscThinkingLevel;
+	return raw as PiWendaoThinkingLevel;
 }
 
 function createSubagentUpdateAppender(append: (line: string) => void): (line: string) => void {

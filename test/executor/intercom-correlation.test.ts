@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-	SkillscIntercomCorrelationState,
-	SkillscIntercomReplyTracker,
-	buildSkillscIntercomCorrelationKey,
-	createInMemorySkillscIntercomRecordStore,
-	createJsonFileSkillscIntercomRecordStore,
+	PiWendaoIntercomCorrelationState,
+	PiWendaoIntercomReplyTracker,
+	buildPiWendaoIntercomCorrelationKey,
+	createInMemoryPiWendaoIntercomRecordStore,
+	createJsonFilePiWendaoIntercomRecordStore,
 } from "../../src/executor/intercom-correlation.js";
 
 const tempDirs: string[] = [];
@@ -16,7 +16,7 @@ const self = { id: "session-worker", name: "worker" };
 const planner = { id: "session-planner", name: "planner" };
 const reviewer = { id: "session-reviewer", name: "reviewer" };
 
-describe("SkillscIntercomReplyTracker", () => {
+describe("PiWendaoIntercomReplyTracker", () => {
 	afterEach(() => {
 		for (const dir of tempDirs.splice(0)) {
 			rmSync(dir, { recursive: true, force: true });
@@ -24,7 +24,7 @@ describe("SkillscIntercomReplyTracker", () => {
 	});
 
 	it("resolves a reply from the current turn context", () => {
-		const tracker = new SkillscIntercomReplyTracker();
+		const tracker = new PiWendaoIntercomReplyTracker();
 		tracker.queueTurnContext({
 			from: planner,
 			to: self,
@@ -36,7 +36,7 @@ describe("SkillscIntercomReplyTracker", () => {
 			},
 			receivedAt: 1000,
 			execution: {
-				instanceId: "skillsc-complex",
+				instanceId: "pi-wendao-complex",
 				activityId: "Task_BranchA",
 				tokenId: 11,
 			},
@@ -49,7 +49,7 @@ describe("SkillscIntercomReplyTracker", () => {
 	});
 
 	it("resolves a single pending ask without an explicit target", () => {
-		const tracker = new SkillscIntercomReplyTracker();
+		const tracker = new PiWendaoIntercomReplyTracker();
 		tracker.recordIncomingAsk({
 			from: planner,
 			message: {
@@ -65,7 +65,7 @@ describe("SkillscIntercomReplyTracker", () => {
 	});
 
 	it("uses sender id or name to disambiguate multiple pending asks", () => {
-		const tracker = new SkillscIntercomReplyTracker();
+		const tracker = new PiWendaoIntercomReplyTracker();
 		tracker.recordIncomingAsk({
 			from: planner,
 			message: {
@@ -95,7 +95,7 @@ describe("SkillscIntercomReplyTracker", () => {
 	});
 
 	it("expires pending asks after the configured timeout", () => {
-		const tracker = new SkillscIntercomReplyTracker({ askTimeoutMs: 50 });
+		const tracker = new PiWendaoIntercomReplyTracker({ askTimeoutMs: 50 });
 		tracker.recordIncomingAsk({
 			from: planner,
 			message: {
@@ -114,13 +114,13 @@ describe("SkillscIntercomReplyTracker", () => {
 	});
 
 	it("builds token-scoped BPMN correlation keys", () => {
-		expect(buildSkillscIntercomCorrelationKey({
-			instanceId: "skillsc-jump-parallel-test",
+		expect(buildPiWendaoIntercomCorrelationKey({
+			instanceId: "pi-wendao-jump-parallel-test",
 			processId: "Process_1",
 			activityId: "Task_BranchA",
 			tokenId: 11,
 		}, "ask-branch-a")).toBe(JSON.stringify({
-			instanceId: "skillsc-jump-parallel-test",
+			instanceId: "pi-wendao-jump-parallel-test",
 			processId: "Process_1",
 			activityId: "Task_BranchA",
 			tokenId: 11,
@@ -129,7 +129,7 @@ describe("SkillscIntercomReplyTracker", () => {
 	});
 });
 
-describe("SkillscIntercomCorrelationState", () => {
+describe("PiWendaoIntercomCorrelationState", () => {
 	afterEach(() => {
 		for (const dir of tempDirs.splice(0)) {
 			rmSync(dir, { recursive: true, force: true });
@@ -137,8 +137,8 @@ describe("SkillscIntercomCorrelationState", () => {
 	});
 
 	it("records send, ask, pending, and reply state transitions", async () => {
-		const store = createInMemorySkillscIntercomRecordStore();
-		const state = new SkillscIntercomCorrelationState({
+		const store = createInMemoryPiWendaoIntercomRecordStore();
+		const state = new PiWendaoIntercomCorrelationState({
 			self,
 			store,
 			askTimeoutMs: 1000,
@@ -196,8 +196,8 @@ describe("SkillscIntercomCorrelationState", () => {
 	});
 
 	it("marks expired pending asks in the store", async () => {
-		const store = createInMemorySkillscIntercomRecordStore();
-		const state = new SkillscIntercomCorrelationState({
+		const store = createInMemoryPiWendaoIntercomRecordStore();
+		const state = new PiWendaoIntercomCorrelationState({
 			self,
 			store,
 			askTimeoutMs: 10,
@@ -214,11 +214,11 @@ describe("SkillscIntercomCorrelationState", () => {
 	});
 
 	it("persists records in a JSON store", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "skillsc-intercom-store-"));
+		const dir = mkdtempSync(join(tmpdir(), "pi-wendao-intercom-store-"));
 		tempDirs.push(dir);
 		const storePath = join(dir, "intercom.json");
-		const firstStore = createJsonFileSkillscIntercomRecordStore(storePath);
-		const state = new SkillscIntercomCorrelationState({
+		const firstStore = createJsonFilePiWendaoIntercomRecordStore(storePath);
+		const state = new PiWendaoIntercomCorrelationState({
 			self,
 			store: firstStore,
 		});
@@ -234,7 +234,7 @@ describe("SkillscIntercomCorrelationState", () => {
 			},
 		});
 
-		const secondStore = createJsonFileSkillscIntercomRecordStore(storePath);
+		const secondStore = createJsonFilePiWendaoIntercomRecordStore(storePath);
 		expect((await secondStore.get(inbound.key))?.context.message.text).toBe("Persist me");
 		expect((await secondStore.list()).map((record) => record.key)).toEqual([inbound.key]);
 	});

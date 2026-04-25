@@ -165,7 +165,7 @@ describe("pi-subagents runtime tool adapter", () => {
 	});
 
 	it("creates a checkpoint-aware host from loaded extensions", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "skillsc-runtime-host-"));
+		const dir = mkdtempSync(join(tmpdir(), "pi-wendao-runtime-host-"));
 		tempDirs.push(dir);
 		const storePath = join(dir, "subagents.json");
 		const ctx = { cwd: "/tmp/project" };
@@ -367,7 +367,7 @@ describe("pi-subagents runtime tool adapter", () => {
 	});
 
 	it("discovers configured pi extensions and creates a runtime host", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "skillsc-discover-pi-subagents-"));
+		const dir = mkdtempSync(join(tmpdir(), "pi-wendao-discover-pi-subagents-"));
 		tempDirs.push(dir);
 		const extensionPath = join(dir, "subagents-fixture.ts");
 		writeFileSync(extensionPath, `

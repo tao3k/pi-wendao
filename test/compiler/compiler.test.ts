@@ -218,8 +218,8 @@ describe("compileSkill", () => {
 		expect(lintedXml.at(-1)?.trim()).toBe(repairedXml.trim());
 	});
 
-	it("feeds skillsc compile contract failures back through the lint repair loop", async () => {
-		const missingSkillscConfigXml = `<?xml version="1.0"?>
+	it("feeds pi-wendao compile contract failures back through the lint repair loop", async () => {
+		const missingPiWendaoConfigXml = `<?xml version="1.0"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
   <process id="P1" isExecutable="true">
     <startEvent id="S1"/>
@@ -233,7 +233,7 @@ describe("compileSkill", () => {
 		const lintedXml: string[] = [];
 
 		faux.setResponses([
-			fauxAssistantMessage("```xml\n" + missingSkillscConfigXml + "\n```"),
+			fauxAssistantMessage("```xml\n" + missingPiWendaoConfigXml + "\n```"),
 			fauxAssistantMessage("```xml\n" + repairedXml + "\n```"),
 		]);
 
@@ -254,7 +254,7 @@ describe("compileSkill", () => {
 		expect(result.success).toBe(true);
 		expect(result.bpmnXml?.trim()).toBe(repairedXml.trim());
 		expect(lintedXml).toHaveLength(2);
-		expect(lintedXml[0]).toBe(missingSkillscConfigXml);
+		expect(lintedXml[0]).toBe(missingPiWendaoConfigXml);
 	});
 
 	it("lints BPMN and DMN artifacts in the compile loop", async () => {
@@ -295,7 +295,7 @@ describe("compileSkill", () => {
 		expect(result.dmnXml).toBe(dmn);
 	});
 
-	it("reports unsupported skillsc runtime fields as lint feedback", async () => {
+	it("reports unsupported pi-wendao runtime fields as lint feedback", async () => {
 		const unsupportedRuntimeFieldsXml = `<?xml version="1.0"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:skillsc="http://skillsc.dev/bpmn/extensions">
@@ -331,9 +331,9 @@ describe("compileSkill", () => {
 		});
 
 		expect(result.success).toBe(false);
-		expect(result.errors?.[0]).toContain("SKILLSC_TOOL_UNSUPPORTED");
+		expect(result.errors?.[0]).toContain("PI_WENDAO_TOOL_UNSUPPORTED");
 		expect(result.errors?.[0]).toContain("curl");
-		expect(result.errors?.[0]).toContain("SKILLSC_VARIABLE_IDENTIFIER");
+		expect(result.errors?.[0]).toContain("PI_WENDAO_VARIABLE_IDENTIFIER");
 		expect(result.errors?.[0]).toContain("source url");
 		expect(result.errors?.[0]).toContain("report summary");
 	});
@@ -377,7 +377,7 @@ describe("compileSkill", () => {
 		});
 
 		expect(result.success).toBe(false);
-		expect(result.errors?.[0]).toContain("SKILLSC_TASK_ERROR_BOUNDARY_UNSUPPORTED");
+		expect(result.errors?.[0]).toContain("PI_WENDAO_TASK_ERROR_BOUNDARY_UNSUPPORTED");
 		expect(result.errors?.[0]).toContain("BoundaryError_Risky");
 		expect(result.errors?.[0]).toContain("exclusiveGateway");
 	});

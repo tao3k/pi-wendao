@@ -14,7 +14,7 @@ import {
 	createJsonFilePiSubagentsRunStore,
 	createPiSubagentsHost,
 } from "./pi-subagents-host.js";
-import type { SkillscAgentHost } from "./agent-host.js";
+import type { PiWendaoAgentHost } from "./agent-host.js";
 
 export interface PiToolResultContent {
 	type: string;
@@ -88,7 +88,7 @@ export interface DiscoverPiSubagentsRuntimeHostOptions extends Omit<PiSubagentsR
 
 export interface DiscoverPiSubagentsRuntimeHostResult {
 	loadResult: PiLoadedExtensionsLike;
-	host?: SkillscAgentHost;
+	host?: PiWendaoAgentHost;
 	errors: Array<{ path: string; error: string }>;
 }
 
@@ -149,14 +149,14 @@ export async function discoverPiSubagentsHost(
 
 export function createPiSubagentsHostFromLoadedExtensions(
 	options: PiSubagentsRuntimeHostOptions,
-): SkillscAgentHost {
+): PiWendaoAgentHost {
 	const hostOptions = buildRuntimeHostOptions(options);
 	return createPiSubagentsHost(hostOptions);
 }
 
 export function tryCreatePiSubagentsHostFromLoadedExtensions(
 	options: PiSubagentsRuntimeHostOptions,
-): SkillscAgentHost | undefined {
+): PiWendaoAgentHost | undefined {
 	const tools = collectPiSubagentsRegisteredTools(options.loadResult);
 	if (!tools.Agent || !tools.get_subagent_result) return undefined;
 	return createPiSubagentsHostFromLoadedExtensions(options);
@@ -232,7 +232,7 @@ async function executeRegisteredTool(
 	callbacks?: PiSubagentsClientCallbacks,
 ): Promise<PiToolResultLike> {
 	const operation = () => tool.execute(
-		`${options.toolCallIdPrefix ?? "skillsc"}:${name}:${Date.now()}`,
+		`${options.toolCallIdPrefix ?? "pi-wendao"}:${name}:${Date.now()}`,
 		params as unknown as Record<string, unknown>,
 		options.signal,
 		mergeToolUpdateCallbacks(callbacks?.onUpdate, options.onUpdate),

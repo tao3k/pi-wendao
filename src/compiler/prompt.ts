@@ -162,7 +162,7 @@ for the raw user response.
 
 ## Extension Elements
 
-Each serviceTask and userTask MUST include skillsc extension elements describing
+Each serviceTask and userTask MUST include pi-wendao extension elements describing
 what the runtime should do:
 
 \`\`\`xml
@@ -208,7 +208,7 @@ the gateway that outputs a boolean, then route on that boolean. Use the
 qianji-bpmn-engine supports native bounded repeat execution. Prefer
 \`standardLoopCharacteristics\` for bounded retries and
 \`multiInstanceLoopCharacteristics\` for bounded per-item work or independent
-fan-out. Keep repeat metadata on skillsc serviceTask nodes. The compile loop's
+fan-out. Keep repeat metadata on pi-wendao serviceTask nodes. The compile loop's
 \`qianji_lint\` tool is the authority for exact repeat syntax and repair
 guidance.
 

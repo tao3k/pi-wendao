@@ -14,7 +14,7 @@ import {
 	wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
-import type { SkillscAgentEvent, SkillscAgentMessage } from "../executor/agent-runtime-types.js";
+import type { PiWendaoAgentEvent, PiWendaoAgentMessage } from "../executor/agent-runtime-types.js";
 import type { ResolvedModel } from "./model-resolver.js";
 import { GraphView } from "../output/graph-view.js";
 import {
@@ -494,7 +494,7 @@ function createChatRenderer(options: {
 			options.recordWorkflowContext?.("tool", text);
 			options.refresh();
 		},
-		onAgentEvent(event: SkillscAgentEvent) {
+		onAgentEvent(event: PiWendaoAgentEvent) {
 			options.view.appendAgentEvent(event);
 			const summary = summarizeAgentEventForWorkflowContext(event);
 			if (summary) options.recordWorkflowContext?.(summary.role, summary.text);
@@ -579,7 +579,7 @@ class PiWendaoChatView implements Component {
 		}
 	}
 
-	appendAgentEvent(event: SkillscAgentEvent): void {
+	appendAgentEvent(event: PiWendaoAgentEvent): void {
 		switch (event.type) {
 			case "message_start":
 				if (event.message.role === "assistant") this.startAssistantMessage();
@@ -895,7 +895,7 @@ function summarizeToolUpdate(result: { content?: unknown; details?: unknown }): 
 	return formatVariableValueForLog(result.details ?? result);
 }
 
-function summarizeAgentEventForWorkflowContext(event: SkillscAgentEvent): { role: TranscriptRole; text: string } | undefined {
+function summarizeAgentEventForWorkflowContext(event: PiWendaoAgentEvent): { role: TranscriptRole; text: string } | undefined {
 	switch (event.type) {
 		case "agent_start":
 			return { role: "agent", text: "agent started" };
@@ -903,7 +903,7 @@ function summarizeAgentEventForWorkflowContext(event: SkillscAgentEvent): { role
 			return { role: "agent", text: "agent ended" };
 		case "message_end": {
 			if (event.message.role !== "assistant") return undefined;
-			const text = extractSkillscMessageText(event.message);
+			const text = extractPiWendaoMessageText(event.message);
 			return text.trim() ? { role: "assistant", text } : undefined;
 		}
 		case "tool_execution_start": {
@@ -925,7 +925,7 @@ function summarizeAgentEventForWorkflowContext(event: SkillscAgentEvent): { role
 	}
 }
 
-function extractSkillscMessageText(message: SkillscAgentMessage): string {
+function extractPiWendaoMessageText(message: PiWendaoAgentMessage): string {
 	if (message.role === "user") {
 		return typeof message.content === "string"
 			? message.content
