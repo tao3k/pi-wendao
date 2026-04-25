@@ -205,6 +205,7 @@ describe("executor", () => {
 				instanceId: "wf_token_host",
 				context: { items: ["alpha", "beta"] },
 				model: faux.getModel(),
+				apiKey: "test-key",
 			});
 
 			expect(result.success).toBe(true);
@@ -346,6 +347,7 @@ describe("executor", () => {
 				qianjiCommand: makeFakeSequentialExternalHostQianjiCommand(),
 				instanceId: "wf_sequential_host",
 				model: faux.getModel(),
+				apiKey: "test-key",
 			});
 
 			expect(result.success).toBe(true);

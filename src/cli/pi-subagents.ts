@@ -3,6 +3,8 @@ import type { Model } from "@mariozechner/pi-ai";
 import {
 	ExtensionRunner,
 	SessionManager,
+	type AgentSession,
+	type CompactOptions,
 	type ExtensionContext,
 	type LoadExtensionsResult,
 	type ModelRegistry,
@@ -26,6 +28,7 @@ export interface CreateCliExtensionContextOptions {
 	modelRegistry: ModelRegistry;
 	cwd: string;
 	model?: Model<string>;
+	session?: AgentSession;
 	signal?: AbortSignal;
 	onToolEvent?: (event: PiSubagentsHostToolEvent) => void;
 }
@@ -71,51 +74,114 @@ export function createCliExtensionContext(
 ): ExtensionContext {
 	let currentModel: Model<any> | undefined = options.model;
 	let runner: ExtensionRunner;
+	const session = options.session;
+	const sessionManager = session?.sessionManager ?? SessionManager.inMemory(options.cwd);
 	const actions = {
-		sendMessage: () => {},
-		sendUserMessage: () => {},
-		appendEntry: () => {},
-		setSessionName: () => {},
-		getSessionName: () => undefined,
-		setLabel: () => {},
-		getActiveTools: () => [],
-		getAllTools: () => runner.getAllRegisteredTools().map((tool) => ({
+		sendMessage: (...args: Parameters<AgentSession["sendCustomMessage"]>) => {
+			if (!session) return;
+			void session.sendCustomMessage(...args).catch((error: unknown) => reportExtensionActionError(runner, "send_message", error));
+		},
+		sendUserMessage: (...args: Parameters<AgentSession["sendUserMessage"]>) => {
+			if (!session) return;
+			void session.sendUserMessage(...args).catch((error: unknown) => reportExtensionActionError(runner, "send_user_message", error));
+		},
+		appendEntry: (customType: string, data?: unknown) => {
+			session?.sessionManager.appendCustomEntry(customType, data);
+		},
+		setSessionName: (name: string) => {
+			session?.sessionManager.appendSessionInfo(name);
+		},
+		getSessionName: () => session?.sessionName,
+		setLabel: (entryId: string, label: string | undefined) => {
+			session?.sessionManager.appendLabelChange(entryId, label);
+		},
+		getActiveTools: () => session?.getActiveToolNames() ?? [],
+		getAllTools: () => session?.getAllTools() ?? runner.getAllRegisteredTools().map((tool) => ({
 			name: tool.definition.name,
 			description: tool.definition.description,
 			parameters: tool.definition.parameters,
 			sourceInfo: tool.sourceInfo,
 		})),
-		setActiveTools: () => {},
-		refreshTools: () => {},
-		getCommands: () => [],
+		setActiveTools: (toolNames: string[]) => {
+			session?.setActiveToolsByName(toolNames);
+		},
+		refreshTools: () => {
+			if (!session) return;
+			void session.reload().catch((error: unknown) => reportExtensionActionError(runner, "refresh_tools", error));
+		},
+		getCommands: () => [
+			...runner.getRegisteredCommands().map((command) => ({
+				name: command.invocationName,
+				description: command.description,
+				source: "extension" as const,
+				sourceInfo: command.sourceInfo,
+			})),
+			...(session?.promptTemplates.map((template) => ({
+				name: template.name,
+				description: template.description,
+				source: "prompt" as const,
+				sourceInfo: template.sourceInfo,
+			})) ?? []),
+			...(session?.resourceLoader.getSkills().skills.map((skill) => ({
+				name: `skill:${skill.name}`,
+				description: skill.description,
+				source: "skill" as const,
+				sourceInfo: skill.sourceInfo,
+			})) ?? []),
+		],
 		setModel: async (model: Model<any>) => {
 			currentModel = model;
+			if (session) {
+				if (!session.modelRegistry.hasConfiguredAuth(model)) return false;
+				await session.setModel(model);
+			}
 			return true;
 		},
-		getThinkingLevel: () => "medium" as const,
-		setThinkingLevel: () => {},
+		getThinkingLevel: () => session?.thinkingLevel ?? "medium" as const,
+		setThinkingLevel: (level: AgentSession["thinkingLevel"]) => {
+			session?.setThinkingLevel(level);
+		},
 	};
 	const contextActions = {
-		getModel: () => currentModel,
-		isIdle: () => true,
-		getSignal: () => options.signal,
-		abort: () => {},
-		hasPendingMessages: () => false,
+		getModel: () => session?.model ?? currentModel,
+		isIdle: () => !session?.isStreaming,
+		getSignal: () => session?.agent.signal ?? options.signal,
+		abort: () => {
+			if (session) void session.abort();
+		},
+		hasPendingMessages: () => (session?.pendingMessageCount ?? 0) > 0,
 		shutdown: () => {},
-		getContextUsage: () => undefined,
-		compact: () => {},
-		getSystemPrompt: () => "",
+		getContextUsage: () => session?.getContextUsage(),
+		compact: (compactOptions?: CompactOptions) => {
+			if (!session) return;
+			void session.compact(compactOptions?.customInstructions)
+				.then((result) => compactOptions?.onComplete?.(result))
+				.catch((error: unknown) => {
+					const err = error instanceof Error ? error : new Error(String(error));
+					compactOptions?.onError?.(err);
+					reportExtensionActionError(runner, "compact", err);
+				});
+		},
+		getSystemPrompt: () => session?.systemPrompt ?? "",
 	};
 
 	runner = new ExtensionRunner(
 		withPiWendaoToolEventBridge(options.loadResult.extensions, options.onToolEvent),
 		options.loadResult.runtime,
 		options.cwd,
-		SessionManager.inMemory(options.cwd),
+		sessionManager,
 		options.modelRegistry,
 	);
 	runner.bindCore(actions, contextActions);
 	return runner.createContext();
+}
+
+function reportExtensionActionError(runner: ExtensionRunner, event: string, error: unknown): void {
+	runner.emitError({
+		extensionPath: "<pi-wendao-session>",
+		event,
+		error: error instanceof Error ? error.message : String(error),
+	});
 }
 
 function withPiWendaoToolEventBridge(

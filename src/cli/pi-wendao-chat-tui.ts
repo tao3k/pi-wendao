@@ -1,7 +1,9 @@
-import type { Message, Model, ThinkingLevel as PiAiThinkingLevel, UserMessage } from "@mariozechner/pi-ai";
-import { streamSimple } from "@mariozechner/pi-ai";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import type { Message, ThinkingLevel as PiAiThinkingLevel } from "@mariozechner/pi-ai";
+import {
+	createAgentSessionFromServices,
+	SessionManager,
+	type AgentSession,
+} from "@mariozechner/pi-coding-agent";
 import {
 	Editor,
 	Key,
@@ -16,8 +18,13 @@ import {
 	wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
-import type { PiWendaoAgentEvent, PiWendaoAgentMessage } from "../executor/agent-runtime-types.js";
-import { resolvePiWendaoPackageRoot, type ResolvedModel } from "./model-resolver.js";
+import {
+	toPiWendaoAgentEvent,
+	type PiWendaoAgentEvent,
+	type PiWendaoAgentMessage,
+} from "../executor/agent-runtime-types.js";
+import { readPiWendaoPrompt } from "../pi-resources.js";
+import { createPiWendaoAgentServices, type ResolvedModel } from "./model-resolver.js";
 import { GraphView } from "../output/graph-view.js";
 import {
 	formatArgsForLog,
@@ -46,7 +53,7 @@ export interface PiWendaoChatTuiOptions {
 	invocationCwd: string;
 	showInstances: () => Promise<PiWendaoChatCommandOutput>;
 	showInstanceStatus: (instanceId: string, workflowPath?: string) => Promise<PiWendaoChatCommandOutput>;
-	runWorkflow?: (workflowPath: string, renderer: Renderer) => Promise<{ success: boolean }>;
+	runWorkflow?: (workflowPath: string, renderer: Renderer, session: AgentSession) => Promise<{ success: boolean }>;
 }
 
 export type PiWendaoChatCommand =
@@ -65,7 +72,7 @@ interface TranscriptEntry {
 	text: string;
 }
 
-const CHAT_SYSTEM_PROMPT_PATH = join(".pi", "prompts", "pi-wendao-chat-system.md");
+const CHAT_SYSTEM_PROMPT_FILE = "pi-wendao-chat-system.md";
 const MAX_WORKFLOW_CONTEXT_LINES = 60;
 const MAX_WORKFLOW_CONTEXT_LINE_LENGTH = 160;
 const MAX_WORKFLOW_CONTEXT_EVENT_LINES = 8;
@@ -77,12 +84,17 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 	const editor = new Editor(tui, createEditorTheme(), { paddingX: 1, autocompleteMaxVisible: 8 });
 	const graphView = new GraphView();
 	const view = new PiWendaoChatView(terminal, editor, options.invocationCwd, graphView);
-	const messages: Message[] = [];
-	const workflowContext = new WorkflowChatContextSession(messages);
-	const chatSessionId = `pi-wendao-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-	const chatSystemPrompt = loadPiWendaoChatSystemPrompt();
+	const chatSession = await createPiWendaoChatSession(options);
+	const workflowContext = new WorkflowChatContextSession();
+	const unsubscribeChatEvents = chatSession.subscribe((event) => {
+		const agentEvent = toPiWendaoAgentEvent(event);
+		if (!agentEvent) return;
+		view.appendAgentEvent(agentEvent);
+		tui.requestRender();
+	});
+	await chatSession.bindExtensions({});
 
-	let activeAbort: AbortController | undefined;
+	let chatRunning = false;
 	let activeWorkflowReply: {
 		request: PlannerReplyRequest;
 		resolve: (answer: string) => void;
@@ -98,15 +110,17 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 		function finish(result: PiWendaoChatTuiResult): void {
 			if (settled) return;
 			settled = true;
-			activeAbort?.abort();
+			if (chatRunning) void chatSession.abort();
+			unsubscribeChatEvents();
+			chatSession.dispose();
 			tui.stop();
 			resolve(result);
 		}
 
 		tui.addInputListener((data) => {
 			if (!matchesKey(data, Key.ctrl("c"))) return undefined;
-			if (activeAbort) {
-				activeAbort.abort();
+			if (chatRunning) {
+				void chatSession.abort();
 				view.setStatus("aborting current response");
 				tui.requestRender();
 				return { consume: true };
@@ -132,7 +146,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 				completeWorkflowReply(input || defaultWorkflowReply(activeWorkflowReply.request));
 				return;
 			}
-			if (!input || activeAbort) return;
+			if (!input || chatRunning) return;
 			editor.addToHistory(input);
 			editor.setText("");
 
@@ -193,17 +207,19 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 				recordWorkflowContext: (role, text) => workflowContext.record(role, text),
 			});
 			try {
-				const result = await options.runWorkflow!(workflowPath, renderer);
+				const result = await options.runWorkflow!(workflowPath, renderer, chatSession);
 				const statusLine = result.success
 					? `workflow completed: ${workflowPath}`
 					: `workflow failed: ${workflowPath}`;
 				view.append("system", statusLine);
 				workflowContext.finish(result.success, workflowPath);
+				await persistWorkflowContext();
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				view.append("error", message);
 				workflowContext.record("error", message);
 				workflowContext.finish(false, workflowPath);
+				await persistWorkflowContext();
 			} finally {
 				workflowRunning = false;
 				view.setStatus("ready");
@@ -241,68 +257,18 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 		}
 
 		async function sendChatMessage(text: string): Promise<void> {
-			const userMessage: Message = {
-				role: "user",
-				content: text,
-				timestamp: Date.now(),
-			};
-			messages.push(userMessage);
+			chatRunning = true;
 			view.append("user", text);
 			view.setStatus("LLM responding");
 			editor.disableSubmit = true;
-			activeAbort = new AbortController();
 			tui.requestRender();
 
 			try {
-				const stream = streamSimple(
-					options.resolvedModel.model as Model<string>,
-					{
-						systemPrompt: chatSystemPrompt,
-						messages,
-					},
-					{
-						apiKey: options.resolvedModel.apiKey,
-						headers: options.resolvedModel.headers,
-						signal: activeAbort.signal,
-						sessionId: chatSessionId,
-						...reasoningOption(options.thinkingLevel),
-					},
-				);
-
-				for await (const event of stream) {
-					if (event.type === "text_delta") {
-						view.appendAssistantDelta(event.delta);
-					} else if (event.type === "thinking_start") {
-						view.beginThinking();
-					} else if (event.type === "thinking_delta") {
-						view.appendThinkingDelta(event.delta);
-					} else if (event.type === "thinking_end") {
-						view.endThinking(event.content);
-					} else if (event.type === "toolcall_start") {
-						view.append("tool", `tool call started at content index ${event.contentIndex}`);
-					} else if (event.type === "toolcall_end") {
-						view.append("tool", `${event.toolCall.name}(${JSON.stringify(event.toolCall.arguments)})`);
-					} else if (event.type === "error") {
-						view.append("error", event.error.errorMessage ?? "model returned an error");
-					}
-					tui.requestRender();
-				}
-
-				const assistant = await stream.result();
-				if (assistant.stopReason === "error" || assistant.stopReason === "aborted") {
-					view.append("error", assistant.errorMessage ?? `model stopped: ${assistant.stopReason}`);
-				} else {
-					messages.push(assistant);
-					view.ensureAssistantMessage(assistant);
-				}
+				await chatSession.prompt(text, { source: "interactive" });
 			} catch (error) {
-				if (activeAbort?.signal.aborted) {
-					view.append("system", "response aborted");
-				} else {
-					view.append("error", error instanceof Error ? error.message : String(error));
-				}
+				view.append("error", error instanceof Error ? error.message : String(error));
 			} finally {
-				activeAbort = undefined;
+				chatRunning = false;
 				editor.disableSubmit = false;
 				view.setStatus("ready");
 				tui.requestRender();
@@ -327,11 +293,37 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 				tui.requestRender();
 			}
 		}
+
+		async function persistWorkflowContext(): Promise<void> {
+			try {
+				await workflowContext.persistToSession(chatSession);
+			} catch (error) {
+				view.append("error", `failed to save workflow context: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
 	});
 }
 
-export function loadPiWendaoChatSystemPrompt(packageRoot = resolvePiWendaoPackageRoot()): string {
-	return readFileSync(join(packageRoot, CHAT_SYSTEM_PROMPT_PATH), "utf-8").trim();
+export function loadPiWendaoChatSystemPrompt(packageRoot?: string): string {
+	return readPiWendaoPrompt(CHAT_SYSTEM_PROMPT_FILE, packageRoot);
+}
+
+async function createPiWendaoChatSession(options: PiWendaoChatTuiOptions): Promise<AgentSession> {
+	const services = await createPiWendaoAgentServices({
+		cwd: options.invocationCwd,
+		extensionPaths: options.resolvedModel.extensionPaths,
+		systemPrompt: loadPiWendaoChatSystemPrompt(),
+	});
+	if (options.resolvedModel.apiKey) {
+		services.authStorage.setRuntimeApiKey(options.resolvedModel.model.provider, options.resolvedModel.apiKey);
+	}
+	const { session } = await createAgentSessionFromServices({
+		services,
+		sessionManager: SessionManager.create(options.invocationCwd),
+		model: options.resolvedModel.model,
+		thinkingLevel: options.thinkingLevel,
+	});
+	return session;
 }
 
 export function parsePiWendaoChatCommand(input: string): PiWendaoChatCommand {
@@ -369,17 +361,12 @@ export class WorkflowChatContextSession {
 	private status: "running" | "completed" | "failed" | undefined;
 	private readonly lines: string[] = [];
 	private omittedEvents = 0;
-	private contextMessage: UserMessage | undefined;
-
-	constructor(private readonly messages: Message[]) {}
 
 	start(workflowPath: string): void {
-		this.removeContextMessage();
 		this.workflowPath = workflowPath;
 		this.status = "running";
 		this.lines.length = 0;
 		this.omittedEvents = 0;
-		this.contextMessage = undefined;
 		this.record("system", `workflow path: ${workflowPath}`);
 	}
 
@@ -392,7 +379,6 @@ export class WorkflowChatContextSession {
 			this.lines.push(`${role}> ${compactWorkflowContextLine(line)}`);
 		}
 		this.trimToBudget();
-		this.syncContextMessage();
 	}
 
 	finish(success: boolean, workflowPath = this.workflowPath ?? ""): void {
@@ -411,6 +397,19 @@ export class WorkflowChatContextSession {
 		return [...header, ...this.lines].join("\n");
 	}
 
+	async persistToSession(session: Pick<AgentSession, "sendCustomMessage">): Promise<void> {
+		await session.sendCustomMessage({
+			customType: "pi_wendao_workflow_context",
+			content: this.toContextMessageContent(),
+			display: false,
+			details: {
+				workflowPath: this.workflowPath,
+				status: this.status,
+				omittedEvents: this.omittedEvents,
+			},
+		});
+	}
+
 	private trimToBudget(): void {
 		while (this.lines.length > MAX_WORKFLOW_CONTEXT_LINES) {
 			this.lines.shift();
@@ -421,31 +420,6 @@ export class WorkflowChatContextSession {
 			this.omittedEvents += 1;
 		}
 	}
-
-	private syncContextMessage(): void {
-		const content = this.toContextMessageContent();
-		if (!this.contextMessage) {
-			this.contextMessage = {
-				role: "user",
-				content,
-				timestamp: Date.now(),
-			};
-			this.messages.push(this.contextMessage);
-			return;
-		}
-		this.contextMessage.content = content;
-		this.contextMessage.timestamp = Date.now();
-	}
-
-	private removeContextMessage(): void {
-		if (!this.contextMessage) return;
-		const index = this.messages.indexOf(this.contextMessage);
-		if (index >= 0) this.messages.splice(index, 1);
-	}
-}
-
-function reasoningOption(level: PiWendaoChatThinkingLevel): { reasoning?: PiAiThinkingLevel } {
-	return level === "off" ? {} : { reasoning: level };
 }
 
 function cleanCommandPath(value: string): string {
@@ -612,6 +586,14 @@ export class PiWendaoChatView implements Component {
 				}
 			}
 			case "message_end":
+				if (event.message.role === "assistant" && event.message.stopReason === "error") {
+					this.append("error", event.message.errorMessage ?? "model returned an error");
+					return;
+				}
+				if (event.message.role === "assistant" && event.message.stopReason === "aborted") {
+					this.append("system", "response aborted");
+					return;
+				}
 				this.ensureAssistantMessage(event.message);
 				return;
 			case "tool_execution_start":

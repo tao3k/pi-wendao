@@ -114,6 +114,68 @@ describe("CLI pi-subagents host integration", () => {
 		expect(ctx.getSystemPrompt()).toBe("");
 	});
 
+	it("wires extension runtime actions into an AgentSession when available", async () => {
+		const modelRegistry = ModelRegistry.create(AuthStorage.create());
+		const loadResult = loadResultWithTools({});
+		const calls: Array<{ type: string; value: unknown; options?: unknown }> = [];
+		const fakeSession = {
+			sessionManager: {
+				appendCustomEntry: (customType: string, data?: unknown) => calls.push({ type: "entry", value: { customType, data } }),
+				appendSessionInfo: (name: string) => calls.push({ type: "name", value: name }),
+				appendLabelChange: (entryId: string, label: string | undefined) => calls.push({ type: "label", value: { entryId, label } }),
+			},
+			sendCustomMessage: async (message: unknown, options?: unknown) => calls.push({ type: "custom", value: message, options }),
+			sendUserMessage: async (content: unknown, options?: unknown) => calls.push({ type: "user", value: content, options }),
+			getActiveToolNames: () => ["read"],
+			getAllTools: () => [],
+			setActiveToolsByName: (toolNames: string[]) => calls.push({ type: "tools", value: toolNames }),
+			reload: async () => calls.push({ type: "reload", value: true }),
+			modelRegistry,
+			model: undefined,
+			isStreaming: false,
+			agent: { signal: undefined },
+			pendingMessageCount: 0,
+			getContextUsage: () => undefined,
+			compact: async () => ({}) as never,
+			systemPrompt: "session system prompt",
+			sessionName: "session-name",
+			thinkingLevel: "high",
+			setThinkingLevel: (level: string) => calls.push({ type: "thinking", value: level }),
+			setModel: async (model: unknown) => {
+				calls.push({ type: "model", value: model });
+			},
+		};
+
+		const ctx = createCliExtensionContext({
+			loadResult,
+			modelRegistry,
+			cwd: "/tmp/project",
+			session: fakeSession as never,
+		});
+
+		loadResult.runtime.sendMessage({ customType: "workflow", content: "done", display: false });
+		loadResult.runtime.sendUserMessage("follow up");
+		loadResult.runtime.appendEntry("subagents:record", { id: "a1" });
+		loadResult.runtime.setSessionName("renamed");
+		loadResult.runtime.setLabel("entry-1", "checkpoint");
+		loadResult.runtime.setActiveTools(["bash"]);
+		loadResult.runtime.setThinkingLevel("medium");
+		await Promise.resolve();
+
+		expect(ctx.getSystemPrompt()).toBe("session system prompt");
+		expect(loadResult.runtime.getSessionName()).toBe("session-name");
+		expect(loadResult.runtime.getActiveTools()).toEqual(["read"]);
+		expect(calls).toEqual([
+			{ type: "custom", value: { customType: "workflow", content: "done", display: false }, options: undefined },
+			{ type: "user", value: "follow up", options: undefined },
+			{ type: "entry", value: { customType: "subagents:record", data: { id: "a1" } } },
+			{ type: "name", value: "renamed" },
+			{ type: "label", value: { entryId: "entry-1", label: "checkpoint" } },
+			{ type: "tools", value: ["bash"] },
+			{ type: "thinking", value: "medium" },
+		]);
+	});
+
 	it("uses the project cache home for the default subagent run store", () => {
 		process.env.PRJ_CACHE_HOME = "/tmp/prj-cache";
 		delete process.env.PI_WENDAO_SUBAGENTS_RUN_STORE;

@@ -1,4 +1,3 @@
-import type { Message } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import {
 	classifyWorkflowChatLine,
@@ -64,22 +63,48 @@ describe("pi-wendao chat TUI commands", () => {
 		expect(classifyWorkflowChatLine("Error: failed")).toBe("error");
 	});
 
-	it("stores workflow run context in the chat message history", () => {
-		const messages: Message[] = [];
-		const context = new WorkflowChatContextSession(messages);
+	it("formats workflow run context for the chat session", () => {
+		const context = new WorkflowChatContextSession();
 
 		context.start("/tmp/pi-wendao-real-llm-complex.bpmn");
 		context.record("tool", "parallel jobs Task_Review: 2 jobs tokens=11,12");
 		context.record("assistant", "Branch A and Branch B finished.");
 		context.finish(true);
 
-		expect(messages).toHaveLength(1);
-		expect(messages[0]).toMatchObject({ role: "user" });
-		expect(messages[0]?.content).toContain("[pi-wendao workflow context]");
-		expect(messages[0]?.content).toContain("workflowPath: /tmp/pi-wendao-real-llm-complex.bpmn");
-		expect(messages[0]?.content).toContain("status: completed");
-		expect(messages[0]?.content).toContain("tool> parallel jobs Task_Review: 2 jobs tokens=11,12");
-		expect(messages[0]?.content).toContain("assistant> Branch A and Branch B finished.");
+		const content = context.toContextMessageContent();
+		expect(content).toContain("[pi-wendao workflow context]");
+		expect(content).toContain("workflowPath: /tmp/pi-wendao-real-llm-complex.bpmn");
+		expect(content).toContain("status: completed");
+		expect(content).toContain("tool> parallel jobs Task_Review: 2 jobs tokens=11,12");
+		expect(content).toContain("assistant> Branch A and Branch B finished.");
+	});
+
+	it("persists workflow context as a hidden pi custom message", async () => {
+		const context = new WorkflowChatContextSession();
+		const sent: Array<{ message: unknown; options: unknown }> = [];
+
+		context.start("/tmp/workflow.bpmn");
+		context.record("tool", "qianji: service task Task_1 completed");
+		context.finish(true);
+		await context.persistToSession({
+			sendCustomMessage: async (message, options) => {
+				sent.push({ message, options });
+			},
+		} as never);
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.message).toMatchObject({
+			customType: "pi_wendao_workflow_context",
+			display: false,
+			details: {
+				workflowPath: "/tmp/workflow.bpmn",
+				status: "completed",
+			},
+		});
+		expect(sent[0]?.message).toMatchObject({
+			content: expect.stringContaining("tool> qianji: service task Task_1 completed"),
+		});
+		expect(sent[0]?.options).toBeUndefined();
 	});
 
 	it("renders workflow graph above chat on wide terminals", () => {
@@ -105,8 +130,7 @@ describe("pi-wendao chat TUI commands", () => {
 	});
 
 	it("keeps workflow context bounded for large event streams", () => {
-		const messages: Message[] = [];
-		const context = new WorkflowChatContextSession(messages);
+		const context = new WorkflowChatContextSession();
 
 		context.start("/tmp/large.bpmn");
 		for (let i = 0; i < 120; i += 1) {
@@ -114,8 +138,7 @@ describe("pi-wendao chat TUI commands", () => {
 		}
 		context.record("assistant", Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n"));
 
-		const content = messages[0]?.content;
-		expect(typeof content).toBe("string");
+		const content = context.toContextMessageContent();
 		expect(content.length).toBeLessThanOrEqual(6_000);
 		expect(content).toContain("omittedEvents:");
 		expect(content).toContain("... 13 lines omitted from this event ...");

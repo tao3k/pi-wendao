@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { extname, resolve as resolvePath } from "node:path";
 import { program } from "commander";
 import { XMLParser } from "fast-xml-parser";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { PiWendaoThinkingLevel } from "../executor/agent-runtime-types.js";
 import { validateInstanceId } from "./instance-id.js";
 import { compileSkill } from "../compiler/compiler.js";
@@ -171,7 +172,7 @@ program
 							dmnPaths: resolvedDmnPaths,
 							cwd: invocationCwd,
 						}),
-						runWorkflow: async (selectedWorkflowPath, renderer) => runWorkflowInRenderer({
+						runWorkflow: async (selectedWorkflowPath, renderer, agentSession) => runWorkflowInRenderer({
 							renderer,
 							useGraph: true,
 							resolvedWorkflowPath: resolveCliPath(invocationCwd, selectedWorkflowPath),
@@ -184,6 +185,7 @@ program
 							resolvedEventFixturePath,
 							resolvedModel: options.hostFixture ? undefined : chatModel,
 							thinkingLevel,
+							agentSession,
 						}),
 					});
 				} finally {
@@ -472,6 +474,7 @@ async function runWorkflowInRenderer(params: {
 	resolvedEventFixturePath?: string;
 	resolvedModel?: ResolvedModel;
 	thinkingLevel: PiWendaoThinkingLevel;
+	agentSession?: AgentSession;
 }): Promise<{ success: boolean }> {
 	const source = readFileSync(params.resolvedWorkflowPath, "utf-8");
 	const renderer = params.renderer;
@@ -504,6 +507,7 @@ async function runWorkflowInRenderer(params: {
 				loadResult: params.resolvedModel.loadResult,
 				modelRegistry: params.resolvedModel.modelRegistry,
 				model: params.resolvedModel.model,
+				session: params.agentSession,
 				cwd: params.piContextCwd,
 				onUpdate: (event) => {
 					const detail = formatPiSubagentsToolUpdateForGraphDetail(event.update);

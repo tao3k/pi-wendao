@@ -1,5 +1,10 @@
-import type { AssistantMessage, Model, ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
-import { streamSimple } from "@mariozechner/pi-ai";
+import type { Model } from "@mariozechner/pi-ai";
+import {
+	createAgentSessionFromServices,
+	createAgentSessionServices,
+	SessionManager,
+	type ToolDefinition,
+} from "@mariozechner/pi-coding-agent";
 import { createPiWendaoToolRegistry } from "../tools/registry.js";
 import {
 	buildPiWendaoAgentPrompt,
@@ -10,11 +15,14 @@ import {
 	type PiWendaoConfig,
 } from "./agent-host.js";
 import type {
-	PiWendaoAgentEvent,
 	PiWendaoAgentMessage,
 	PiWendaoAgentTool,
-	PiWendaoAgentToolResult,
 	PiWendaoThinkingLevel,
+} from "./agent-runtime-types.js";
+import {
+	isPiWendaoAgentMessage,
+	toPiWendaoAgentEvent,
+	type PiWendaoAgentEvent,
 } from "./agent-runtime-types.js";
 
 export interface NodeRunnerOptions {
@@ -96,10 +104,11 @@ async function runPiAiTask(
 		model: options.model,
 		apiKey: options.apiKey,
 		systemPrompt,
-		tools,
-		thinkingLevel: options.thinkingLevel ?? "medium",
-		onEvent: options.onEvent,
-	});
+	tools,
+	thinkingLevel: options.thinkingLevel ?? "medium",
+	cwd,
+	onEvent: options.onEvent,
+});
 
 	return extractOutputVariables(messages, request.config.outputs);
 }
@@ -110,150 +119,74 @@ async function runPiAiToolLoop(options: {
 	systemPrompt: string;
 	tools: PiWendaoAgentTool<any>[];
 	thinkingLevel: PiWendaoThinkingLevel;
+	cwd: string;
 	onEvent?: (event: PiWendaoAgentEvent) => void;
 }): Promise<PiWendaoAgentMessage[]> {
-	const messages: PiWendaoAgentMessage[] = [{
-		role: "user",
-		content: "Execute the task described in your instructions.",
-		timestamp: Date.now(),
-	}];
-	const emit = (event: PiWendaoAgentEvent) => options.onEvent?.(event);
-	const toolMap = new Map(options.tools.map((tool) => [tool.name, tool]));
-
-	emit({ type: "agent_start" });
-	emit({ type: "message_start", message: messages[0]! });
-	emit({ type: "message_end", message: messages[0]! });
-
-	for (let turn = 0; turn < 8; turn += 1) {
-		emit({ type: "turn_start" });
-		const assistant = await requestAssistantTurn(options, messages, emit);
-		messages.push(assistant);
-		emit({ type: "message_end", message: assistant });
-
-		if (assistant.stopReason === "error" || assistant.stopReason === "aborted") {
-			throw new Error(assistant.errorMessage ?? `model stopped: ${assistant.stopReason}`);
-		}
-
-		const toolCalls = assistant.content.filter((content): content is ToolCall => content.type === "toolCall");
-		if (toolCalls.length === 0) {
-			emit({ type: "turn_end", message: assistant, toolResults: [] });
-			emit({ type: "agent_end", messages });
-			return messages;
-		}
-
-		const toolResults: ToolResultMessage[] = [];
-		for (const toolCall of toolCalls) {
-			const result = await executeToolCall(toolMap, toolCall, emit);
-			toolResults.push(result);
-			messages.push(result);
-		}
-		emit({ type: "turn_end", message: assistant, toolResults });
-	}
-
-	throw new Error("pi-ai service-task loop exceeded 8 turns");
-}
-
-async function requestAssistantTurn(
-	options: {
-		model: Model<string>;
-		apiKey?: string;
-		systemPrompt: string;
-		tools: PiWendaoAgentTool<any>[];
-		thinkingLevel: PiWendaoThinkingLevel;
-	},
-	messages: PiWendaoAgentMessage[],
-	emit: (event: PiWendaoAgentEvent) => void,
-): Promise<AssistantMessage> {
-	const stream = streamSimple(
-		options.model,
-		{
+	const customTools = options.tools.map(toPiCodingAgentTool);
+	const services = await createAgentSessionServices({
+		cwd: options.cwd,
+		resourceLoaderOptions: {
 			systemPrompt: options.systemPrompt,
-			messages,
-			tools: options.tools,
+			noExtensions: true,
+			noSkills: true,
+			noPromptTemplates: true,
+			noThemes: true,
+			noContextFiles: true,
 		},
-		{
-			apiKey: options.apiKey,
-			...reasoningOption(options.thinkingLevel),
-		},
-	);
-
-	let started = false;
-	for await (const event of stream) {
-		if (event.type === "start") {
-			started = true;
-			emit({ type: "message_start", message: event.partial });
-		} else if (
-			event.type === "text_delta"
-			|| event.type === "thinking_delta"
-			|| event.type === "thinking_start"
-			|| event.type === "thinking_end"
-			|| event.type === "toolcall_start"
-			|| event.type === "toolcall_delta"
-			|| event.type === "toolcall_end"
-		) {
-			if (!started) {
-				started = true;
-				emit({ type: "message_start", message: event.partial });
-			}
-			emit({ type: "message_update", message: event.partial, assistantMessageEvent: event });
-		} else if (event.type === "error") {
-			if (!started) emit({ type: "message_start", message: event.error });
-			emit({ type: "message_update", message: event.error, assistantMessageEvent: event });
-		}
+	});
+	if (options.apiKey) {
+		services.authStorage.setRuntimeApiKey(options.model.provider, options.apiKey);
 	}
-
-	return stream.result();
+	const { session } = await createAgentSessionFromServices({
+		services,
+		sessionManager: SessionManager.inMemory(options.cwd),
+		model: options.model,
+		thinkingLevel: options.thinkingLevel,
+		customTools,
+		tools: customTools.map((tool) => tool.name),
+	});
+	const unsubscribe = session.subscribe((event) => {
+		const piWendaoEvent = toPiWendaoAgentEvent(event);
+		if (piWendaoEvent) options.onEvent?.(piWendaoEvent);
+	});
+	try {
+		await session.prompt("Execute the task described in your instructions.", {
+			expandPromptTemplates: false,
+			source: "extension",
+		});
+		const messages = session.messages.filter(isPiWendaoAgentMessage);
+		const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+		if (lastAssistant?.stopReason === "error" || lastAssistant?.stopReason === "aborted") {
+			throw new Error(lastAssistant.errorMessage ?? `model stopped: ${lastAssistant.stopReason}`);
+		}
+		return messages;
+	} finally {
+		unsubscribe();
+		session.dispose();
+	}
 }
 
-async function executeToolCall(
-	toolMap: Map<string, PiWendaoAgentTool<any>>,
-	toolCall: ToolCall,
-	emit: (event: PiWendaoAgentEvent) => void,
-): Promise<ToolResultMessage> {
-	const tool = toolMap.get(toolCall.name);
-	const args = tool?.prepareArguments ? tool.prepareArguments(toolCall.arguments) : toolCall.arguments;
-	emit({ type: "tool_execution_start", toolCallId: toolCall.id, toolName: toolCall.name, args });
-	let result: PiWendaoAgentToolResult;
-	let isError = false;
-	if (!tool) {
-		result = {
-			content: [{ type: "text", text: `Tool ${toolCall.name} is not available.` }],
-			details: undefined,
-		};
-		isError = true;
-	} else {
-		try {
-			result = await tool.execute(toolCall.id, args, undefined, (partialResult) => {
-				emit({
-					type: "tool_execution_update",
-					toolCallId: toolCall.id,
-					toolName: toolCall.name,
-					args,
-					partialResult,
-				});
-			});
-		} catch (error) {
-			result = {
-				content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-				details: undefined,
-			};
-			isError = true;
-		}
-	}
-	emit({ type: "tool_execution_end", toolCallId: toolCall.id, toolName: toolCall.name, result, isError });
+function toPiCodingAgentTool(tool: PiWendaoAgentTool<any>): ToolDefinition {
 	return {
-		role: "toolResult",
-		toolCallId: toolCall.id,
-		toolName: toolCall.name,
-		content: result.content,
-		details: result.details,
-		isError,
-		timestamp: Date.now(),
-	};
-}
-
-function reasoningOption(level: PiWendaoThinkingLevel): { reasoning?: Exclude<PiWendaoThinkingLevel, "off"> } {
-	return level === "off" ? {} : { reasoning: level };
+		...tool,
+		execute: async (toolCallId, params, signal, onUpdate) => {
+			const result = await tool.execute(
+				toolCallId,
+				params,
+				signal,
+				onUpdate
+					? (partialResult) => onUpdate({
+						content: partialResult.content,
+						details: partialResult.details,
+					})
+					: undefined,
+			);
+			return {
+				content: result.content,
+				details: result.details,
+			};
+		},
+	} as ToolDefinition;
 }
 
 /**

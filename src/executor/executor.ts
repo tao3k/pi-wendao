@@ -36,9 +36,9 @@ export interface ExecuteOptions {
 	eventFixturePath?: string;
 	/** Raw JSON object merged after --var pairs for qianji --context-json. */
 	context?: Record<string, unknown>;
-	/** Deprecated compatibility field; execution is owned by the qianji CLI. */
+	/** Model for default host-side service task execution when agentHost is not provided. */
 	model?: Model<string>;
-	/** Deprecated compatibility field; qianji CLI execution does not read API keys directly. */
+	/** Runtime API key override for default host-side service task execution. */
 	apiKey?: string;
 	/** LLM thinking level for real host-side skill execution. */
 	thinkingLevel?: PiWendaoThinkingLevel;

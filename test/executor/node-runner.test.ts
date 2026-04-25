@@ -8,7 +8,12 @@ describe("createRunAgentService", () => {
 	let faux: FauxProviderRegistration;
 
 	beforeEach(() => {
-		faux = registerFauxProvider();
+		faux = registerFauxProvider({
+			models: [{
+				id: "faux-model",
+				reasoning: true,
+			}],
+		});
 	});
 
 	afterEach(() => {
@@ -21,6 +26,7 @@ describe("createRunAgentService", () => {
 		const events: string[] = [];
 		const service = createRunAgentService({
 			model: faux.getModel(),
+			apiKey: "test-key",
 			cwd: process.cwd(),
 			onEvent: (event: PiWendaoAgentEvent) => {
 				events.push(event.type);
@@ -60,6 +66,7 @@ describe("createRunAgentService", () => {
 
 		const service = createRunAgentService({
 			model: faux.getModel(),
+			apiKey: "test-key",
 			cwd: process.cwd(),
 			getConfig: (id) =>
 				id === "Task_1"
@@ -100,6 +107,7 @@ describe("createRunAgentService", () => {
 
 		const service = createRunAgentService({
 			model: faux.getModel(),
+			apiKey: "test-key",
 			cwd: process.cwd(),
 			getConfig: (id) =>
 				id === "Task_1"
@@ -153,6 +161,7 @@ describe("createRunAgentService", () => {
 		};
 		const host = createPiAiHost({
 			model: faux.getModel(),
+			apiKey: "test-key",
 			cwd: process.cwd(),
 			extraTools: [intercomTool],
 		});

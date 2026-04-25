@@ -9,6 +9,7 @@ import type {
 	Static,
 	TSchema,
 } from "@mariozechner/pi-ai";
+import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 
 export type PiWendaoThinkingLevel = "off" | PiAiThinkingLevel;
 export type PiWendaoAgentMessage = Message;
@@ -64,3 +65,44 @@ export type PiWendaoAgentEvent =
 		result: PiWendaoAgentToolResult;
 		isError: boolean;
 	};
+
+export function toPiWendaoAgentEvent(event: AgentSessionEvent): PiWendaoAgentEvent | undefined {
+	switch (event.type) {
+		case "agent_start":
+		case "turn_start":
+			return event;
+		case "agent_end":
+			return {
+				type: "agent_end",
+				messages: event.messages.filter(isPiWendaoAgentMessage),
+			};
+		case "turn_end":
+			return isPiWendaoAgentMessage(event.message)
+				? event as PiWendaoAgentEvent
+				: undefined;
+		case "message_start":
+		case "message_end":
+			return isPiWendaoAgentMessage(event.message)
+				? event as PiWendaoAgentEvent
+				: undefined;
+		case "message_update":
+			return isPiWendaoAgentMessage(event.message)
+				? event as PiWendaoAgentEvent
+				: undefined;
+		case "tool_execution_start":
+		case "tool_execution_update":
+		case "tool_execution_end":
+			return event as PiWendaoAgentEvent;
+		default:
+			return undefined;
+	}
+}
+
+export function isPiWendaoAgentMessage(message: unknown): message is PiWendaoAgentMessage {
+	if (!isObject(message) || typeof message.role !== "string") return false;
+	return message.role === "user" || message.role === "assistant" || message.role === "toolResult";
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}

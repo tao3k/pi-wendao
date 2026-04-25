@@ -1,17 +1,14 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import {
-	AuthStorage,
-	DefaultPackageManager,
-	ModelRegistry,
-	SettingsManager,
-	getAgentDir,
-	discoverAndLoadExtensions,
+	createAgentSessionServices,
+	type AgentSessionServices,
 	type LoadExtensionsResult,
+	type ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
+import { resolvePiWendaoPackageRoot as resolvePiWendaoPackageRootFromResources } from "../pi-resources.js";
 
 const require = createRequire(import.meta.url);
 const BUILTIN_PI_EXTENSION_PACKAGES = ["@tintinweb/pi-subagents", "pi-intercom"] as const;
@@ -28,6 +25,8 @@ export interface ResolvedModel {
 	modelRegistry: ModelRegistry;
 	cwd: string;
 	agentDir: string;
+	services: AgentSessionServices;
+	extensionPaths: string[];
 }
 
 /**
@@ -44,14 +43,15 @@ export async function resolveModel(
 	apiKeyOverride?: string,
 	extensionPaths?: string[],
 ): Promise<ResolvedModel> {
-	const authStorage = AuthStorage.create();
-	const modelRegistry = ModelRegistry.create(authStorage);
 	const cwd = process.cwd();
-	const { loadResult, agentDir } = await loadPiExtensions({
+	const resolvedExtensionPaths = extensionPaths ?? [];
+	const services = await createPiWendaoAgentServices({
 		cwd,
-		modelRegistry,
-		extensionPaths,
+		extensionPaths: resolvedExtensionPaths,
 	});
+	const authStorage = services.authStorage;
+	const modelRegistry = services.modelRegistry;
+	const loadResult = services.resourceLoader.getExtensions();
 
 	if (apiKeyOverride && provider) {
 		authStorage.setRuntimeApiKey(provider, apiKeyOverride);
@@ -124,42 +124,39 @@ export async function resolveModel(
 		loadResult,
 		modelRegistry,
 		cwd,
-		agentDir,
+		agentDir: services.agentDir,
+		services,
+		extensionPaths: resolvedExtensionPaths,
 	};
 }
 
-async function loadPiExtensions(options: {
+export async function createPiWendaoAgentServices(options: {
 	cwd: string;
-	modelRegistry: ModelRegistry;
 	extensionPaths?: string[];
-}): Promise<{ loadResult: LoadExtensionsResult; agentDir: string }> {
-	const agentDir = getAgentDir();
-	const settingsManager = SettingsManager.create(options.cwd, agentDir);
-	const packageManager = new DefaultPackageManager({
+	systemPrompt?: string;
+}): Promise<AgentSessionServices> {
+	const services = await createAgentSessionServices({
 		cwd: options.cwd,
-		agentDir,
-		settingsManager,
+		resourceLoaderOptions: {
+			additionalExtensionPaths: uniqueStrings([
+				...resolveBuiltinPiExtensionPaths(),
+				...(options.extensionPaths ?? []),
+			]),
+			systemPrompt: options.systemPrompt,
+		},
 	});
-	const resolved = await packageManager.resolve();
-	const allPaths = [
-		...resolveBuiltinPiExtensionPaths(),
-		...resolved.extensions.map((r) => r.path),
-		...(options.extensionPaths ?? []),
-	];
-	const loadResult = await discoverAndLoadExtensions(allPaths, options.cwd, agentDir);
+	const loadResult = services.resourceLoader.getExtensions();
 
 	for (const err of loadResult.errors) {
 		console.warn(`Warning: failed to load extension ${err.path}: ${err.error}`);
 	}
 
-	for (const reg of loadResult.runtime.pendingProviderRegistrations) {
-		options.modelRegistry.registerProvider(
-			reg.name,
-			reg.config as Parameters<typeof options.modelRegistry.registerProvider>[1],
-		);
+	for (const diagnostic of services.diagnostics) {
+		const prefix = diagnostic.type === "error" ? "Error" : diagnostic.type === "warning" ? "Warning" : "Info";
+		console.warn(`${prefix}: ${diagnostic.message}`);
 	}
 
-	return { loadResult, agentDir };
+	return services;
 }
 
 export function resolveBuiltinPiExtensionPaths(): string[] {
@@ -175,13 +172,17 @@ export function resolveBuiltinPiExtensionPaths(): string[] {
 }
 
 export function resolvePiWendaoPackageRoot(): string {
-	return resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+	return resolvePiWendaoPackageRootFromResources();
 }
 
 export function resolvePiWendaoPiExtensionPaths(packageRoot = resolvePiWendaoPackageRoot()): string[] {
 	return PI_WENDAO_PI_EXTENSION_FILES
 		.map((file) => join(packageRoot, ".pi", "extensions", file))
 		.filter((path) => existsSync(path));
+}
+
+function uniqueStrings(values: string[]): string[] {
+	return [...new Set(values)];
 }
 
 function resolvePackageRoot(packageName: string): string | undefined {
