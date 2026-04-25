@@ -157,7 +157,7 @@ export async function launchPiWendaoChatTui(options: PiWendaoChatTuiOptions): Pr
 					return;
 				case "help":
 					view.append("system", "Type a normal message to chat with the configured LLM.");
-					view.append("system", "Use /run <workflow.bpmn> to execute that qianji BPMN workflow with the graph above the native chat stream.");
+					view.append("system", "Use /run <workflow.bpmn> to execute that qianji BPMN workflow with the graph panel below the native chat stream.");
 					view.append("system", "Use /show or /show <instance> [bpmn] to inspect qianji BPMN instances.");
 					tui.requestRender();
 					return;
@@ -721,7 +721,7 @@ export class PiWendaoChatView implements Component {
 		return this.renderMain(safeWidth);
 	}
 
-	private renderMain(width: number, height = this.terminal.rows): string[] {
+	private renderMain(width: number, height = this.terminal.rows, footerPanel: string[] = []): string[] {
 		const header = [
 			truncateToWidth(`${bold("pi-wendao")} ${dim("LLM chat + qianji workflow runner")}`, width),
 			truncateToWidth(dim(`cwd: ${this.cwd}`), width),
@@ -730,23 +730,28 @@ export class PiWendaoChatView implements Component {
 		];
 		const editorLines = this.editor.render(width);
 		const separator = truncateToWidth(dim("-".repeat(Math.max(1, width))), width);
-		const availableRows = Math.max(1, height - header.length - editorLines.length - 1);
+		const footerLines = footerPanel.map((line) => truncateToWidth(line, width));
+		const footerRows = footerLines.length > 0 ? footerLines.length + 1 : 0;
+		const availableRows = Math.max(0, height - header.length - editorLines.length - 1 - footerRows);
 		const transcriptLines = this.renderTranscript(width);
-		const visibleTranscript = transcriptLines.slice(-availableRows);
+		const visibleTranscript = availableRows > 0 ? transcriptLines.slice(-availableRows) : [];
 		while (visibleTranscript.length < availableRows) visibleTranscript.unshift("");
-		const lines = [...header, ...visibleTranscript, separator, ...editorLines].map((line) => truncateToWidth(line, width));
+		const lines = [
+			...header,
+			...visibleTranscript,
+			...(footerLines.length > 0 ? [separator, ...footerLines] : []),
+			separator,
+			...editorLines,
+		].map((line) => truncateToWidth(line, width));
 		while (lines.length < height) lines.push("");
 		return lines.slice(0, height);
 	}
 
 	private renderWithWorkflowStack(width: number): string[] {
 		const totalRows = this.terminal.rows;
-		const graphHeight = Math.max(7, Math.min(Math.floor(totalRows * 0.45), totalRows - 8));
-		const chatHeight = Math.max(1, totalRows - graphHeight - 1);
-		const graph = this.renderWorkflowGraphPanel(width, graphHeight);
-		const separator = truncateToWidth(dim("-".repeat(Math.max(1, width))), width);
-		const main = this.renderMain(width, chatHeight);
-		return [...graph, separator, ...main].slice(0, totalRows);
+		const graphHeight = workflowGraphPanelHeight(totalRows);
+		const graph = graphHeight > 0 ? this.renderWorkflowGraphPanel(width, graphHeight) : [];
+		return this.renderMain(width, totalRows, graph);
 	}
 
 	private renderWorkflowGraphPanel(width: number, height: number): string[] {
@@ -802,6 +807,14 @@ function sliceAround(lines: string[], budget: number, preferredRow: number): str
 	const half = Math.floor(budget / 2);
 	const start = Math.max(0, Math.min(lines.length - budget, preferredRow - half));
 	return lines.slice(start, start + budget);
+}
+
+function workflowGraphPanelHeight(totalRows: number): number {
+	const reservedRows = 8;
+	const maxPanelRows = totalRows - reservedRows;
+	if (maxPanelRows < 3) return 0;
+	const desiredRows = totalRows < 18 ? 4 : Math.min(10, Math.floor(totalRows * 0.28));
+	return Math.max(3, Math.min(desiredRows, maxPanelRows));
 }
 
 export function classifyWorkflowChatLine(line: string): TranscriptRole {

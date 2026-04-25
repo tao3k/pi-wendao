@@ -49,7 +49,7 @@ describe("pi-wendao chat TUI commands", () => {
 		const prompt = loadPiWendaoChatSystemPrompt();
 
 		expect(prompt).toContain("pi-wendao TUI assistant");
-		expect(prompt).toContain("top workflow graph panel");
+		expect(prompt).toContain("compact running panel below the chat stream");
 	});
 
 	it("routes workflow lines into native chat roles", () => {
@@ -107,7 +107,7 @@ describe("pi-wendao chat TUI commands", () => {
 		expect(sent[0]?.options).toBeUndefined();
 	});
 
-	it("renders workflow graph above chat on wide terminals", () => {
+	it("renders workflow graph below the native chat stream on wide terminals", () => {
 		const graphView = new GraphView();
 		const view = new PiWendaoChatView(
 			{ rows: 18 } as never,
@@ -125,7 +125,8 @@ describe("pi-wendao chat TUI commands", () => {
 
 		const plain = view.render(140).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
 
-		expect(plain.indexOf("workflow graph")).toBeLessThan(plain.indexOf("pi-wendao LLM chat"));
+		expect(plain.indexOf("pi-wendao LLM chat")).toBeLessThan(plain.indexOf("workflow event"));
+		expect(plain.indexOf("workflow event")).toBeLessThan(plain.indexOf("workflow graph"));
 		expect(plain).not.toContain("|");
 	});
 
