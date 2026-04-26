@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
 
   <process id="Process_ComplexPipeline" isExecutable="true">
 
@@ -14,12 +14,12 @@
     <!-- Step 1: Initialize -->
     <serviceTask id="Task_Init" name="Initialize system" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Initialize the system. Sleep for 5 seconds using bash (run: sleep 5). Then set retryCount to 1 and status to "not ready".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>retryCount,status</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Initialize the system. Sleep for 5 seconds using bash (run: sleep 5). Then set retryCount to 1 and status to "not ready".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>retryCount,status</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_Init_EvalRetry" sourceRef="Task_Init" targetRef="Task_EvalRetry"/>
@@ -27,12 +27,12 @@
     <!-- Step 2: Evaluate if retryCount >= 3 -->
     <serviceTask id="Task_EvalRetry" name="Evaluate retry count" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Check if retryCount is greater than or equal to 3. If it is, set retriesExhausted to true. Otherwise set retriesExhausted to false.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>retryCount</skillsc:inputs>
-          <skillsc:outputs>retriesExhausted</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Check if retryCount is greater than or equal to 3. If it is, set retriesExhausted to true. Otherwise set retriesExhausted to false.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>retryCount</qianji:inputs>
+          <qianji:outputs>retriesExhausted</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_EvalRetry_GW" sourceRef="Task_EvalRetry" targetRef="Gateway_RetryCheck"/>
@@ -47,12 +47,12 @@
     <!-- Increment retryCount and loop back -->
     <serviceTask id="Task_IncrementRetry" name="Increment retry count" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Increment retryCount by 1. The current value of retryCount is provided as input. Output the new retryCount value. Also sleep for 5 seconds using bash (run: sleep 5).</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>retryCount</skillsc:inputs>
-          <skillsc:outputs>retryCount</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Increment retryCount by 1. The current value of retryCount is provided as input. Output the new retryCount value. Also sleep for 5 seconds using bash (run: sleep 5).</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>retryCount</qianji:inputs>
+          <qianji:outputs>retryCount</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_Increment_EvalRetry" sourceRef="Task_IncrementRetry" targetRef="Task_EvalRetry"/>
@@ -60,12 +60,12 @@
     <!-- Set status to ready -->
     <serviceTask id="Task_SetReady" name="Set status to ready" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Set status to "ready". Sleep for 5 seconds using bash (run: sleep 5).</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>status</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Set status to "ready". Sleep for 5 seconds using bash (run: sleep 5).</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>status</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_SetReady_Fork" sourceRef="Task_SetReady" targetRef="Gateway_Fork"/>
@@ -78,12 +78,12 @@
     <!-- Branch A -->
     <serviceTask id="Task_BranchA" name="Branch A" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultA to "alpha".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>resultA</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultA to "alpha".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>resultA</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_A_Join" sourceRef="Task_BranchA" targetRef="Gateway_Join"/>
@@ -91,12 +91,12 @@
     <!-- Branch B -->
     <serviceTask id="Task_BranchB" name="Branch B" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultB to "beta".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>resultB</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultB to "beta".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>resultB</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_B_Join" sourceRef="Task_BranchB" targetRef="Gateway_Join"/>
@@ -108,12 +108,12 @@
     <!-- Merge results -->
     <serviceTask id="Task_Merge" name="Merge results" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then concatenate resultA and resultB into a single string called merged. For example if resultA is "alpha" and resultB is "beta", merged should be "alphabeta".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>resultA,resultB</skillsc:inputs>
-          <skillsc:outputs>merged</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then concatenate resultA and resultB into a single string called merged. For example if resultA is "alpha" and resultB is "beta", merged should be "alphabeta".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>resultA,resultB</qianji:inputs>
+          <qianji:outputs>merged</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_Merge_Validate" sourceRef="Task_Merge" targetRef="Task_Validate"/>
@@ -121,24 +121,24 @@
     <!-- Step 5: Validate -->
     <serviceTask id="Task_Validate" name="Validate merged result" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Validate the merged result. Set valid to true when validation passes; otherwise set valid to false.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>merged</skillsc:inputs>
-          <skillsc:outputs>valid</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Validate the merged result. Set valid to true when validation passes; otherwise set valid to false.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>merged</qianji:inputs>
+          <qianji:outputs>valid</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
     <!-- Fallback task -->
     <serviceTask id="Task_Fallback" name="Validation fallback" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set valid to false and reason to "validation failed".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>valid,reason</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set valid to false and reason to "validation failed".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>valid,reason</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_Fallback_Reject" sourceRef="Task_Fallback" targetRef="Task_Reject"/>
@@ -156,12 +156,12 @@
     <!-- Publish -->
     <serviceTask id="Task_Publish" name="Publish result" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set published to true.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>published</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set published to true.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>published</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_Publish_End" sourceRef="Task_Publish" targetRef="EndEvent_Published"/>
@@ -171,12 +171,12 @@
     <!-- Reject -->
     <serviceTask id="Task_Reject" name="Reject result" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set rejected to true.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>reason</skillsc:inputs>
-          <skillsc:outputs>rejected</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set rejected to true.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>reason</qianji:inputs>
+          <qianji:outputs>rejected</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <sequenceFlow id="Flow_Reject_End" sourceRef="Task_Reject" targetRef="EndEvent_Rejected"/>

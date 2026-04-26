@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" name="Simple Workflow" isExecutable="true">
     <startEvent id="Start_1" name="Start"/>
     <serviceTask id="Task_1" name="List files" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>List all files in the current directory and store the result.</skillsc:prompt>
-          <skillsc:tools>bash,read</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>fileList</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>List all files in the current directory and store the result.</qianji:prompt>
+          <qianji:tools>bash,read</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>fileList</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <endEvent id="End_1" name="End"/>

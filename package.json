@@ -1,17 +1,20 @@
 {
   "name": "pi-wendao",
   "version": "0.1.0",
-  "type": "module",
   "bin": {
     "pi-wendao": "./dist/cli/pi-wendao.js"
   },
+  "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc && chmod +x dist/cli/pi-wendao.js",
     "check": "tsc --noEmit",
+    "prepack": "npm run build",
     "test": "vitest run",
     "pi-wendao": "node dist/cli/pi-wendao.js"
   },
   "dependencies": {
+    "@eko24ive/pi-ask": "^0.6.0",
+    "@mariozechner/jiti": "^2.6.5",
     "@mariozechner/pi-ai": "^0.70.2",
     "@mariozechner/pi-coding-agent": "^0.70.2",
     "@mariozechner/pi-tui": "^0.70.2",

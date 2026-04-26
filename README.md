@@ -25,6 +25,7 @@ pi-wendao compile my-skill.md --model anthropic/<model-id>
 This reads `my-skill.md`, asks the large model whether the raw skill should compile to BPMN or BPMN+DMN, then fetches qianji's target-specific XML templates before generation. It writes `my-skill.bpmn`; if the model chooses BPMN+DMN, `pi-wendao compile` also writes `my-skill.dmn`.
 
 Options:
+
 - `-o, --output <file>` — output path (default: same name as input with `.bpmn` extension)
 - `--model <model>` — model to use, as `provider/id` (required)
 - `--provider <provider>` — LLM provider (alternative to `provider/id` format)
@@ -49,6 +50,7 @@ pi-wendao my-skill.bpmn --dmn my-skill.dmn
 ```
 
 Options:
+
 - `--process <id>` — BPMN process id (default: first process in the file)
 - `--instance-id <id>` — qianji workflow instance id; must be a stable descriptive id, not a short numeric value
 - `--qianji <command>` — qianji CLI command override
@@ -73,6 +75,8 @@ session for the current working directory. Type normally to talk with the
 configured LLM; pi owns session persistence, history scrolling, `/session`,
 `/resume`, `/tree`, compaction, tool rendering, and extension UI. Use
 `/run <workflow.bpmn>` to execute a qianji BPMN workflow in that same session.
+Use `/run brainstorm` to run the built-in brainstorming named workflow; see
+[docs/named-workflows.md](docs/named-workflows.md) for cache and seed behavior.
 The workflow graph is a pi extension widget above the editor, and qianji trace
 events, subagent lifecycle updates, tool calls, assistant replies, thinking, and
 human/planner prompts are written as pi custom messages. Use `/show` or
@@ -159,6 +163,9 @@ token-scoped output fixture to qianji. `pi-wendao` loads the packaged
 pi-subagents extension and its own graph-local intercom extension by default,
 then uses pi-subagents `Agent` and `get_subagent_result` tools as the host
 backend when available.
+Planner and user prompts inside the native TUI use the `pi-ask` package as an
+internal UI dependency; `pi-ask` is not loaded as a pi extension and does not
+register an `ask_user` tool into the workflow session.
 By default, these host calls use the packaged `pi-wendao-worker` pi-subagent type,
 which allows the built-in `intercom` extension tool alongside the usual
 read/write/search tools. Otherwise it falls back to the default
@@ -194,41 +201,10 @@ deterministic host data.
 
 ## BPMN format
 
-The compiled output is valid BPMN 2.0 XML, loadable in [bpmn.io](https://bpmn.io/) or any BPMN editor. Extension elements use the `skillsc` namespace:
-
-```xml
-<serviceTask id="Task_1" name="Run tests"
-             implementation="${environment.services.runAgent}">
-  <extensionElements>
-    <skillsc:config>
-      <skillsc:prompt>Run the test suite and report results.</skillsc:prompt>
-      <skillsc:tools>bash</skillsc:tools>
-      <skillsc:inputs></skillsc:inputs>
-      <skillsc:outputs>testsPassed</skillsc:outputs>
-      <skillsc:agentType>pi-wendao-worker</skillsc:agentType>
-      <skillsc:runInBackground>true</skillsc:runInBackground>
-      <skillsc:maxTurns>8</skillsc:maxTurns>
-    </skillsc:config>
-  </extensionElements>
-</serviceTask>
-```
-
-Human feedback or approval checkpoints use `userTask` with the same
-`skillsc:config` fields. `skillsc:tools` must be empty because the graph TUI,
-not an LLM tool runner, resolves the node:
-
-```xml
-<userTask id="Task_Approve" name="Approve proposal">
-  <extensionElements>
-    <skillsc:config>
-      <skillsc:prompt>Review the proposal and approve before continuing.</skillsc:prompt>
-      <skillsc:tools></skillsc:tools>
-      <skillsc:inputs>proposal</skillsc:inputs>
-      <skillsc:outputs>approved,approvedReply</skillsc:outputs>
-    </skillsc:config>
-  </extensionElements>
-</userTask>
-```
+The compiled output is valid BPMN 2.0 XML, loadable in [bpmn.io](https://bpmn.io/)
+or any BPMN editor. Extension elements use the `qianji` namespace. See
+[docs/bpmn-format.md](docs/bpmn-format.md) for the maintained XML contract,
+including `qianji:interaction` for host-neutral user-task prompts.
 
 The `agentType`, `runInBackground`, `maxTurns`, `agentModel`, `thinking`,
 `isolated`, `isolation`, and `inheritContext` fields are optional execution
@@ -259,7 +235,7 @@ state into `PiWendaoIntercomCorrelationState`. `pi-wendao` exposes project
 `.pi/extensions` and `.pi/agents/pi-wendao-worker.md` wrappers so pi-subagents
 child sessions can load the graph-local `intercom` tool surface without also
 loading a second `intercom` provider. Under the default pi-ai host,
-service tasks can declare `intercom` in `skillsc:tools`; under pi-subagents, the
+service tasks can declare `intercom` in `qianji:tools`; under pi-subagents, the
 child agent sees `intercom` through the `pi-wendao-worker` allowed tool set and
 the native chat stream shows the call when the child agent uses it.
 Graph-local `ask` calls target the inline planner inbox; `send` calls are
@@ -285,15 +261,15 @@ the host manually.
 
 ### Supported BPMN elements
 
-| Element | Purpose |
-|---------|---------|
-| `startEvent` | Process entry point |
-| `endEvent` | Process exit point |
-| `serviceTask` | Task executed by the small model |
-| `userTask` | Graph-local human input, feedback, or approval checkpoint |
-| `exclusiveGateway` | Conditional branching (XOR) |
-| `parallelGateway` | Concurrent branches |
-| `sequenceFlow` | Connects elements, with optional `conditionExpression` |
+| Element            | Purpose                                                   |
+| ------------------ | --------------------------------------------------------- |
+| `startEvent`       | Process entry point                                       |
+| `endEvent`         | Process exit point                                        |
+| `serviceTask`      | Task executed by the small model                          |
+| `userTask`         | Graph-local human input, feedback, or approval checkpoint |
+| `exclusiveGateway` | Conditional branching (XOR)                               |
+| `parallelGateway`  | Concurrent branches                                       |
+| `sequenceFlow`     | Connects elements, with optional `conditionExpression`    |
 
 ### Variables
 

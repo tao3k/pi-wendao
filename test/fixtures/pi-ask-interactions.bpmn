@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
+             id="Definitions_PiAskInteractions"
+             targetNamespace="https://qianji.dev/examples/pi-ask-interactions">
+  <process id="Process_PiAskInteractions" isExecutable="true">
+    <startEvent id="Start"/>
+
+    <userTask id="Task_Input" name="Free-form input">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Collect a plain free-form answer.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>topic</qianji:inputs>
+          <qianji:outputs>freeformAnswer</qianji:outputs>
+          <qianji:interaction type="input">
+            <qianji:question>Describe the next investigation step.</qianji:question>
+            <qianji:freeText name="freeformAnswer" placeholder="Write a short answer"/>
+            <qianji:result output="freeformAnswer"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <userTask id="Task_Confirm" name="Confirm continuation">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask for a binary confirmation.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>approved</qianji:outputs>
+          <qianji:interaction type="confirm">
+            <qianji:question>Continue with the proposed workflow?</qianji:question>
+            <qianji:result output="approved"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <userTask id="Task_Choice" name="Static choice">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask the user to select one fixed option.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>selectedDirection</qianji:outputs>
+          <qianji:interaction type="choice">
+            <qianji:question>Which direction should the workflow emphasize?</qianji:question>
+            <qianji:choice value="expand" label="Explore more">Gather broader context before narrowing.</qianji:choice>
+            <qianji:choice value="narrow" label="Narrow scope">Pick the smallest useful slice now.</qianji:choice>
+            <qianji:result output="selectedDirection"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <userTask id="Task_ChoiceInput" name="Choice with custom answer">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask the user to choose or type a custom answer.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>choiceInputAnswer</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question>How should qianji repair this workflow?</qianji:question>
+            <qianji:choice value="minimal" label="Minimal fix">Only repair the failing contract.</qianji:choice>
+            <qianji:choice value="broaden" label="Broaden coverage">Add schema tests around the failure.</qianji:choice>
+            <qianji:freeText name="choiceInputAnswer" optional="true" placeholder="Type a custom repair direction"/>
+            <qianji:result output="choiceInputAnswer"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <userTask id="Task_DynamicChoiceInput" name="Dynamic generated question">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask the generated question with generated options.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>currentQuestion,currentChoices</qianji:inputs>
+          <qianji:outputs>dynamicAnswer</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question ref="currentQuestion"/>
+            <qianji:choices ref="currentChoices"/>
+            <qianji:freeText name="dynamicAnswer" optional="true" placeholder="Type another answer"/>
+            <qianji:result output="dynamicAnswer"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <endEvent id="End"/>
+
+    <sequenceFlow id="Flow_Start_Input" sourceRef="Start" targetRef="Task_Input"/>
+    <sequenceFlow id="Flow_Input_Confirm" sourceRef="Task_Input" targetRef="Task_Confirm"/>
+    <sequenceFlow id="Flow_Confirm_Choice" sourceRef="Task_Confirm" targetRef="Task_Choice"/>
+    <sequenceFlow id="Flow_Choice_ChoiceInput" sourceRef="Task_Choice" targetRef="Task_ChoiceInput"/>
+    <sequenceFlow id="Flow_ChoiceInput_Dynamic" sourceRef="Task_ChoiceInput" targetRef="Task_DynamicChoiceInput"/>
+    <sequenceFlow id="Flow_Dynamic_End" sourceRef="Task_DynamicChoiceInput" targetRef="End"/>
+  </process>
+</definitions>

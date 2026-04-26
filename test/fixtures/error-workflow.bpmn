@@ -1,30 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" name="Error Handling Workflow" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_Risky" name="Risky operation" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Perform a risky operation. If it succeeds, output success as true and result. If it cannot complete, output success as false.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>result,success</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Perform a risky operation. If it succeeds, output success as true and result. If it cannot complete, output success as false.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>result,success</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <exclusiveGateway id="Gateway_RiskySuccess" default="Flow_Fallback"/>
     <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Run the fallback procedure after the risky operation failed.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>fallbackResult</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Run the fallback procedure after the risky operation failed.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>fallbackResult</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <endEvent id="End_1"/>

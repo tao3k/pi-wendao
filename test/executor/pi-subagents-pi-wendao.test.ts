@@ -4,151 +4,160 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { executeBpmnWithPiSubagents } from "../../src/executor/pi-subagents-pi-wendao.js";
 import type {
-	PiLoadedExtensionsLike,
-	PiRegisteredToolDefinition,
+  PiLoadedExtensionsLike,
+  PiRegisteredToolDefinition,
 } from "../../src/executor/pi-subagents-runtime.js";
 
 const tempDirs: string[] = [];
 
 describe("pi-subagents pi-wendao runtime bridge", () => {
-	afterEach(() => {
-		for (const dir of tempDirs.splice(0)) {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
-	it("executes qianji host work through loaded pi-subagents tools and reuses cached results", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "pi-wendao-pi-bridge-"));
-		tempDirs.push(dir);
-		const workflowPath = join(dir, "workflow.bpmn");
-		const storePath = join(dir, "subagents.json");
-		writeFileSync(workflowPath, tokenScopedServiceTaskWorkflow(), "utf-8");
+  it("executes qianji host work through loaded pi-subagents tools and reuses cached results", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-pi-bridge-"));
+    tempDirs.push(dir);
+    const workflowPath = join(dir, "workflow.bpmn");
+    const storePath = join(dir, "subagents.json");
+    writeFileSync(workflowPath, tokenScopedServiceTaskWorkflow(), "utf-8");
 
-		const starts: Record<string, number> = {};
-		const agentCalls: string[] = [];
-		const getResultCalls: string[] = [];
-		const ctx = { cwd: dir };
-		const loadResult = loadedExtensions({
-			Agent: async (params, receivedCtx) => {
-				expect(receivedCtx).toBe(ctx);
-				const prompt = String(params.prompt);
-				const item = prompt.includes('item: "alpha"') ? "alpha" : "beta";
-				starts[item] = performance.now();
-				agentCalls.push(item);
-				await delay(80);
-				return {
-					content: [{ type: "text", text: `Agent ID: agent-${item}\n` }],
-					details: { agentId: `agent-${item}` },
-				};
-			},
-			get_subagent_result: async (params, receivedCtx) => {
-				expect(receivedCtx).toBe(ctx);
-				const agentId = String(params.agent_id);
-				getResultCalls.push(agentId);
-				const item = agentId.endsWith("alpha") ? "alpha" : "beta";
-				return {
-					content: [{
-						type: "text",
-						text: `Done.\n\`\`\`json\n{"result":"${item}_done"}\n\`\`\``,
-					}],
-				};
-			},
-		});
+    const starts: Record<string, number> = {};
+    const agentCalls: string[] = [];
+    const getResultCalls: string[] = [];
+    const ctx = { cwd: dir };
+    const loadResult = loadedExtensions({
+      Agent: async (params, receivedCtx) => {
+        expect(receivedCtx).toBe(ctx);
+        const prompt = String(params.prompt);
+        const item = prompt.includes('item: "alpha"') ? "alpha" : "beta";
+        starts[item] = performance.now();
+        agentCalls.push(item);
+        await delay(80);
+        return {
+          content: [{ type: "text", text: `Agent ID: agent-${item}\n` }],
+          details: { agentId: `agent-${item}` },
+        };
+      },
+      get_subagent_result: async (params, receivedCtx) => {
+        expect(receivedCtx).toBe(ctx);
+        const agentId = String(params.agent_id);
+        getResultCalls.push(agentId);
+        const item = agentId.endsWith("alpha") ? "alpha" : "beta";
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Done.\n\`\`\`json\n{"result":"${item}_done"}\n\`\`\``,
+            },
+          ],
+        };
+      },
+    });
 
-		const result = await executeBpmnWithPiSubagents({
-			workflowPath,
-			loadResult,
-			ctx,
-			qianjiCommand: makeFakeExternalHostQianjiCommand(),
-			instanceId: "pi-wendao-pi-bridge-instance",
-			processId: "Process_1",
-			context: { items: ["alpha", "beta"] },
-			runStorePath: storePath,
-			toolCallIdPrefix: "bridge-test",
-		});
+    const result = await executeBpmnWithPiSubagents({
+      workflowPath,
+      loadResult,
+      ctx,
+      qianjiCommand: makeFakeExternalHostQianjiCommand(),
+      instanceId: "pi-wendao-pi-bridge-instance",
+      processId: "Process_1",
+      context: { items: ["alpha", "beta"] },
+      runStorePath: storePath,
+      toolCallIdPrefix: "bridge-test",
+    });
 
-		expect(result.success).toBe(true);
-		expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
-		expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
-		expect(agentCalls).toEqual(["alpha", "beta"]);
-		expect(getResultCalls).toEqual(["agent-alpha", "agent-beta"]);
-		expect(result.variables).toMatchObject({
-			results: ["alpha_done", "beta_done"],
-			fixtureServiceTaskTokens: ["11", "12"],
-		});
+    expect(result.success).toBe(true);
+    expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
+    expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
+    expect(agentCalls).toEqual(["alpha", "beta"]);
+    expect(getResultCalls).toEqual(["agent-alpha", "agent-beta"]);
+    expect(result.variables).toMatchObject({
+      results: ["alpha_done", "beta_done"],
+      fixtureServiceTaskTokens: ["11", "12"],
+    });
 
-		const cachedResult = await executeBpmnWithPiSubagents({
-			workflowPath,
-			loadResult: throwingLoadedExtensions(),
-			ctx,
-			qianjiCommand: makeFakeExternalHostQianjiCommand(),
-			instanceId: "pi-wendao-pi-bridge-instance",
-			processId: "Process_1",
-			context: { items: ["alpha", "beta"] },
-			runStorePath: storePath,
-		});
+    const cachedResult = await executeBpmnWithPiSubagents({
+      workflowPath,
+      loadResult: throwingLoadedExtensions(),
+      ctx,
+      qianjiCommand: makeFakeExternalHostQianjiCommand(),
+      instanceId: "pi-wendao-pi-bridge-instance",
+      processId: "Process_1",
+      context: { items: ["alpha", "beta"] },
+      runStorePath: storePath,
+    });
 
-		expect(cachedResult.success).toBe(true);
-		expect(cachedResult.variables).toMatchObject({
-			results: ["alpha_done", "beta_done"],
-			fixtureServiceTaskTokens: ["11", "12"],
-		});
-		expect(agentCalls).toHaveLength(2);
-		expect(getResultCalls).toHaveLength(2);
-	});
+    expect(cachedResult.success).toBe(true);
+    expect(cachedResult.variables).toMatchObject({
+      results: ["alpha_done", "beta_done"],
+      fixtureServiceTaskTokens: ["11", "12"],
+    });
+    expect(agentCalls).toHaveLength(2);
+    expect(getResultCalls).toHaveLength(2);
+  });
 });
 
 function loadedExtensions(tools: {
-	Agent: ToolExecute;
-	get_subagent_result: ToolExecute;
+  Agent: ToolExecute;
+  get_subagent_result: ToolExecute;
 }): PiLoadedExtensionsLike {
-	return {
-		extensions: [{
-			tools: new Map([
-				["Agent", { definition: tool("Agent", tools.Agent) }],
-				["get_subagent_result", {
-					definition: tool("get_subagent_result", tools.get_subagent_result),
-				}],
-			]),
-		}],
-	};
+  return {
+    extensions: [
+      {
+        tools: new Map([
+          ["Agent", { definition: tool("Agent", tools.Agent) }],
+          [
+            "get_subagent_result",
+            {
+              definition: tool("get_subagent_result", tools.get_subagent_result),
+            },
+          ],
+        ]),
+      },
+    ],
+  };
 }
 
 function throwingLoadedExtensions(): PiLoadedExtensionsLike {
-	return loadedExtensions({
-		Agent: async () => {
-			throw new Error("cached bridge run should not spawn another subagent");
-		},
-		get_subagent_result: async () => {
-			throw new Error("cached bridge run should not fetch another subagent result");
-		},
-	});
+  return loadedExtensions({
+    Agent: async () => {
+      throw new Error("cached bridge run should not spawn another subagent");
+    },
+    get_subagent_result: async () => {
+      throw new Error("cached bridge run should not fetch another subagent result");
+    },
+  });
 }
 
 type ToolExecute = (
-	params: Record<string, unknown>,
-	ctx: unknown,
+  params: Record<string, unknown>,
+  ctx: unknown,
 ) => Promise<{ content: Array<{ type: string; text?: string }>; details?: unknown }>;
 
 function tool(name: string, execute: ToolExecute): PiRegisteredToolDefinition {
-	return {
-		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-			expect(toolCallId).toContain(name);
-			return execute(params, ctx);
-		},
-	};
+  return {
+    async execute(toolCallId, params, _signal, _onUpdate, ctx) {
+      expect(toolCallId).toContain(name);
+      return execute(params, ctx);
+    },
+  };
 }
 
 function makeFakeExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-pi-bridge-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji-external-host.cjs");
-	writeFakeExternalHostQianjiScript(scriptPath);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-pi-bridge-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-external-host.cjs");
+  writeFakeExternalHostQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function writeFakeExternalHostQianjiScript(scriptPath: string): void {
-	writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 const { readFileSync } = require("fs");
 const args = process.argv.slice(2);
 const get = (flag) => {
@@ -203,30 +212,32 @@ if (args[1] === "tasks" && args[2] === "complete") {
 
 console.error("unexpected qianji args: " + args.join(" "));
 process.exit(64);
-`, "utf-8");
+`,
+    "utf-8",
+  );
 }
 
 function tokenScopedServiceTaskWorkflow(): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:skillsc="https://xiuxian.dev/skillsc"
-             targetNamespace="https://xiuxian.dev/skillsc/test">
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
+             targetNamespace="https://qianji.dev/test">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1" name="Start">
       <outgoing>Flow_1</outgoing>
     </startEvent>
     <serviceTask id="Task_Review" name="Review item" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Review \${environment.variables.item}.</skillsc:prompt>
-          <skillsc:tools>bash, read</skillsc:tools>
-          <skillsc:inputs>item</skillsc:inputs>
-          <skillsc:outputs>result</skillsc:outputs>
-          <skillsc:agentType>pi-wendao-worker</skillsc:agentType>
-          <skillsc:agentDescription>Review one parallel item</skillsc:agentDescription>
-          <skillsc:runInBackground>true</skillsc:runInBackground>
-          <skillsc:maxTurns>4</skillsc:maxTurns>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Review \${environment.variables.item}.</qianji:prompt>
+          <qianji:tools>bash, read</qianji:tools>
+          <qianji:inputs>item</qianji:inputs>
+          <qianji:outputs>result</qianji:outputs>
+          <qianji:agentType>pi-wendao-worker</qianji:agentType>
+          <qianji:agentDescription>Review one parallel item</qianji:agentDescription>
+          <qianji:runInBackground>true</qianji:runInBackground>
+          <qianji:maxTurns>4</qianji:maxTurns>
+        </qianji:config>
       </extensionElements>
       <incoming>Flow_1</incoming>
       <outgoing>Flow_2</outgoing>
@@ -241,10 +252,10 @@ function tokenScopedServiceTaskWorkflow(): string {
 }
 
 function shellQuote(value: string): string {
-	if (/^[A-Za-z0-9_/:=.,@%+-]+$/.test(value)) return value;
-	return `'${value.replace(/'/g, "'\\''")}'`;
+  if (/^[A-Za-z0-9_/:=.,@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

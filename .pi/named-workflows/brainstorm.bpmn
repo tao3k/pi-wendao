@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
+             id="Definitions_Brainstorming"
+             targetNamespace="https://qianji.dev">
+  <process id="Process_Brainstorming" name="Brainstorming Design Process" isExecutable="true">
+    <startEvent id="Start_1" name="Start brainstorming"/>
+
+    <serviceTask id="Task_ExploreContext" name="Explore project context" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Explore the current project state before design discussion. Check relevant files, docs, and recent context. If the request is too broad, summarize the decomposition needed. Output contextFindings and scopeReady.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>contextFindings,scopeReady</qianji:outputs>
+        </qianji:config>
+      </extensionElements>
+    </serviceTask>
+
+    <userTask id="Task_Clarify" name="Clarify design intent">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask the user for the next clarification needed to understand purpose, constraints, or success criteria.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>contextFindings</qianji:inputs>
+          <qianji:outputs>clarificationAnswer</qianji:outputs>
+          <qianji:interaction type="input">
+            <qianji:question>What is the most important constraint or success criterion for this design?</qianji:question>
+            <qianji:freeText name="clarificationAnswer" optional="false" placeholder="Answer"/>
+            <qianji:result output="clarificationAnswer"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <serviceTask id="Task_ProposeApproaches" name="Propose approaches" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Use the context findings and clarification answer to propose two or three design approaches with trade-offs. Recommend one. Output approaches and recommendedApproach.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>contextFindings,clarificationAnswer</qianji:inputs>
+          <qianji:outputs>approaches,recommendedApproach</qianji:outputs>
+        </qianji:config>
+      </extensionElements>
+    </serviceTask>
+
+    <serviceTask id="Task_PresentDesign" name="Present design" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Turn the recommended approach into a concrete design. Cover architecture, components, data flow, error handling, and tests. Output designSummary.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>approaches,recommendedApproach</qianji:inputs>
+          <qianji:outputs>designSummary</qianji:outputs>
+        </qianji:config>
+      </extensionElements>
+    </serviceTask>
+
+    <userTask id="Task_ApproveDesign" name="Approve design">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask the user whether the design is acceptable before any implementation begins.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>designSummary</qianji:inputs>
+          <qianji:outputs>designApproved,designFeedback</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question>Does this design look right enough to write the spec?</qianji:question>
+            <qianji:choice value="approved" label="Approve">Proceed to write the design spec.</qianji:choice>
+            <qianji:choice value="revise" label="Revise">Return to the design step with feedback.</qianji:choice>
+            <qianji:freeText name="designFeedback" optional="true" placeholder="Feedback"/>
+            <qianji:result output="designApproved"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <exclusiveGateway id="Gateway_DesignApproved" name="Design approved?" default="Flow_ReviseDesign"/>
+
+    <serviceTask id="Task_WriteSpec" name="Write design spec" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Write the approved design as a concise spec document in the project-appropriate docs location. Output specPath and specWritten.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>designSummary,designFeedback</qianji:inputs>
+          <qianji:outputs>specPath,specWritten</qianji:outputs>
+        </qianji:config>
+      </extensionElements>
+    </serviceTask>
+
+    <userTask id="Task_ReviewSpec" name="Review spec">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask the user to review the written spec before implementation planning begins.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>specPath</qianji:inputs>
+          <qianji:outputs>specApproved,specFeedback</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question>Spec written. Is it approved for implementation planning?</qianji:question>
+            <qianji:choice value="approved" label="Approve">Proceed to implementation planning.</qianji:choice>
+            <qianji:choice value="changes" label="Request changes">Revise the spec first.</qianji:choice>
+            <qianji:freeText name="specFeedback" optional="true" placeholder="Requested changes"/>
+            <qianji:result output="specApproved"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+
+    <exclusiveGateway id="Gateway_SpecApproved" name="Spec approved?" default="Flow_ReviseSpec"/>
+
+    <serviceTask id="Task_InvokeWritingPlans" name="Create implementation plan" implementation="${environment.services.runAgent}">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Create the implementation plan from the approved spec. Do not implement code in this task. Output planCreated.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>specPath</qianji:inputs>
+          <qianji:outputs>planCreated</qianji:outputs>
+        </qianji:config>
+      </extensionElements>
+    </serviceTask>
+
+    <endEvent id="End_1" name="Brainstorming complete"/>
+
+    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_ExploreContext"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_ExploreContext" targetRef="Task_Clarify"/>
+    <sequenceFlow id="Flow_3" sourceRef="Task_Clarify" targetRef="Task_ProposeApproaches"/>
+    <sequenceFlow id="Flow_4" sourceRef="Task_ProposeApproaches" targetRef="Task_PresentDesign"/>
+    <sequenceFlow id="Flow_5" sourceRef="Task_PresentDesign" targetRef="Task_ApproveDesign"/>
+    <sequenceFlow id="Flow_6" sourceRef="Task_ApproveDesign" targetRef="Gateway_DesignApproved"/>
+    <sequenceFlow id="Flow_WriteSpec" sourceRef="Gateway_DesignApproved" targetRef="Task_WriteSpec">
+      <conditionExpression xsi:type="tFormalExpression">designApproved</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_ReviseDesign" sourceRef="Gateway_DesignApproved" targetRef="Task_PresentDesign"/>
+    <sequenceFlow id="Flow_7" sourceRef="Task_WriteSpec" targetRef="Task_ReviewSpec"/>
+    <sequenceFlow id="Flow_8" sourceRef="Task_ReviewSpec" targetRef="Gateway_SpecApproved"/>
+    <sequenceFlow id="Flow_CreatePlan" sourceRef="Gateway_SpecApproved" targetRef="Task_InvokeWritingPlans">
+      <conditionExpression xsi:type="tFormalExpression">specApproved</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_ReviseSpec" sourceRef="Gateway_SpecApproved" targetRef="Task_WriteSpec"/>
+    <sequenceFlow id="Flow_9" sourceRef="Task_InvokeWritingPlans" targetRef="End_1"/>
+  </process>
+</definitions>

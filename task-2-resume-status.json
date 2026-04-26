@@ -1,0 +1,14 @@
+{
+  "taskId": "Task_2",
+  "processId": "Process_1",
+  "resumeStatus": "acknowledged",
+  "checkpointState": {
+    "outcome": "blocked_on_host",
+    "backend": "duckdb",
+    "source": "resumed",
+    "pendingHostWork": 1
+  },
+  "taskCompleted": false,
+  "reason": "missing_bpmn_definition_for_process_1",
+  "message": "Task was resumed from blocked_on_host state but BPMN definition not found. Task cannot proceed without workflow definition specifying inputs, outputs, and required work."
+}

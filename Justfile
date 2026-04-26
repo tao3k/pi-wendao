@@ -65,7 +65,8 @@ lint-fixtures:
       "$PWD/test/fixtures/error-workflow.bpmn" \
       "$PWD/test/fixtures/complex-workflow.bpmn" \
       "$PWD/test/fixtures/complex-skill.bpmn" \
-      "$PWD/test/fixtures/human-approval.bpmn"
+      "$PWD/test/fixtures/human-approval.bpmn" \
+      "$PWD/.pi/named-workflows/brainstorm.bpmn"
     do
       {{qianji}} lint --bpmn "$bpmn"
     done

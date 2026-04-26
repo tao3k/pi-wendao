@@ -1,170 +1,201 @@
 export interface PiWendaoConfig {
-	hostKind?: PiWendaoHostWorkKind;
-	prompt: string;
-	tools: string[];
-	inputs: string[];
-	outputs: string[];
-	subagent?: PiWendaoSubagentConfig;
+  hostKind?: PiWendaoHostWorkKind;
+  prompt: string;
+  tools: string[];
+  inputs: string[];
+  outputs: string[];
+  interaction?: QianjiInteraction;
+  subagent?: PiWendaoSubagentConfig;
+}
+
+export type QianjiInteractionType = "input" | "confirm" | "choice" | "choice_input";
+
+export interface QianjiInteraction {
+  type: QianjiInteractionType;
+  question?: string;
+  questionRef?: string;
+  choices?: QianjiInteractionChoice[];
+  choicesRef?: string;
+  freeText?: QianjiInteractionFreeText;
+  result?: QianjiInteractionResult;
+}
+
+export interface QianjiInteractionChoice {
+  value: string;
+  label?: string;
+  description?: string;
+}
+
+export interface QianjiInteractionFreeText {
+  name?: string;
+  optional?: boolean;
+  placeholder?: string;
+}
+
+export interface QianjiInteractionResult {
+  output?: string;
 }
 
 export type PiWendaoHostWorkKind =
-	| "send"
-	| "service"
-	| "script"
-	| "user"
-	| "manual"
-	| "business_rule";
+  | "send"
+  | "service"
+  | "script"
+  | "user"
+  | "manual"
+  | "business_rule";
 
 export interface PiWendaoSubagentConfig {
-	type?: string;
-	description?: string;
-	runInBackground?: boolean;
-	model?: string;
-	thinking?: string;
-	maxTurns?: number;
-	isolated?: boolean;
-	isolation?: string;
-	inheritContext?: boolean;
+  type?: string;
+  description?: string;
+  runInBackground?: boolean;
+  model?: string;
+  thinking?: string;
+  maxTurns?: number;
+  isolated?: boolean;
+  isolation?: string;
+  inheritContext?: boolean;
 }
 
 export interface PiWendaoQianjiCheckpointFeedback {
-	outcome?: string;
-	backend?: string;
-	source?: string;
-	saved?: string;
-	deleted?: string;
-	status?: string;
-	pendingHostWork?: string;
+  outcome?: string;
+  backend?: string;
+  source?: string;
+  saved?: string;
+  deleted?: string;
+  status?: string;
+  pendingHostWork?: string;
 }
 
 export interface PiWendaoAgentExecutionMetadata {
-	activityId?: string;
-	processId?: string;
-	instanceId?: string;
-	nodeIndex?: number;
-	tokenId?: number;
-	repeat?: unknown;
-	checkpoint?: PiWendaoQianjiCheckpointFeedback;
+  activityId?: string;
+  processId?: string;
+  instanceId?: string;
+  nodeIndex?: number;
+  tokenId?: number;
+  repeat?: unknown;
+  checkpoint?: PiWendaoQianjiCheckpointFeedback;
 }
 
 export interface PiWendaoAgentRequest {
-	activityId: string;
-	config: PiWendaoConfig;
-	variables: Record<string, unknown>;
-	execution?: PiWendaoAgentExecutionMetadata;
+  activityId: string;
+  config: PiWendaoConfig;
+  variables: Record<string, unknown>;
+  execution?: PiWendaoAgentExecutionMetadata;
 }
 
 export interface PiWendaoAgentHost {
-	run(request: PiWendaoAgentRequest): Promise<Record<string, unknown>>;
+  run(request: PiWendaoAgentRequest): Promise<Record<string, unknown>>;
 }
 
 export const EMPTY_PI_WENDAO_CONFIG: PiWendaoConfig = {
-	prompt: "",
-	tools: [],
-	inputs: [],
-	outputs: [],
+  prompt: "",
+  tools: [],
+  inputs: [],
+  outputs: [],
 };
 
 export function buildPiWendaoAgentPrompt(
-	config: PiWendaoConfig,
-	variables: Record<string, unknown>,
-	execution?: PiWendaoAgentExecutionMetadata,
+  config: PiWendaoConfig,
+  variables: Record<string, unknown>,
+  execution?: PiWendaoAgentExecutionMetadata,
 ): string {
-	const scopedVars: Record<string, unknown> = {};
-	for (const inputName of config.inputs) {
-		if (inputName in variables) {
-			scopedVars[inputName] = variables[inputName];
-		}
-	}
+  const scopedVars: Record<string, unknown> = {};
+  for (const inputName of config.inputs) {
+    if (inputName in variables) {
+      scopedVars[inputName] = variables[inputName];
+    }
+  }
 
-	const variableContext = Object.entries(scopedVars)
-		.map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-		.join("\n");
-	const resolvedPrompt = config.prompt.replace(
-		/\$\{environment\.variables\.(\w+)\}/g,
-		(_, varName: string) => {
-			const val = variables[varName];
-			return val !== undefined ? JSON.stringify(val) : "undefined";
-		},
-	);
+  const variableContext = Object.entries(scopedVars)
+    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+    .join("\n");
+  const resolvedPrompt = config.prompt.replace(
+    /\$\{environment\.variables\.(\w+)\}/g,
+    (_, varName: string) => {
+      const val = variables[varName];
+      return val !== undefined ? JSON.stringify(val) : "undefined";
+    },
+  );
 
-	const promptParts = [resolvedPrompt];
-	const executionContext = formatExecutionContext(execution);
-	if (executionContext) {
-		promptParts.push(`\n\nQianji BPMN execution context (scheduler-owned, read-only):\n${executionContext}`);
-	}
-	if (variableContext) {
-		promptParts.push(`\n\nCurrent qianji task inputs (read-only):\n${variableContext}`);
-	}
-	if (config.outputs.length > 0) {
-		promptParts.push(
-			`\nAfter completing the task, output the following variables in a JSON code block with exactly these keys:\n${config.outputs.map((o) => `- ${o}`).join("\n")}`,
-		);
-	}
-	promptParts.push(
-		"\nQianji owns BPMN scheduling, gateway routing, retries, joins, checkpoint persistence, and resume state. Do not advance the workflow or decide the next BPMN node; only complete this service task and return its declared outputs.",
-	);
-	return promptParts.join("");
+  const promptParts = [resolvedPrompt];
+  const executionContext = formatExecutionContext(execution);
+  if (executionContext) {
+    promptParts.push(
+      `\n\nQianji BPMN execution context (scheduler-owned, read-only):\n${executionContext}`,
+    );
+  }
+  if (variableContext) {
+    promptParts.push(`\n\nCurrent qianji task inputs (read-only):\n${variableContext}`);
+  }
+  if (config.outputs.length > 0) {
+    promptParts.push(
+      `\nAfter completing the task, output the following variables in a JSON code block with exactly these keys:\n${config.outputs.map((o) => `- ${o}`).join("\n")}`,
+    );
+  }
+  promptParts.push(
+    "\nQianji owns BPMN scheduling, gateway routing, retries, joins, checkpoint persistence, and resume state. Do not advance the workflow or decide the next BPMN node; only complete this service task and return its declared outputs.",
+  );
+  return promptParts.join("");
 }
 
 function formatExecutionContext(execution: PiWendaoAgentExecutionMetadata | undefined): string {
-	if (!execution) return "";
-	const lines: string[] = [];
-	appendField(lines, "processId", execution.processId);
-	appendField(lines, "instanceId", execution.instanceId);
-	appendField(lines, "activityId", execution.activityId);
-	appendField(lines, "nodeIndex", execution.nodeIndex);
-	appendField(lines, "tokenId", execution.tokenId);
-	appendField(lines, "repeat", execution.repeat);
-	appendField(lines, "checkpoint.outcome", execution.checkpoint?.outcome);
-	appendField(lines, "checkpoint.backend", execution.checkpoint?.backend);
-	appendField(lines, "checkpoint.source", execution.checkpoint?.source);
-	appendField(lines, "checkpoint.saved", execution.checkpoint?.saved);
-	appendField(lines, "checkpoint.deleted", execution.checkpoint?.deleted);
-	appendField(lines, "checkpoint.status", execution.checkpoint?.status);
-	appendField(lines, "checkpoint.pendingHostWork", execution.checkpoint?.pendingHostWork);
-	return lines.map((line) => `- ${line}`).join("\n");
+  if (!execution) return "";
+  const lines: string[] = [];
+  appendField(lines, "processId", execution.processId);
+  appendField(lines, "instanceId", execution.instanceId);
+  appendField(lines, "activityId", execution.activityId);
+  appendField(lines, "nodeIndex", execution.nodeIndex);
+  appendField(lines, "tokenId", execution.tokenId);
+  appendField(lines, "repeat", execution.repeat);
+  appendField(lines, "checkpoint.outcome", execution.checkpoint?.outcome);
+  appendField(lines, "checkpoint.backend", execution.checkpoint?.backend);
+  appendField(lines, "checkpoint.source", execution.checkpoint?.source);
+  appendField(lines, "checkpoint.saved", execution.checkpoint?.saved);
+  appendField(lines, "checkpoint.deleted", execution.checkpoint?.deleted);
+  appendField(lines, "checkpoint.status", execution.checkpoint?.status);
+  appendField(lines, "checkpoint.pendingHostWork", execution.checkpoint?.pendingHostWork);
+  return lines.map((line) => `- ${line}`).join("\n");
 }
 
 function appendField(lines: string[], name: string, value: unknown): void {
-	if (value === undefined || value === null || value === "") return;
-	lines.push(`${name}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
+  if (value === undefined || value === null || value === "") return;
+  lines.push(`${name}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
 }
 
 export function extractOutputVariablesFromText(
-	textContent: string,
-	outputNames: string[],
+  textContent: string,
+  outputNames: string[],
 ): Record<string, unknown> {
-	if (outputNames.length === 0) return {};
+  if (outputNames.length === 0) return {};
 
-	const jsonMatch = textContent.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-	if (jsonMatch) {
-		const extracted = pickOutputVariables(jsonMatch[1], outputNames);
-		if (extracted) return extracted;
-	}
+  const jsonMatch = textContent.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (jsonMatch) {
+    const extracted = pickOutputVariables(jsonMatch[1], outputNames);
+    if (extracted) return extracted;
+  }
 
-	const parsed = pickOutputVariables(textContent, outputNames);
-	return parsed ?? {};
+  const parsed = pickOutputVariables(textContent, outputNames);
+  return parsed ?? {};
 }
 
 function pickOutputVariables(
-	rawJson: string,
-	outputNames: string[],
+  rawJson: string,
+  outputNames: string[],
 ): Record<string, unknown> | undefined {
-	try {
-		const parsed = JSON.parse(rawJson);
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-			return undefined;
-		}
-		const record = parsed as Record<string, unknown>;
-		const result: Record<string, unknown> = {};
-		for (const name of outputNames) {
-			if (name in record) {
-				result[name] = record[name];
-			}
-		}
-		return result;
-	} catch {
-		return undefined;
-	}
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const record = parsed as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    for (const name of outputNames) {
+      if (name in record) {
+        result[name] = record[name];
+      }
+    }
+    return result;
+  } catch {
+    return undefined;
+  }
 }

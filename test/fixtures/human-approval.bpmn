@@ -1,50 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_Draft" name="Draft proposal" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Draft a concise proposal from the user's initial idea. Output proposal.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>idea</skillsc:inputs>
-          <skillsc:outputs>proposal</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Draft a concise proposal from the user's initial idea. Output proposal.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>idea</qianji:inputs>
+          <qianji:outputs>proposal</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <userTask id="Task_Approve" name="Approve proposal">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Review the proposal and approve before the workflow continues.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>proposal</skillsc:inputs>
-          <skillsc:outputs>approved,approvedReply</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Review the proposal and approve before the workflow continues.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>proposal</qianji:inputs>
+          <qianji:outputs>approved,approvedReply</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question>How should the workflow proceed?</qianji:question>
+            <qianji:choice value="approved" label="Approve">Continue to the next BPMN checkpoint.</qianji:choice>
+            <qianji:choice value="rejected" label="Reject">Stop and revise before continuing.</qianji:choice>
+            <qianji:freeText name="approvedReply" optional="true"/>
+            <qianji:result output="approvedReply"/>
+          </qianji:interaction>
+        </qianji:config>
       </extensionElements>
     </userTask>
     <exclusiveGateway id="Gateway_Approved" name="Approved?" default="Flow_Rejected"/>
     <serviceTask id="Task_Finalize" name="Finalize proposal" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Finalize the approved proposal and output finalSummary.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>proposal,approvedReply</skillsc:inputs>
-          <skillsc:outputs>finalSummary</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Finalize the approved proposal and output finalSummary.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>proposal,approvedReply</qianji:inputs>
+          <qianji:outputs>finalSummary</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <serviceTask id="Task_Revise" name="Record revision request" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Summarize why the proposal was not approved and output revisionRequest.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>proposal,approvedReply</skillsc:inputs>
-          <skillsc:outputs>revisionRequest</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Summarize why the proposal was not approved and output revisionRequest.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>proposal,approvedReply</qianji:inputs>
+          <qianji:outputs>revisionRequest</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <endEvent id="End_Approved"/>

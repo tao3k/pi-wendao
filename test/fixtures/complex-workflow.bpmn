@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" name="Complex Workflow" isExecutable="true">
 
     <startEvent id="Start"/>
 
     <serviceTask id="Task_Init" name="Initialize" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>status,isReady</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>status,isReady</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
@@ -23,34 +23,34 @@
 
     <serviceTask id="Task_FetchA" name="Fetch A" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output resultA as "alpha".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>status</skillsc:inputs>
-          <skillsc:outputs>resultA</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output resultA as "alpha".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>status</qianji:inputs>
+          <qianji:outputs>resultA</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
     <serviceTask id="Task_FetchB" name="Fetch B" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output resultB as "beta".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>status</skillsc:inputs>
-          <skillsc:outputs>resultB</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output resultB as "beta".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>status</qianji:inputs>
+          <qianji:outputs>resultB</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
     <serviceTask id="Task_Retry" name="Retry init" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>status,isReady</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>status,isReady</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
@@ -59,34 +59,34 @@
 
     <serviceTask id="Task_Merge" name="Merge results" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output merged as the concatenation of resultA and resultB separated by a comma.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>resultA,resultB</skillsc:inputs>
-          <skillsc:outputs>merged</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output merged as the concatenation of resultA and resultB separated by a comma.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>resultA,resultB</qianji:inputs>
+          <qianji:outputs>merged</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
     <serviceTask id="Task_Validate" name="Validate" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output valid as true.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>merged</skillsc:inputs>
-          <skillsc:outputs>valid</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output valid as true.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>merged</qianji:inputs>
+          <qianji:outputs>valid</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
     <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output valid as false and reason as "validation failed".</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>merged</skillsc:inputs>
-          <skillsc:outputs>valid,reason</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output valid as false and reason as "validation failed".</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>merged</qianji:inputs>
+          <qianji:outputs>valid,reason</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
@@ -94,23 +94,23 @@
 
     <serviceTask id="Task_Publish" name="Publish" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output published as true.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>merged</skillsc:inputs>
-          <skillsc:outputs>published</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output published as true.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>merged</qianji:inputs>
+          <qianji:outputs>published</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
     <serviceTask id="Task_Reject" name="Reject" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Sleep for 2 seconds using bash, then output rejected as true.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs>merged,reason</skillsc:inputs>
-          <skillsc:outputs>rejected</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Sleep for 2 seconds using bash, then output rejected as true.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs>merged,reason</qianji:inputs>
+          <qianji:outputs>rejected</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
 
   <process id="Process_SimpleFileCounter" name="Simple File Counter" isExecutable="true">
 
@@ -13,12 +13,12 @@
 
     <serviceTask id="Task_FindFiles" name="Find TypeScript files" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. If the command succeeds, capture the full output, count the number of lines, and output success as true, the raw list as "fileList", and the total count as "fileCount". If it fails, output success as false.</skillsc:prompt>
-          <skillsc:tools>bash</skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>fileList,fileCount,success</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. If the command succeeds, capture the full output, count the number of lines, and output success as true, the raw list as "fileList", and the total count as "fileCount". If it fails, output success as false.</qianji:prompt>
+          <qianji:tools>bash</qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>fileList,fileCount,success</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
@@ -28,12 +28,12 @@
 
     <serviceTask id="Task_HandleError" name="Handle find error" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>The attempt to find TypeScript files failed. Report that an error occurred while searching for TypeScript files and set fileCount to 0 and report to "report".</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>fileCount,report</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>The attempt to find TypeScript files failed. Report that an error occurred while searching for TypeScript files and set fileCount to 0 and report to "report".</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>fileCount,report</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 
@@ -46,12 +46,12 @@
 
     <serviceTask id="Task_Report" name="Report the count" implementation="${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>You are given a list of TypeScript files and their count. Generate a clear, human-readable summary report. State the total number of TypeScript files found (from "fileCount") and list the files (from "fileList"). Output the summary as "report".</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>fileList,fileCount</skillsc:inputs>
-          <skillsc:outputs>report</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>You are given a list of TypeScript files and their count. Generate a clear, human-readable summary report. State the total number of TypeScript files found (from "fileCount") and list the files (from "fileList"). Output the summary as "report".</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>fileList,fileCount</qianji:inputs>
+          <qianji:outputs>report</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
 

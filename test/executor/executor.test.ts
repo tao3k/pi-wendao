@@ -3,510 +3,743 @@ import { tmpdir } from "os";
 import { delimiter, join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fauxAssistantMessage, registerFauxProvider, type Context } from "@mariozechner/pi-ai";
-import { execute, mapHumanTaskReplyToOutputs, type QianjiHostWorkEvent } from "../../src/executor/executor.js";
+import {
+  execute,
+  mapHumanTaskReplyToOutputs,
+  type QianjiHostWorkEvent,
+} from "../../src/executor/executor.js";
 import type { PiWendaoAgentHost } from "../../src/executor/agent-host.js";
-import { GraphView } from "../../src/output/graph-view.js";
+import { buildPiWendaoConfigMap } from "../../src/executor/bpmn-config.js";
+import { buildQianjiArgs, runQianjiCli } from "../../src/executor/qianji-cli.js";
+import { GraphView } from "../../src/ui/graph-view.js";
 
 const fixturesDir = join(import.meta.dirname, "../fixtures");
 const tempDirs: string[] = [];
 
 describe("executor", () => {
-	afterEach(() => {
-		for (const dir of tempDirs.splice(0)) {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
-	it("executes a workflow through qianji CLI", async () => {
-		const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
-		const outputChunks: string[] = [];
+  it("executes a workflow through qianji CLI", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+    const outputChunks: string[] = [];
 
-		const result = await execute({
-			source,
-			qianjiCommand: makeFakeQianjiCommand(),
-			instanceId: "wf_test",
-			variables: ["myKey=myValue", "count=42"],
-			onCliOutput: (output) => outputChunks.push(output),
-		});
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeQianjiCommand(),
+      instanceId: "wf_test",
+      variables: ["myKey=myValue", "count=42"],
+      onCliOutput: (output) => outputChunks.push(output),
+    });
 
-		expect(result.success).toBe(true);
-		expect(result.variables).toMatchObject({
-			myKey: "myValue",
-			count: "42",
-			process: "Process_1",
-			instance: "wf_test",
-			bpmnSeen: true,
-			hostFixtureSeen: true,
-			fixtureServiceTasks: ["Task_1"],
-		});
-		expect(outputChunks.join("\n")).toContain("# BPMN Run");
-	});
+    expect(result.success).toBe(true);
+    expect(result.variables).toMatchObject({
+      myKey: "myValue",
+      count: "42",
+      process: "Process_1",
+      instance: "wf_test",
+      bpmnSeen: true,
+      hostFixtureSeen: true,
+      fixtureServiceTasks: ["Task_1"],
+    });
+    expect(outputChunks.join("\n")).toContain("# BPMN Run");
+  });
 
-	it("passes explicit process and context to qianji", async () => {
-		const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+  it("returns an interrupted result when execution is aborted before qianji starts", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+    const controller = new AbortController();
+    controller.abort();
 
-		const result = await execute({
-			source,
-			qianjiCommand: makeFakeQianjiCommand(),
-			processId: "Explicit_Process",
-			context: { same: "context", extra: true },
-			variables: ["same=var"],
-		});
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeQianjiCommand(),
+      signal: controller.signal,
+    });
 
-		expect(result.success).toBe(true);
-		expect(result.variables).toMatchObject({
-			process: "Explicit_Process",
-			same: "context",
-			extra: true,
-		});
-	});
+    expect(result).toMatchObject({
+      success: false,
+      interrupted: true,
+    });
+  });
 
-	it("populates the graph view and applies qianji execution trace", async () => {
-		const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
-		const graphView = new GraphView();
-		let graphReadyCount = 0;
-		let graphUpdateCount = 0;
-		const started: string[] = [];
-		const ended: string[] = [];
-		const flows: string[] = [];
+  it("interrupts a running qianji CLI process", async () => {
+    const controller = new AbortController();
+    const run = runQianjiCli(
+      process.execPath,
+      ["-e", "setTimeout(() => {}, 10000)"],
+      process.cwd(),
+      () => undefined,
+      controller.signal,
+    );
 
-		const result = await execute({
-			source,
-			qianjiCommand: makeFakeQianjiCommand(),
-			graphView,
-			traceFrameDelayMs: 0,
-			onGraphReady: () => {
-				graphReadyCount += 1;
-			},
-			onGraphUpdate: () => {
-				graphUpdateCount += 1;
-			},
-			onActivityStart: (activityId) => started.push(activityId),
-			onActivityEnd: (activityId) => ended.push(activityId),
-			onFlowTake: (flowId) => flows.push(flowId),
-		});
+    setTimeout(() => controller.abort(), 25);
 
-		expect(result.success).toBe(true);
-		expect(result.rawOutput).not.toContain("@@QIANJI_TRACE");
-		expect(graphReadyCount).toBe(1);
-		expect(graphUpdateCount).toBeGreaterThan(0);
-		expect(started).toContain("Task_1");
-		expect(ended).toContain("Task_1");
-		expect(flows).toEqual(["Start_1->Task_1", "Task_1->End_1"]);
-		const internals = graphView as unknown as {
-			nodes: Map<string, { status: string }>;
-			edges: Array<{ source: string; target: string; taken: boolean }>;
-		};
-		expect(internals.nodes.get("Task_1")?.status).toBe("done");
-		expect(internals.edges.find((edge) => edge.source === "Start_1" && edge.target === "Task_1")?.taken).toBe(true);
-		expect(internals.edges.find((edge) => edge.source === "Task_1" && edge.target === "End_1")?.taken).toBe(true);
-		const plainGraph = graphView.render(80).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
-		expect(plainGraph).toContain("( )");
-		expect(plainGraph).toContain("List files");
-		expect(plainGraph).toContain("(*)");
-	});
+    await expect(run).rejects.toMatchObject({ name: "WorkflowInterruptedError" });
+  });
 
-	it("hydrates the graph view from qianji status for an explicit instance", async () => {
-		const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
-		const graphView = new GraphView();
-		let graphUpdateCount = 0;
+  it("passes explicit process and context to qianji", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
 
-		const result = await execute({
-			source,
-			qianjiCommand: makeFakeQianjiGraphSnapshotCommand(),
-			instanceId: "wf_resume",
-			graphView,
-			traceFrameDelayMs: 0,
-			onGraphUpdate: () => {
-				graphUpdateCount += 1;
-			},
-		});
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeQianjiCommand(),
+      processId: "Explicit_Process",
+      context: { same: "context", extra: true },
+      variables: ["same=var"],
+    });
 
-		expect(result.success).toBe(true);
-		expect(graphUpdateCount).toBeGreaterThan(0);
-		const internals = graphView as unknown as {
-			nodes: Map<string, { status: string }>;
-		};
-		expect(internals.nodes.get("Start_1")?.status).toBe("done");
-		expect(internals.nodes.get("Task_1")?.status).toBe("active");
-		expect(internals.nodes.get("End_1")?.status).toBe("pending");
-	});
+    expect(result.success).toBe(true);
+    expect(result.variables).toMatchObject({
+      process: "Explicit_Process",
+      same: "context",
+      extra: true,
+    });
+  });
 
-	it("paces streamed graph updates before final CLI output", async () => {
-		const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
-		const graphView = new GraphView();
-		const updateTimes: number[] = [];
-		let cliOutputSeen = false;
+  it("builds qianji start-at args for direct node entry", () => {
+    expect(
+      buildQianjiArgs({
+        sourcePath: "/tmp/workflow.bpmn",
+        processId: "Process_1",
+        instanceId: "wf_start_at",
+        context: { currentQuestion: "Ready?" },
+        dmnPaths: ["/tmp/decision.dmn"],
+        traceStream: true,
+        externalHost: true,
+        startAtNode: "Task_Question",
+      }),
+    ).toEqual([
+      "bpmn",
+      "start-at",
+      "--bpmn",
+      "/tmp/workflow.bpmn",
+      "--process",
+      "Process_1",
+      "--instance-id",
+      "wf_start_at",
+      "--context-json",
+      '{"currentQuestion":"Ready?"}',
+      "--node",
+      "Task_Question",
+      "--dmn",
+      "/tmp/decision.dmn",
+      "--trace-stream",
+      "--external-host",
+    ]);
+  });
 
-		const result = await execute({
-			source,
-			qianjiCommand: makeFakeQianjiCommand(),
-			graphView,
-			traceFrameDelayMs: 5,
-			onGraphUpdate: () => {
-				updateTimes.push(performance.now());
-				expect(cliOutputSeen).toBe(false);
-			},
-			onCliOutput: () => {
-				cliOutputSeen = true;
-			},
-		});
+  it("populates the graph view and applies qianji execution trace", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+    const graphView = new GraphView();
+    let graphReadyCount = 0;
+    let graphUpdateCount = 0;
+    const started: string[] = [];
+    const ended: string[] = [];
+    const flows: string[] = [];
 
-		expect(result.success).toBe(true);
-		expect(updateTimes.length).toBeGreaterThan(1);
-		expect(updateTimes[updateTimes.length - 1] - updateTimes[0]).toBeGreaterThanOrEqual(10);
-		expect(cliOutputSeen).toBe(true);
-	});
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeQianjiCommand(),
+      graphView,
+      traceFrameDelayMs: 0,
+      onGraphReady: () => {
+        graphReadyCount += 1;
+      },
+      onGraphUpdate: () => {
+        graphUpdateCount += 1;
+      },
+      onActivityStart: (activityId) => started.push(activityId),
+      onActivityEnd: (activityId) => ended.push(activityId),
+      onFlowTake: (flowId) => flows.push(flowId),
+    });
 
-	it("resolves qianji from PATH by default", async () => {
-		const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
-		const originalPath = process.env.PATH;
-		const originalQianjiCli = process.env.QIANJI_CLI;
-		const binDir = makeFakeQianjiPathDir();
+    expect(result.success).toBe(true);
+    expect(result.rawOutput).not.toContain("@@QIANJI_TRACE");
+    expect(graphReadyCount).toBe(1);
+    expect(graphUpdateCount).toBeGreaterThan(0);
+    expect(started).toContain("Task_1");
+    expect(ended).toContain("Task_1");
+    expect(flows).toEqual(["Start_1->Task_1", "Task_1->End_1"]);
+    const internals = graphView as unknown as {
+      nodes: Map<string, { status: string }>;
+      edges: Array<{ source: string; target: string; taken: boolean }>;
+    };
+    expect(internals.nodes.get("Task_1")?.status).toBe("done");
+    expect(
+      internals.edges.find((edge) => edge.source === "Start_1" && edge.target === "Task_1")?.taken,
+    ).toBe(true);
+    expect(
+      internals.edges.find((edge) => edge.source === "Task_1" && edge.target === "End_1")?.taken,
+    ).toBe(true);
+    const plainGraph = graphView
+      .render(80)
+      .join("\n")
+      .replace(/\x1b\[[0-9;]*m/g, "");
+    expect(plainGraph).toContain("( )");
+    expect(plainGraph).toContain("List files");
+    expect(plainGraph).toContain("(*)");
+  });
 
-		try {
-			delete process.env.QIANJI_CLI;
-			process.env.PATH = [binDir, originalPath].filter(Boolean).join(delimiter);
+  it("hydrates the graph view from qianji status for an explicit instance", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+    const graphView = new GraphView();
+    let graphUpdateCount = 0;
 
-			const result = await execute({
-				source,
-				instanceId: "wf_path",
-			});
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeQianjiGraphSnapshotCommand(),
+      instanceId: "wf_resume",
+      graphView,
+      traceFrameDelayMs: 0,
+      onGraphUpdate: () => {
+        graphUpdateCount += 1;
+      },
+    });
 
-			expect(result.success).toBe(true);
-			expect(result.variables).toMatchObject({
-				process: "Process_1",
-				instance: "wf_path",
-				bpmnSeen: true,
-			});
-		} finally {
-			restoreEnv("PATH", originalPath);
-			restoreEnv("QIANJI_CLI", originalQianjiCli);
-		}
-	});
+    expect(result.success).toBe(true);
+    expect(graphUpdateCount).toBeGreaterThan(0);
+    const internals = graphView as unknown as {
+      nodes: Map<string, { status: string }>;
+    };
+    expect(internals.nodes.get("Start_1")?.status).toBe("done");
+    expect(internals.nodes.get("Task_1")?.status).toBe("active");
+    expect(internals.nodes.get("End_1")?.status).toBe("pending");
+  });
 
-	it("resolves token-scoped qianji host work with real agent services", async () => {
-		const faux = registerFauxProvider();
-		const prompts: string[] = [];
-		const starts: Record<string, number> = {};
-		const delayedResponse = async (context: Context) => {
-			const item = context.systemPrompt.includes('item: "alpha"') ? "alpha" : "beta";
-			starts[item] = performance.now();
-			prompts.push(context.systemPrompt);
-			await delay(80);
-			return fauxAssistantMessage(`Done.\n\`\`\`json\n{"result":"${item}_done"}\n\`\`\``);
-		};
-		faux.setResponses([delayedResponse, delayedResponse]);
+  it("paces streamed graph updates before final CLI output", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+    const graphView = new GraphView();
+    const updateTimes: number[] = [];
+    let cliOutputSeen = false;
 
-		try {
-			const result = await execute({
-				source: tokenScopedServiceTaskWorkflow(),
-				qianjiCommand: makeFakeExternalHostQianjiCommand(),
-				instanceId: "wf_token_host",
-				context: { items: ["alpha", "beta"] },
-				model: faux.getModel(),
-				apiKey: "test-key",
-			});
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeQianjiCommand(),
+      graphView,
+      traceFrameDelayMs: 5,
+      onGraphUpdate: () => {
+        updateTimes.push(performance.now());
+        expect(cliOutputSeen).toBe(false);
+      },
+      onCliOutput: () => {
+        cliOutputSeen = true;
+      },
+    });
 
-			expect(result.success).toBe(true);
-			expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
-			expect(prompts[0]).toContain('item: "alpha"');
-			expect(prompts[1]).toContain('item: "beta"');
-			expect(prompts[0]).toContain("Qianji BPMN execution context");
-			expect(prompts[0]).toContain("processId: Process_1");
-			expect(prompts[0]).toContain("instanceId: wf_token_host");
-			expect(prompts[0]).toContain("activityId: Task_Review");
-			expect(prompts[0]).toContain("tokenId: 11");
-			expect(prompts[0]).toContain("checkpoint.backend: duckdb");
-			expect(prompts[0]).toContain("checkpoint.source: fresh");
-			expect(prompts[0]).toContain("checkpoint.pendingHostWork: 2");
-			expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
-			expect(result.variables).toMatchObject({
-				results: ["alpha_done", "beta_done"],
-				fixtureServiceTaskTokens: ["11", "12"],
-			});
-		} finally {
-			faux.unregister();
-		}
-	});
+    expect(result.success).toBe(true);
+    expect(updateTimes.length).toBeGreaterThan(1);
+    expect(updateTimes[updateTimes.length - 1] - updateTimes[0]).toBeGreaterThanOrEqual(10);
+    expect(cliOutputSeen).toBe(true);
+  });
 
-	it("dispatches token-scoped qianji host work through an injected host in parallel", async () => {
-		const starts: Record<string, number> = {};
-		const executions: Array<{ activityId: string; tokenId?: number; item: unknown; subagentType?: string }> = [];
-		const hostWorkEvents: QianjiHostWorkEvent[] = [];
-		const graphView = new GraphView();
-		const agentHost: PiWendaoAgentHost = {
-			async run(request) {
-				const item = request.variables.item as string;
-				starts[item] = performance.now();
-				executions.push({
-					activityId: request.activityId,
-					tokenId: request.execution?.tokenId,
-					item,
-					subagentType: request.config.subagent?.type,
-				});
-				await delay(80);
-				return { result: `${item}_done` };
-			},
-		};
+  it("resolves qianji from PATH by default", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+    const originalPath = process.env.PATH;
+    const originalQianjiCli = process.env.QIANJI_CLI;
+    const binDir = makeFakeQianjiPathDir();
 
-		const result = await execute({
-			source: tokenScopedServiceTaskWorkflow(),
-			qianjiCommand: makeFakeExternalHostQianjiCommand(),
-			instanceId: "wf_token_injected_host",
-			context: { items: ["alpha", "beta"] },
-			agentHost,
-			hostBackend: "pi-subagents",
-			graphView,
-			onHostWork: (event) => hostWorkEvents.push(event),
-			traceFrameDelayMs: 0,
-		});
+    try {
+      delete process.env.QIANJI_CLI;
+      process.env.PATH = [binDir, originalPath].filter(Boolean).join(delimiter);
 
-		expect(result.success).toBe(true);
-		expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
-		expect(executions).toEqual([
-			{ activityId: "Task_Review", tokenId: 11, item: "alpha", subagentType: "pi-wendao-worker" },
-			{ activityId: "Task_Review", tokenId: 12, item: "beta", subagentType: "pi-wendao-worker" },
-		]);
-		expect(result.variables).toMatchObject({
-			results: ["alpha_done", "beta_done"],
-			fixtureServiceTaskTokens: ["11", "12"],
-		});
-		const internals = graphView as unknown as {
-			nodes: Map<string, { details?: string[] }>;
-		};
-		expect(internals.nodes.get("Task_Review")?.details).toEqual([
-			"host:2 pi-subagents",
-			"parallel:2 jobs tokens=11,12",
-			"checkpoint:duckdb/fresh/saved",
-			"subagent:pi-wendao-worker",
-		]);
-		expect(hostWorkEvents).toEqual([{
-			activityId: "Task_Review",
-			hostWorkCount: 2,
-			batchHostWorkCount: 2,
-			tokenIds: [11, 12],
-			hostKinds: ["service"],
-			parallel: true,
-			repeatKinds: ["parallel_multi_instance"],
-			repeatSummaries: ["parallel_multi_instance 1/2", "parallel_multi_instance 2/2"],
-		}]);
-	});
+      const result = await execute({
+        source,
+        instanceId: "wf_path",
+      });
 
-	it("routes qianji userTask host work through the human task handler", async () => {
-		const prompts: string[] = [];
-		const graphView = new GraphView();
+      expect(result.success).toBe(true);
+      expect(result.variables).toMatchObject({
+        process: "Process_1",
+        instance: "wf_path",
+        bpmnSeen: true,
+      });
+    } finally {
+      restoreEnv("PATH", originalPath);
+      restoreEnv("QIANJI_CLI", originalQianjiCli);
+    }
+  });
 
-		const result = await execute({
-			source: humanApprovalWorkflow(),
-			qianjiCommand: makeFakeUserTaskExternalHostQianjiCommand(),
-			instanceId: "wf_human_approval",
-			humanTaskHandler: async (request) => {
-				prompts.push(request.config.prompt);
-				return "y";
-			},
-			graphView,
-			traceFrameDelayMs: 0,
-		});
+  it("resolves token-scoped qianji host work with real agent services", async () => {
+    const faux = registerFauxProvider();
+    const prompts: string[] = [];
+    const starts: Record<string, number> = {};
+    const delayedResponse = async (context: Context) => {
+      const item = context.systemPrompt.includes('item: "alpha"') ? "alpha" : "beta";
+      starts[item] = performance.now();
+      prompts.push(context.systemPrompt);
+      await delay(80);
+      return fauxAssistantMessage(`Done.\n\`\`\`json\n{"result":"${item}_done"}\n\`\`\``);
+    };
+    faux.setResponses([delayedResponse, delayedResponse]);
 
-		expect(result.success).toBe(true);
-		expect(prompts).toEqual(["Review the proposal and approve before continuing."]);
-		expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
-		expect(result.variables).toMatchObject({
-			approved: true,
-			approvedReply: "y",
-			fixtureUserTasks: ["Task_Approve"],
-		});
-		const internals = graphView as unknown as {
-			nodes: Map<string, { details?: string[] }>;
-		};
-		expect(internals.nodes.get("Task_Approve")?.details).toContain("host:user:1 human");
-	});
+    try {
+      const result = await execute({
+        source: tokenScopedServiceTaskWorkflow(),
+        qianjiCommand: makeFakeExternalHostQianjiCommand(),
+        instanceId: "wf_token_host",
+        context: { items: ["alpha", "beta"] },
+        model: faux.getModel(),
+        apiKey: "test-key",
+      });
 
-	it("maps human replies to approval booleans and raw reply outputs", () => {
-		expect(mapHumanTaskReplyToOutputs("n", ["approved", "approvedReply", "feedback"]))
-			.toEqual({ approved: false, approvedReply: "n", feedback: "n" });
-		expect(mapHumanTaskReplyToOutputs("approved", ["approved"]))
-			.toEqual({ approved: true });
-	});
+      expect(result.success).toBe(true);
+      expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
+      expect(prompts[0]).toContain('item: "alpha"');
+      expect(prompts[1]).toContain('item: "beta"');
+      expect(prompts[0]).toContain("Qianji BPMN execution context");
+      expect(prompts[0]).toContain("processId: Process_1");
+      expect(prompts[0]).toContain("instanceId: wf_token_host");
+      expect(prompts[0]).toContain("activityId: Task_Review");
+      expect(prompts[0]).toContain("tokenId: 11");
+      expect(prompts[0]).toContain("checkpoint.backend: duckdb");
+      expect(prompts[0]).toContain("checkpoint.source: fresh");
+      expect(prompts[0]).toContain("checkpoint.pendingHostWork: 2");
+      expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
+      expect(result.variables).toMatchObject({
+        results: ["alpha_done", "beta_done"],
+        fixtureServiceTaskTokens: ["11", "12"],
+      });
+    } finally {
+      faux.unregister();
+    }
+  });
 
-	it("carries accumulated host outputs across partial qianji host variable snapshots", async () => {
-		const faux = registerFauxProvider();
-		const prompts: string[] = [];
-		faux.setResponses([
-			fauxAssistantMessage('Done.\n```json\n{"fileList":["package.json","src"]}\n```'),
-			(context) => {
-				prompts.push(context.systemPrompt);
-				return fauxAssistantMessage('Done.\n```json\n{"report":"package.json exists in package.json, src"}\n```');
-			},
-		]);
+  it("dispatches token-scoped qianji host work through an injected host in parallel", async () => {
+    const starts: Record<string, number> = {};
+    const executions: Array<{
+      activityId: string;
+      tokenId?: number;
+      item: unknown;
+      subagentType?: string;
+    }> = [];
+    const hostWorkEvents: QianjiHostWorkEvent[] = [];
+    const graphView = new GraphView();
+    const agentHost: PiWendaoAgentHost = {
+      async run(request) {
+        const item = request.variables.item as string;
+        starts[item] = performance.now();
+        executions.push({
+          activityId: request.activityId,
+          tokenId: request.execution?.tokenId,
+          item,
+          subagentType: request.config.subagent?.type,
+        });
+        await delay(80);
+        return { result: `${item}_done` };
+      },
+    };
 
-		try {
-			const result = await execute({
-				source: sequentialServiceTaskWorkflow(),
-				qianjiCommand: makeFakeSequentialExternalHostQianjiCommand(),
-				instanceId: "wf_sequential_host",
-				model: faux.getModel(),
-				apiKey: "test-key",
-			});
+    const result = await execute({
+      source: tokenScopedServiceTaskWorkflow(),
+      qianjiCommand: makeFakeExternalHostQianjiCommand(),
+      instanceId: "wf_token_injected_host",
+      context: { items: ["alpha", "beta"] },
+      agentHost,
+      hostBackend: "pi-subagents",
+      graphView,
+      onHostWork: (event) => hostWorkEvents.push(event),
+      traceFrameDelayMs: 0,
+    });
 
-			expect(result.success).toBe(true);
-			expect(prompts[0]).toContain('fileList: ["package.json","src"]');
-			expect(result.variables).toMatchObject({
-				fileList: ["package.json", "src"],
-				report: "package.json exists in package.json, src",
-			});
-		} finally {
-			faux.unregister();
-		}
-	});
+    expect(result.success).toBe(true);
+    expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
+    expect(executions).toEqual([
+      { activityId: "Task_Review", tokenId: 11, item: "alpha", subagentType: "pi-wendao-worker" },
+      { activityId: "Task_Review", tokenId: 12, item: "beta", subagentType: "pi-wendao-worker" },
+    ]);
+    expect(result.variables).toMatchObject({
+      results: ["alpha_done", "beta_done"],
+      fixtureServiceTaskTokens: ["11", "12"],
+    });
+    const internals = graphView as unknown as {
+      nodes: Map<string, { details?: string[] }>;
+    };
+    expect(internals.nodes.get("Task_Review")?.details).toEqual([
+      "host:2 pi-subagents",
+      "parallel:2 jobs tokens=11,12",
+      "checkpoint:duckdb/fresh/saved",
+      "subagent:pi-wendao-worker",
+    ]);
+    expect(hostWorkEvents).toEqual([
+      {
+        activityId: "Task_Review",
+        hostWorkCount: 2,
+        batchHostWorkCount: 2,
+        tokenIds: [11, 12],
+        hostKinds: ["service"],
+        parallel: true,
+        repeatKinds: ["parallel_multi_instance"],
+        repeatSummaries: ["parallel_multi_instance 1/2", "parallel_multi_instance 2/2"],
+      },
+    ]);
+  });
 
-	it("feeds host retry outputs back to qianji checkpoints without local scheduling", async () => {
-		const executions: Array<{ activityId: string; retryCount: unknown }> = [];
-		const agentHost: PiWendaoAgentHost = {
-			async run(request) {
-				executions.push({
-					activityId: request.activityId,
-					retryCount: request.variables.retryCount,
-				});
-				if (request.activityId === "Task_1") {
-					return { retryCount: 1, status: "not ready" };
-				}
-				if (request.activityId === "Task_2") {
-					const retryCount = Number(request.variables.retryCount);
-					return { isRetryComplete: retryCount >= 3, retryCount };
-				}
-				if (request.activityId === "Task_4") {
-					return { retryCount: Number(request.variables.retryCount) + 1 };
-				}
-				if (request.activityId === "Task_3") {
-					return { status: "ready" };
-				}
-				return {};
-			},
-		};
+  it("routes qianji userTask host work through the human task handler", async () => {
+    const prompts: string[] = [];
+    const graphView = new GraphView();
 
-		const result = await execute({
-			source: retryLoopWorkflow(),
-			qianjiCommand: makeFakeRetryLoopExternalHostQianjiCommand(),
-			instanceId: "wf_retry_checkpoint",
-			agentHost,
-			hostBackend: "pi-subagents",
-		});
+    const result = await execute({
+      source: humanApprovalWorkflow(),
+      qianjiCommand: makeFakeUserTaskExternalHostQianjiCommand(),
+      instanceId: "wf_human_approval",
+      humanTaskHandler: async (request) => {
+        prompts.push(request.config.prompt);
+        expect(request.config.interaction).toEqual({
+          type: "choice_input",
+          question: "How should the workflow proceed?",
+          choices: [
+            {
+              value: "approved",
+              label: "Approve",
+              description: "Continue to the next BPMN checkpoint.",
+            },
+            { value: "rejected", label: "Reject", description: "Stop and revise the plan." },
+          ],
+          freeText: { name: "approvedReply", optional: true },
+          result: { output: "approvedReply" },
+        });
+        return "y";
+      },
+      graphView,
+      traceFrameDelayMs: 0,
+    });
 
-		expect(result.success).toBe(true);
-		expect(result.variables).toMatchObject({
-			retryCount: 3,
-			isRetryComplete: true,
-			status: "ready",
-		});
-		expect(executions.filter((execution) => execution.activityId === "Task_2").map((execution) => execution.retryCount))
-			.toEqual([1, 2, 3]);
-		expect(executions.filter((execution) => execution.activityId === "Task_4").map((execution) => execution.retryCount))
-			.toEqual([1, 2]);
-	});
+    expect(result.success).toBe(true);
+    expect(prompts).toEqual(["Review the proposal and approve before continuing."]);
+    expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
+    expect(result.variables).toMatchObject({
+      approved: true,
+      approvedReply: "y",
+      fixtureUserTasks: ["Task_Approve"],
+    });
+    const internals = graphView as unknown as {
+      nodes: Map<string, { details?: string[] }>;
+    };
+    expect(internals.nodes.get("Task_Approve")?.details).toContain("host:user:1 human");
+  });
 
-	it("does not synthesize task outputs from service-task prompt text", async () => {
-		const agentHost: PiWendaoAgentHost = {
-			async run() {
-				return { status: "host-owned" };
-			},
-		};
+  it("renders userTask interaction questions from workflow variables", async () => {
+    const interactions: unknown[] = [];
 
-		const result = await execute({
-			source: promptDerivedOutputWorkflow(),
-			qianjiCommand: makeFakeSingleHostBoundaryQianjiCommand(),
-			instanceId: "wf_no_prompt_output_synthesis",
-			agentHost,
-			hostBackend: "pi-subagents",
-		});
+    const result = await execute({
+      source: dynamicHumanQuestionWorkflow(),
+      qianjiCommand: makeFakeUserTaskExternalHostQianjiCommand(),
+      instanceId: "wf_dynamic_question",
+      humanTaskHandler: async (request) => {
+        interactions.push(request.config.interaction);
+        return "Use the direct path";
+      },
+      traceFrameDelayMs: 0,
+    });
 
-		expect(result.success).toBe(true);
-		expect(result.variables).toMatchObject({
-			status: "host-owned",
-		});
-	});
+    expect(result.success).toBe(true);
+    expect(interactions).toEqual([
+      {
+        type: "choice_input",
+        question: "Ship the plan",
+        questionRef: "proposal",
+        choices: [
+          {
+            value: "direct",
+            label: "Use direct path",
+            description: "Proceed with the shortest implementation path.",
+          },
+          {
+            value: "research",
+            label: "Research first",
+            description: "Pause and gather more context.",
+          },
+        ],
+        choicesRef: "currentChoices",
+        result: { output: "userAnswer" },
+      },
+    ]);
+    expect(result.variables).toMatchObject({
+      userAnswer: "Use the direct path",
+    });
+  });
 
-	it("reports qianji CLI failures", async () => {
-		const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+  it("uses host fixtures for non-user work while keeping user tasks native", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-mixed-host-fixture-"));
+    tempDirs.push(dir);
+    const fixturePath = join(dir, "host-fixture.json");
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        service_tasks: {
+          Task_Final: {
+            data: {
+              finalStatus: "fixture-completed",
+            },
+          },
+        },
+      }),
+    );
+    const prompts: string[] = [];
 
-		const result = await execute({
-			source,
-			qianjiCommand: makeFakeQianjiCommand({ exitCode: 2, stderr: "qianji failed" }),
-		});
+    const result = await execute({
+      source: userThenServiceWorkflow(),
+      qianjiCommand: makeFakeUserThenServiceExternalHostQianjiCommand(),
+      instanceId: "wf_mixed_fixture",
+      hostFixturePath: fixturePath,
+      humanTaskHandler: async (request) => {
+        prompts.push(request.activityId);
+        return "approved";
+      },
+      traceFrameDelayMs: 0,
+    });
 
-		expect(result.success).toBe(false);
-		expect(result.error).toContain("qianji failed");
-	});
+    expect(result.success).toBe(true);
+    expect(prompts).toEqual(["Task_Approve"]);
+    expect(result.variables).toMatchObject({
+      approved: true,
+      finalStatus: "fixture-completed",
+      fixtureServiceTaskTokens: ["52"],
+      fixtureUserTasks: ["Task_Approve"],
+    });
+  });
+
+  it("parses qianji dynamic choices refs from BPMN userTask metadata", () => {
+    const configs = buildPiWendaoConfigMap(dynamicHumanQuestionWorkflow(), "Process_1");
+
+    expect(configs.get("Task_Approve")?.interaction).toMatchObject({
+      type: "choice_input",
+      questionRef: "proposal",
+      choicesRef: "currentChoices",
+      result: { output: "userAnswer" },
+    });
+    expect(configs.get("Task_Approve")?.interaction?.choices).toBeUndefined();
+  });
+
+  it("maps human replies to approval booleans and raw reply outputs", () => {
+    expect(mapHumanTaskReplyToOutputs("n", ["approved", "approvedReply", "feedback"])).toEqual({
+      approved: false,
+      approvedReply: "n",
+      feedback: "n",
+    });
+    expect(mapHumanTaskReplyToOutputs("revise", ["designApproved", "designFeedback"])).toEqual({
+      designApproved: false,
+      designFeedback: "revise",
+    });
+    expect(mapHumanTaskReplyToOutputs("changes", ["specApproved", "specFeedback"])).toEqual({
+      specApproved: false,
+      specFeedback: "changes",
+    });
+    expect(mapHumanTaskReplyToOutputs("approved", ["approved"])).toEqual({ approved: true });
+    expect(mapHumanTaskReplyToOutputs("yes", ["needsMoreQuestions"])).toEqual({
+      needsMoreQuestions: true,
+    });
+    expect(mapHumanTaskReplyToOutputs("no", ["needsMoreQuestions"])).toEqual({
+      needsMoreQuestions: false,
+    });
+    expect(mapHumanTaskReplyToOutputs("false", ["redFlagDetected"])).toEqual({
+      redFlagDetected: false,
+    });
+    expect(mapHumanTaskReplyToOutputs("true", ["redFlagDetected"])).toEqual({
+      redFlagDetected: true,
+    });
+    expect(mapHumanTaskReplyToOutputs("false", ["userAnswer"])).toEqual({ userAnswer: "false" });
+    expect(mapHumanTaskReplyToOutputs("", ["userAnswer"])).toEqual({ userAnswer: "" });
+  });
+
+  it("carries accumulated host outputs across partial qianji host variable snapshots", async () => {
+    const faux = registerFauxProvider();
+    const prompts: string[] = [];
+    faux.setResponses([
+      fauxAssistantMessage('Done.\n```json\n{"fileList":["package.json","src"]}\n```'),
+      (context) => {
+        prompts.push(context.systemPrompt);
+        return fauxAssistantMessage(
+          'Done.\n```json\n{"report":"package.json exists in package.json, src"}\n```',
+        );
+      },
+    ]);
+
+    try {
+      const result = await execute({
+        source: sequentialServiceTaskWorkflow(),
+        qianjiCommand: makeFakeSequentialExternalHostQianjiCommand(),
+        instanceId: "wf_sequential_host",
+        model: faux.getModel(),
+        apiKey: "test-key",
+      });
+
+      expect(result.success).toBe(true);
+      expect(prompts[0]).toContain('fileList: ["package.json","src"]');
+      expect(result.variables).toMatchObject({
+        fileList: ["package.json", "src"],
+        report: "package.json exists in package.json, src",
+      });
+    } finally {
+      faux.unregister();
+    }
+  });
+
+  it("feeds host retry outputs back to qianji checkpoints without local scheduling", async () => {
+    const executions: Array<{ activityId: string; retryCount: unknown }> = [];
+    const agentHost: PiWendaoAgentHost = {
+      async run(request) {
+        executions.push({
+          activityId: request.activityId,
+          retryCount: request.variables.retryCount,
+        });
+        if (request.activityId === "Task_1") {
+          return { retryCount: 1, status: "not ready" };
+        }
+        if (request.activityId === "Task_2") {
+          const retryCount = Number(request.variables.retryCount);
+          return { isRetryComplete: retryCount >= 3, retryCount };
+        }
+        if (request.activityId === "Task_4") {
+          return { retryCount: Number(request.variables.retryCount) + 1 };
+        }
+        if (request.activityId === "Task_3") {
+          return { status: "ready" };
+        }
+        return {};
+      },
+    };
+
+    const result = await execute({
+      source: retryLoopWorkflow(),
+      qianjiCommand: makeFakeRetryLoopExternalHostQianjiCommand(),
+      instanceId: "wf_retry_checkpoint",
+      agentHost,
+      hostBackend: "pi-subagents",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.variables).toMatchObject({
+      retryCount: 3,
+      isRetryComplete: true,
+      status: "ready",
+    });
+    expect(
+      executions
+        .filter((execution) => execution.activityId === "Task_2")
+        .map((execution) => execution.retryCount),
+    ).toEqual([1, 2, 3]);
+    expect(
+      executions
+        .filter((execution) => execution.activityId === "Task_4")
+        .map((execution) => execution.retryCount),
+    ).toEqual([1, 2]);
+  });
+
+  it("does not synthesize task outputs from service-task prompt text", async () => {
+    const agentHost: PiWendaoAgentHost = {
+      async run() {
+        return { status: "host-owned" };
+      },
+    };
+
+    const result = await execute({
+      source: promptDerivedOutputWorkflow(),
+      qianjiCommand: makeFakeSingleHostBoundaryQianjiCommand(),
+      instanceId: "wf_no_prompt_output_synthesis",
+      agentHost,
+      hostBackend: "pi-subagents",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.variables).toMatchObject({
+      status: "host-owned",
+    });
+  });
+
+  it("reports qianji CLI failures", async () => {
+    const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeQianjiCommand({ exitCode: 2, stderr: "qianji failed" }),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("qianji failed");
+  });
 });
 
 function makeFakeQianjiCommand(options: { exitCode?: number; stderr?: string } = {}): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji.cjs");
-	writeFakeQianjiScript(scriptPath, options);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji.cjs");
+  writeFakeQianjiScript(scriptPath, options);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function makeFakeQianjiGraphSnapshotCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-snapshot-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji-snapshot.cjs");
-	writeFakeQianjiGraphSnapshotScript(scriptPath);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-snapshot-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-snapshot.cjs");
+  writeFakeQianjiGraphSnapshotScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function makeFakeQianjiPathDir(options: { exitCode?: number; stderr?: string } = {}): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-path-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "qianji");
-	writeFakeQianjiScript(scriptPath, options, true);
-	chmodSync(scriptPath, 0o755);
-	return dir;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-path-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "qianji");
+  writeFakeQianjiScript(scriptPath, options, true);
+  chmodSync(scriptPath, 0o755);
+  return dir;
 }
 
 function makeFakeExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-external-host-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji-external-host.cjs");
-	writeFakeExternalHostQianjiScript(scriptPath);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-external-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-external-host.cjs");
+  writeFakeExternalHostQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function makeFakeUserTaskExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-user-host-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji-user-host.cjs");
-	writeFakeUserTaskExternalHostQianjiScript(scriptPath);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-user-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-user-host.cjs");
+  writeFakeUserTaskExternalHostQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function makeFakeUserThenServiceExternalHostQianjiCommand(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-user-service-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-user-service-host.cjs");
+  writeFakeUserThenServiceExternalHostQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function makeFakeSequentialExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-sequential-host-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji-sequential-host.cjs");
-	writeFakeSequentialExternalHostQianjiScript(scriptPath);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-sequential-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-sequential-host.cjs");
+  writeFakeSequentialExternalHostQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function makeFakeRetryLoopExternalHostQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-retry-host-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji-retry-host.cjs");
-	writeFakeRetryLoopExternalHostQianjiScript(scriptPath);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-retry-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-retry-host.cjs");
+  writeFakeRetryLoopExternalHostQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function makeFakeSingleHostBoundaryQianjiCommand(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-single-host-"));
-	tempDirs.push(dir);
-	const scriptPath = join(dir, "fake-qianji-single-host.cjs");
-	writeFakeSingleHostBoundaryQianjiScript(scriptPath);
-	return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-single-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-single-host.cjs");
+  writeFakeSingleHostBoundaryQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
 function writeFakeQianjiGraphSnapshotScript(scriptPath: string): void {
-	writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 const args = process.argv.slice(2);
 const get = (flag) => {
   const index = args.indexOf(flag);
@@ -536,13 +769,21 @@ if (args[1] === "run") {
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
-`, "utf-8");
+`,
+    "utf-8",
+  );
 }
 
-function writeFakeQianjiScript(scriptPath: string, options: { exitCode?: number; stderr?: string }, executable = false): void {
-	const exitCode = options.exitCode ?? 0;
-	const stderr = JSON.stringify(options.stderr ?? "");
-	writeFileSync(scriptPath, `${executable ? "#!/usr/bin/env node\n" : ""}
+function writeFakeQianjiScript(
+  scriptPath: string,
+  options: { exitCode?: number; stderr?: string },
+  executable = false,
+): void {
+  const exitCode = options.exitCode ?? 0;
+  const stderr = JSON.stringify(options.stderr ?? "");
+  writeFileSync(
+    scriptPath,
+    `${executable ? "#!/usr/bin/env node\n" : ""}
 const args = process.argv.slice(2);
 const { readFileSync } = require("node:fs");
 const get = (flag) => {
@@ -589,11 +830,15 @@ if (args.includes("--trace-stream")) {
   }
 }
 console.log("# BPMN Run\\n\\nOutcome: completed\\n\\n## Trace\\n" + fence + "json\\n" + JSON.stringify(trace, null, 2) + "\\n" + fence + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
-`, "utf-8");
+`,
+    "utf-8",
+  );
 }
 
 function writeFakeExternalHostQianjiScript(scriptPath: string): void {
-	writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 const args = process.argv.slice(2);
 const { readFileSync } = require("node:fs");
 const get = (flag) => {
@@ -651,11 +896,15 @@ if (args[1] === "tasks" && args[2] === "complete") {
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
-`, "utf-8");
+`,
+    "utf-8",
+  );
 }
 
 function writeFakeUserTaskExternalHostQianjiScript(scriptPath: string): void {
-	writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 const args = process.argv.slice(2);
 const { readFileSync } = require("node:fs");
 const get = (flag) => {
@@ -683,9 +932,21 @@ if (args[1] === "run") {
     node_id: "Task_Approve",
     node_index: 1,
     token_id: 51,
-    variables: { proposal: "Ship the plan" },
+    variables: {
+      proposal: "Ship the plan",
+      currentChoices: [
+        { value: "direct", label: "Use direct path", description: "Proceed with the shortest implementation path." },
+        { value: "research", label: "Research first", description: "Pause and gather more context." },
+      ],
+    },
   }));
-  printVariables("BPMN Run", "blocked_on_host", { proposal: "Ship the plan" }, "\\nCheckpoint backend: duckdb\\nCheckpoint source: fresh\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1");
+  printVariables("BPMN Run", "blocked_on_host", {
+    proposal: "Ship the plan",
+    currentChoices: [
+      { value: "direct", label: "Use direct path", description: "Proceed with the shortest implementation path." },
+      { value: "research", label: "Research first", description: "Pause and gather more context." },
+    ],
+  }, "\\nCheckpoint backend: duckdb\\nCheckpoint source: fresh\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1");
   process.exit(0);
 }
 if (args[1] === "tasks" && args[2] === "complete") {
@@ -702,11 +963,93 @@ if (args[1] === "tasks" && args[2] === "complete") {
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
-`, "utf-8");
+`,
+    "utf-8",
+  );
+}
+
+function writeFakeUserThenServiceExternalHostQianjiScript(scriptPath: string): void {
+  writeFileSync(
+    scriptPath,
+    `
+const args = process.argv.slice(2);
+const { existsSync, readFileSync, writeFileSync } = require("node:fs");
+const { join } = require("node:path");
+const statePath = join(__dirname, "state.json");
+const get = (flag) => {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
+const fence = String.fromCharCode(96, 96, 96);
+const printVariables = (title, outcome, variables, pendingHostWork) => {
+  const checkpoint = "\\nCheckpoint backend: duckdb\\nCheckpoint source: resumed\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: " + pendingHostWork;
+  console.log("# " + title + "\\n\\nOutcome: " + outcome + checkpoint + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
+};
+const save = (state) => writeFileSync(statePath, JSON.stringify(state, null, 2));
+const load = () => existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf-8")) : { variables: {} };
+if (args[0] !== "bpmn") {
+  console.error("unexpected qianji command: " + args.join(" "));
+  process.exit(64);
+}
+if (args[1] === "status") {
+  printVariables("BPMN Status", "missing", {}, 0);
+  process.exit(0);
+}
+if (args[1] === "run") {
+  save({ variables: {} });
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+    kind: "user",
+    node_id: "Task_Approve",
+    node_index: 1,
+    token_id: 51,
+    variables: {},
+  }));
+  printVariables("BPMN Run", "blocked_on_host", {}, 1);
+  process.exit(0);
+}
+if (args[1] === "tasks" && args[2] === "complete") {
+  const state = load();
+  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
+  const userTasks = hostFixture.user_tasks ?? {};
+  const serviceTaskTokens = hostFixture.service_task_tokens ?? {};
+  if (userTasks.Task_Approve) {
+    state.variables = { ...state.variables, ...userTasks.Task_Approve.data };
+    save(state);
+    console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+      kind: "service",
+      node_id: "Task_Final",
+      node_index: 2,
+      token_id: 52,
+      variables: state.variables,
+    }));
+    printVariables("BPMN Task Complete", "blocked_on_host", {
+      ...state.variables,
+      fixtureUserTasks: Object.keys(userTasks),
+    }, 1);
+    process.exit(0);
+  }
+  if (serviceTaskTokens["52"]) {
+    state.variables = { ...state.variables, ...serviceTaskTokens["52"].data };
+    save(state);
+    printVariables("BPMN Task Complete", "completed", {
+      ...state.variables,
+      fixtureServiceTaskTokens: Object.keys(serviceTaskTokens),
+      fixtureUserTasks: ["Task_Approve"],
+    }, 0);
+    process.exit(0);
+  }
+}
+console.error("unexpected qianji command: " + args.join(" "));
+process.exit(64);
+`,
+    "utf-8",
+  );
 }
 
 function writeFakeSequentialExternalHostQianjiScript(scriptPath: string): void {
-	writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 const args = process.argv.slice(2);
 const { readFileSync } = require("node:fs");
 const get = (flag) => {
@@ -755,11 +1098,15 @@ if (args[1] === "tasks" && args[2] === "complete") {
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
-`, "utf-8");
+`,
+    "utf-8",
+  );
 }
 
 function writeFakeRetryLoopExternalHostQianjiScript(scriptPath: string): void {
-	writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 const args = process.argv.slice(2);
 const { existsSync, readFileSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
@@ -843,11 +1190,15 @@ if (args[1] === "tasks" && args[2] === "complete") {
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
-	`, "utf-8");
+	`,
+    "utf-8",
+  );
 }
 
 function writeFakeSingleHostBoundaryQianjiScript(scriptPath: string): void {
-	writeFileSync(scriptPath, `
+  writeFileSync(
+    scriptPath,
+    `
 const args = process.argv.slice(2);
 const { readFileSync } = require("node:fs");
 const get = (flag) => {
@@ -882,29 +1233,31 @@ if (args[1] === "tasks" && args[2] === "complete") {
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
-	`, "utf-8");
+	`,
+    "utf-8",
+  );
 }
 
 function tokenScopedServiceTaskWorkflow(): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_Review" name="Review item" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Review the current item and output result.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>item</skillsc:inputs>
-          <skillsc:outputs>result</skillsc:outputs>
-          <skillsc:agentType>pi-wendao-worker</skillsc:agentType>
-          <skillsc:runInBackground>true</skillsc:runInBackground>
-          <skillsc:maxTurns>8</skillsc:maxTurns>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Review the current item and output result.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>item</qianji:inputs>
+          <qianji:outputs>result</qianji:outputs>
+          <qianji:agentType>pi-wendao-worker</qianji:agentType>
+          <qianji:runInBackground>true</qianji:runInBackground>
+          <qianji:maxTurns>8</qianji:maxTurns>
+        </qianji:config>
       </extensionElements>
       <multiInstanceLoopCharacteristics>
         <loopDataInputRef>items</loopDataInputRef>
@@ -921,22 +1274,29 @@ function tokenScopedServiceTaskWorkflow(): string {
 }
 
 function humanApprovalWorkflow(): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1"/>
     <userTask id="Task_Approve" name="Approve proposal">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Review the proposal and approve before continuing.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>proposal</skillsc:inputs>
-          <skillsc:outputs>approved,approvedReply</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Review the proposal and approve before continuing.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>proposal</qianji:inputs>
+          <qianji:outputs>approved,approvedReply</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question>How should the workflow proceed?</qianji:question>
+            <qianji:choice value="approved" label="Approve">Continue to the next BPMN checkpoint.</qianji:choice>
+            <qianji:choice value="rejected" label="Reject">Stop and revise the plan.</qianji:choice>
+            <qianji:freeText name="approvedReply" optional="true"/>
+            <qianji:result output="approvedReply"/>
+          </qianji:interaction>
+        </qianji:config>
       </extensionElements>
     </userTask>
     <endEvent id="End_1"/>
@@ -946,23 +1306,95 @@ function humanApprovalWorkflow(): string {
 	</definitions>`;
 }
 
-function promptDerivedOutputWorkflow(): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+function dynamicHumanQuestionWorkflow(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
+             id="Definitions_1"
+             targetNamespace="https://qianji.dev">
+  <process id="Process_1" isExecutable="true">
+    <startEvent id="Start_1"/>
+    <userTask id="Task_Approve" name="Answer generated question">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Answer the generated question.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>proposal,currentChoices</qianji:inputs>
+          <qianji:outputs>userAnswer</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question>proposal</qianji:question>
+            <qianji:choices ref="currentChoices"/>
+            <qianji:result output="userAnswer"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+    <endEvent id="End_1"/>
+    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="End_1"/>
+	</process>
+	</definitions>`;
+}
+
+function userThenServiceWorkflow(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
 	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
 	             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+	             xmlns:qianji="https://qianji.dev/bpmn/extensions"
 	             id="Definitions_1"
-	             targetNamespace="http://skillsc.dev">
+	             targetNamespace="https://qianji.dev">
+	  <process id="Process_1" isExecutable="true">
+	    <startEvent id="Start_1"/>
+	    <userTask id="Task_Approve" name="Approve">
+	      <extensionElements>
+	        <qianji:config>
+	          <qianji:prompt>Approve before running the final service task.</qianji:prompt>
+	          <qianji:tools></qianji:tools>
+	          <qianji:inputs></qianji:inputs>
+	          <qianji:outputs>approved</qianji:outputs>
+	          <qianji:interaction type="confirm">
+	            <qianji:question>Continue?</qianji:question>
+	            <qianji:result output="approved"/>
+	          </qianji:interaction>
+	        </qianji:config>
+	      </extensionElements>
+	    </userTask>
+	    <serviceTask id="Task_Final" name="Final service" implementation="\${environment.services.runAgent}">
+	      <extensionElements>
+	        <qianji:config>
+	          <qianji:prompt>Run final service task.</qianji:prompt>
+	          <qianji:tools></qianji:tools>
+	          <qianji:inputs>approved</qianji:inputs>
+	          <qianji:outputs>finalStatus</qianji:outputs>
+	        </qianji:config>
+	      </extensionElements>
+	    </serviceTask>
+	    <endEvent id="End_1"/>
+	    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>
+	    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="Task_Final"/>
+	    <sequenceFlow id="Flow_3" sourceRef="Task_Final" targetRef="End_1"/>
+	  </process>
+	</definitions>`;
+}
+
+function promptDerivedOutputWorkflow(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+	             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	             xmlns:qianji="https://qianji.dev/bpmn/extensions"
+	             id="Definitions_1"
+	             targetNamespace="https://qianji.dev">
 	  <process id="Process_1" isExecutable="true">
 	    <startEvent id="Start_1"/>
 	    <serviceTask id="Task_SetStatus" name="Set status" implementation="\${environment.services.runAgent}">
 	      <extensionElements>
-	        <skillsc:config>
-	          <skillsc:prompt>Set status to "ready". Output status.</skillsc:prompt>
-	          <skillsc:tools></skillsc:tools>
-	          <skillsc:inputs></skillsc:inputs>
-	          <skillsc:outputs>status</skillsc:outputs>
-	        </skillsc:config>
+	        <qianji:config>
+	          <qianji:prompt>Set status to "ready". Output status.</qianji:prompt>
+	          <qianji:tools></qianji:tools>
+	          <qianji:inputs></qianji:inputs>
+	          <qianji:outputs>status</qianji:outputs>
+	        </qianji:config>
 	      </extensionElements>
 	    </serviceTask>
 	    <endEvent id="End_1"/>
@@ -973,53 +1405,53 @@ function promptDerivedOutputWorkflow(): string {
 }
 
 function retryLoopWorkflow(): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_1" name="Initialize system" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Set retryCount to 1 and status to "not ready". Output both variables.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>retryCount,status</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Set retryCount to 1 and status to "not ready". Output both variables.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>retryCount,status</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <serviceTask id="Task_2" name="Check retry count" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Check if retryCount is greater than or equal to 3. Output isRetryComplete as true if retryCount &gt;= 3, false otherwise. Also output the current retryCount value.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>retryCount</skillsc:inputs>
-          <skillsc:outputs>isRetryComplete,retryCount</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Check if retryCount is greater than or equal to 3. Output isRetryComplete as true if retryCount &gt;= 3, false otherwise. Also output the current retryCount value.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>retryCount</qianji:inputs>
+          <qianji:outputs>isRetryComplete,retryCount</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <exclusiveGateway id="Gateway_1" name="Retry complete?" default="Flow_5"/>
     <serviceTask id="Task_3" name="Set status ready" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Set status to "ready". Output status as "ready".</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>status</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Set status to "ready". Output status as "ready".</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>status</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <serviceTask id="Task_4" name="Increment retry count" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Increment retryCount by 1. Output the new retryCount value.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>retryCount</skillsc:inputs>
-          <skillsc:outputs>retryCount</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Increment retryCount by 1. Output the new retryCount value.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>retryCount</qianji:inputs>
+          <qianji:outputs>retryCount</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <endEvent id="End_1"/>
@@ -1037,32 +1469,32 @@ function retryLoopWorkflow(): string {
 }
 
 function sequentialServiceTaskWorkflow(): string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:skillsc="http://skillsc.dev/bpmn/extensions"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
-             targetNamespace="http://skillsc.dev">
+             targetNamespace="https://qianji.dev">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_List" name="List files" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>List files and output fileList.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs></skillsc:inputs>
-          <skillsc:outputs>fileList</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>List files and output fileList.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs></qianji:inputs>
+          <qianji:outputs>fileList</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <serviceTask id="Task_Report" name="Report files" implementation="\${environment.services.runAgent}">
       <extensionElements>
-        <skillsc:config>
-          <skillsc:prompt>Write a report from fileList.</skillsc:prompt>
-          <skillsc:tools></skillsc:tools>
-          <skillsc:inputs>fileList</skillsc:inputs>
-          <skillsc:outputs>report</skillsc:outputs>
-        </skillsc:config>
+        <qianji:config>
+          <qianji:prompt>Write a report from fileList.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>fileList</qianji:inputs>
+          <qianji:outputs>report</qianji:outputs>
+        </qianji:config>
       </extensionElements>
     </serviceTask>
     <endEvent id="End_1"/>
@@ -1074,18 +1506,18 @@ function sequentialServiceTaskWorkflow(): string {
 }
 
 function shellQuote(value: string): string {
-	if (/^[A-Za-z0-9_/:=.,@%+-]+$/.test(value)) return value;
-	return `'${value.replace(/'/g, "'\\''")}'`;
+  if (/^[A-Za-z0-9_/:=.,@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function restoreEnv(name: string, value: string | undefined) {
-	if (value === undefined) {
-		delete process.env[name];
-		return;
-	}
-	process.env[name] = value;
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
 }
 
 function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
