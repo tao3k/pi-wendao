@@ -6,6 +6,7 @@ import {
   appendActiveBpmnNodeLabels,
   resolveQianjiCommand,
   runQianjiShow,
+  runWorkflowLintPreflight,
   runWorkflowInRenderer,
   type PiWendaoWorkflowOptions,
 } from "../workflow-runner.js";
@@ -73,16 +74,34 @@ export async function runNativeWorkflow(
     traceFrameMs: command.traceFrameMs ?? options.baseWorkflowOptions.traceFrameMs,
     var: [...(options.baseWorkflowOptions.var ?? []), ...command.variables],
   };
-  const executionModel = resolvedHostFixturePath ? undefined : await resolveRunModel();
   const renderer = new PiWendaoNativeWorkflowRenderer(pi, ctx, resolvedWorkflowPath, command.graph);
   pi.setSessionName(`pi-wendao ${basename(resolvedWorkflowPath)}`);
   renderer.start();
   let result: Awaited<ReturnType<typeof runWorkflowInRenderer>>;
   try {
+    const lint = await runWorkflowLintPreflight({
+      renderer,
+      resolvedWorkflowPath,
+      resolvedDmnPaths,
+      qianjiCommand: workflowOptions.qianji,
+      cwd: options.invocationCwd,
+      resolveRepairModel: resolveRunModel,
+    });
+    if (!lint.success) {
+      renderer.finish(false);
+      sendWorkflowMessage(pi, {
+        kind: "status",
+        workflowPath: resolvedWorkflowPath,
+        lines: ["Workflow failed before start: qianji lint preflight failed."],
+        success: false,
+      });
+      return;
+    }
+    const executionModel = resolvedHostFixturePath ? undefined : await resolveRunModel();
     result = await runWorkflowInRenderer({
       renderer,
       useGraph: command.graph,
-      resolvedWorkflowPath,
+      resolvedWorkflowPath: lint.workflowPath,
       options: workflowOptions,
       instanceId: workflowOptions.instanceId,
       invocationCwd: options.invocationCwd,
@@ -93,6 +112,7 @@ export async function runNativeWorkflow(
       resolvedModel: executionModel,
       thinkingLevel: normalizeThinkingLevel(pi.getThinkingLevel(), options.thinkingLevel),
       signal,
+      preflightLint: false,
     });
   } catch (error) {
     renderer.finish(false);

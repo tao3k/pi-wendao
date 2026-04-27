@@ -97,9 +97,11 @@ describe("resolveModel", () => {
     expect(warnings.join("\n")).not.toContain('Tool "intercom" conflicts');
   });
 
-  it("loads packaged pi-subagents as a built-in extension", () => {
+  it("loads the local pi-subagents wrapper as a built-in extension", () => {
     expect(
-      resolveBuiltinPiExtensionPaths().some((path) => path.includes("@tintinweb/pi-subagents")),
+      resolveBuiltinPiExtensionPaths().some((path) =>
+        path.endsWith("src/cli/native/pi-subagents-extension.ts"),
+      ),
     ).toBe(true);
   });
 

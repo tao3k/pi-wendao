@@ -51,6 +51,30 @@ For `choice` and `choice_input`, options may be static `qianji:choice` elements
 or a dynamic `<qianji:choices ref="currentChoices"/>` reference. Dynamic
 questions should keep the prompt text in `currentQuestion` and structured
 choices in `currentChoices`, not embed numbered option text in the question.
+When a producer declares `<qianji:outputSchema name="currentChoices"
+kind="choice_array" .../>`, pi-wendao validates the produced value before the
+next userTask renders. The value must be an array of objects with a non-empty
+`value`; string arrays are rejected. Missing producer schemas are a lint and
+compile-repair problem, not a runtime compatibility path.
+
+Workflow execution also runs qianji lint as a preflight gate before starting
+qianji runtime checkpoints. When lint fails and a pi-wendao model is available,
+pi-wendao asks the model to repair the BPMN from the compact
+`qianji lint --llm` diagnostic, writes the repaired BPMN under the project
+cache, re-runs lint, and executes the repaired file only after lint passes.
+If repair cannot produce a lint-clean BPMN, the workflow does not start.
+
+```json
+{
+  "currentChoices": [
+    {
+      "value": "graph_visualization",
+      "label": "Graph visualization",
+      "description": "Workflow display and node rendering"
+    }
+  ]
+}
+```
 
 Gateway `conditionExpression` values are type-strict. A bare path such as
 `approved` must resolve to a JSON boolean. Counts and counters must use numeric

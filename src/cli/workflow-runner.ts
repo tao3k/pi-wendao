@@ -1,9 +1,14 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, join, resolve as resolvePath } from "node:path";
 import { XMLParser } from "fast-xml-parser";
+import { streamSimple, type Message, type Model } from "@mariozechner/pi-ai";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { PiWendaoThinkingLevel } from "../executor/agent-runtime-types.js";
 import { execute } from "../executor/executor.js";
+import { extractArtifactBundle, extractAssistantText } from "../compiler/artifacts.js";
 import {
   formatPiSubagentsHostEventForLog,
   formatPiSubagentsHostToolEventForGraphDetail,
@@ -76,13 +81,50 @@ export interface RunWorkflowInRendererParams {
   thinkingLevel: PiWendaoThinkingLevel;
   agentSession?: AgentSession;
   signal?: AbortSignal;
+  preflightLint?: boolean;
+  resolveRepairModel?: () => Promise<WorkflowRepairModel | undefined>;
+  maxRepairAttempts?: number;
 }
+
+export interface WorkflowLintPreflightParams {
+  renderer: Pick<Renderer, "appendLog">;
+  resolvedWorkflowPath: string;
+  resolvedDmnPaths: string[];
+  qianjiCommand?: string;
+  cwd: string;
+  resolveRepairModel?: () => Promise<WorkflowRepairModel | undefined>;
+  maxRepairAttempts?: number;
+}
+
+export interface WorkflowRepairModel {
+  model: Model<string>;
+  apiKey?: string;
+  headers?: Record<string, string>;
+}
+
+export type WorkflowLintPreflightResult =
+  | { success: true; workflowPath: string; repaired: boolean }
+  | { success: false };
 
 export async function runWorkflowInRenderer(
   params: RunWorkflowInRendererParams,
 ): Promise<{ success: boolean; interrupted?: boolean }> {
-  const source = readFileSync(params.resolvedWorkflowPath, "utf-8");
   const renderer = params.renderer;
+  let workflowPath = params.resolvedWorkflowPath;
+  if (params.preflightLint !== false) {
+    const lint = await runWorkflowLintPreflight({
+      renderer,
+      resolvedWorkflowPath: params.resolvedWorkflowPath,
+      resolvedDmnPaths: params.resolvedDmnPaths,
+      qianjiCommand: params.options.qianji,
+      cwd: params.invocationCwd,
+      resolveRepairModel: params.resolveRepairModel,
+      maxRepairAttempts: params.maxRepairAttempts,
+    });
+    if (!lint.success) return { success: false };
+    workflowPath = lint.workflowPath;
+  }
+  const source = readFileSync(workflowPath, "utf-8");
   const appendSubagentUpdate = createSubagentUpdateAppender((line) => renderer.appendLog(line));
   installGlobalPiIntercomBridge(
     params.resolvedModel
@@ -178,7 +220,7 @@ export async function runWorkflowInRenderer(
 
     const result = await execute({
       source,
-      sourcePath: params.resolvedWorkflowPath,
+      sourcePath: workflowPath,
       processId: params.options.process,
       instanceId: params.instanceId,
       startAtNode: params.options.startAtNode,
@@ -258,8 +300,229 @@ export async function runWorkflowInRenderer(
   }
 }
 
+export async function runWorkflowLintPreflight(
+  params: WorkflowLintPreflightParams,
+): Promise<WorkflowLintPreflightResult> {
+  const command = resolveQianjiCommand(params.qianjiCommand);
+  const maxRepairAttempts = params.maxRepairAttempts ?? 2;
+  let workflowPath = params.resolvedWorkflowPath;
+  let repaired = false;
+
+  for (let attempt = 0; attempt <= maxRepairAttempts; attempt += 1) {
+    const result = await runQianjiLint({
+      command,
+      args: ["lint", "--bpmn", workflowPath, "--llm"],
+      cwd: params.cwd,
+    });
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    if (result.exitCode === 0) {
+      const dmnLint = await lintDmnPreflight(command, params.resolvedDmnPaths, params.cwd);
+      if (!dmnLint.success) {
+        params.renderer.appendLog(dmnLint.output);
+        return { success: false };
+      }
+      params.renderer.appendLog(
+        repaired
+          ? `qianji lint preflight passed after repair: ${workflowPath}`
+          : "qianji lint preflight passed",
+      );
+      return { success: true, workflowPath, repaired };
+    }
+
+    if (attempt >= maxRepairAttempts || !params.resolveRepairModel) {
+      appendPreflightFailure(params.renderer, workflowPath, output);
+      return { success: false };
+    }
+
+    const repairAttempt = attempt + 1;
+    params.renderer.appendLog(
+      `qianji lint preflight failed; requesting BPMN repair ${repairAttempt}/${maxRepairAttempts}`,
+    );
+    const repairModel = await params.resolveRepairModel();
+    if (!repairModel) {
+      appendPreflightFailure(params.renderer, workflowPath, output);
+      return { success: false };
+    }
+    const repairedXml = await requestWorkflowRepair({
+      repairModel,
+      workflowPath,
+      diagnostic: output,
+    });
+    if (!repairedXml) {
+      params.renderer.appendLog(
+        [
+          `qianji lint preflight repair ${repairAttempt}/${maxRepairAttempts} did not return BPMN XML.`,
+          output,
+          "Workflow was not started.",
+        ].join("\n"),
+      );
+      return { success: false };
+    }
+    workflowPath = await writeRepairedWorkflow(params.cwd, params.resolvedWorkflowPath, repairedXml);
+    repaired = true;
+    params.renderer.appendLog(`qianji lint preflight wrote repaired BPMN: ${workflowPath}`);
+  }
+
+  return { success: false };
+}
+
+async function lintDmnPreflight(
+  command: string,
+  dmnPaths: string[],
+  cwd: string,
+): Promise<{ success: true } | { success: false; output: string }> {
+  for (const path of dmnPaths) {
+    const result = await runQianjiLint({
+      command,
+      args: ["lint", "--dmn", path, "--llm"],
+      cwd,
+    });
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    if (result.exitCode !== 0) {
+      return {
+        success: false,
+        output: [
+          `qianji lint preflight failed for ${path}`,
+          output,
+          "Workflow was not started.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      };
+    }
+  }
+  return { success: true };
+}
+
+function appendPreflightFailure(
+  renderer: Pick<Renderer, "appendLog">,
+  workflowPath: string,
+  output: string,
+): void {
+  renderer.appendLog(
+    [`qianji lint preflight failed for ${workflowPath}`, output, "Workflow was not started."]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+async function requestWorkflowRepair(options: {
+  repairModel: WorkflowRepairModel;
+  workflowPath: string;
+  diagnostic: string;
+}): Promise<string | undefined> {
+  const currentXml = readFileSync(options.workflowPath, "utf-8");
+  const messages: Message[] = [
+    {
+      role: "user",
+      timestamp: Date.now(),
+      content: buildWorkflowRepairPrompt(options.workflowPath, currentXml, options.diagnostic),
+    },
+  ];
+  const stream = streamSimple(
+    options.repairModel.model,
+    {
+      systemPrompt: WORKFLOW_REPAIR_SYSTEM_PROMPT,
+      messages,
+    },
+    {
+      apiKey: options.repairModel.apiKey,
+      headers: options.repairModel.headers,
+    },
+  );
+  const assistant = await stream.result();
+  if (assistant.stopReason === "error" || assistant.stopReason === "aborted") {
+    throw new Error(assistant.errorMessage ?? `BPMN repair model stopped: ${assistant.stopReason}`);
+  }
+  return extractArtifactBundle(extractAssistantText(assistant), "bpmn")?.bpmnXml;
+}
+
+const WORKFLOW_REPAIR_SYSTEM_PROMPT = `You are the pi-wendao BPMN preflight repair agent.
+
+qianji lint is the authority. Apply the smallest BPMN-local change required by
+the compact diagnostic. Preserve workflow ids, task semantics, qianji namespace
+contracts, and unrelated XML.
+
+Return the complete corrected BPMN XML only. Do not return a diff or prose.`;
+
+function buildWorkflowRepairPrompt(
+  workflowPath: string,
+  currentXml: string,
+  diagnostic: string,
+): string {
+  return `The BPMN workflow failed qianji lint before execution.
+
+The diagnostic may include a proposed patch or "Return unified diff only" text
+for external repair loops. For pi-wendao preflight repair, apply the diagnostic
+yourself and return the full corrected BPMN XML only.
+
+Workflow path:
+${workflowPath}
+
+Compact qianji lint diagnostic:
+\`\`\`text
+${diagnostic}
+\`\`\`
+
+Current BPMN XML:
+\`\`\`bpmn
+${currentXml}
+\`\`\``;
+}
+
+async function writeRepairedWorkflow(
+  cwd: string,
+  originalWorkflowPath: string,
+  xml: string,
+): Promise<string> {
+  const root = process.env.PRJ_CACHE_HOME
+    ? resolvePath(cwd, process.env.PRJ_CACHE_HOME)
+    : resolvePath(cwd, ".cache");
+  const dir = join(root, "pi-wendao", "repaired-workflows");
+  await mkdir(dir, { recursive: true });
+  const hash = createHash("sha256")
+    .update(originalWorkflowPath)
+    .update("\0")
+    .update(xml)
+    .digest("hex")
+    .slice(0, 12);
+  const name = basename(originalWorkflowPath).replace(/\.bpmn$/i, "");
+  const path = join(dir, `${name}-${hash}.bpmn`);
+  await writeFile(path, xml.endsWith("\n") ? xml : `${xml}\n`, "utf-8");
+  return path;
+}
+
 export function resolveQianjiCommand(explicitCommand: string | undefined): string {
   return explicitCommand ?? process.env.QIANJI_CLI ?? "qianji";
+}
+
+function runQianjiLint(options: {
+  command: string;
+  args: string[];
+  cwd: string;
+}): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  const commandLine = [options.command, ...options.args.map(shellQuote)].join(" ");
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(commandLine, {
+      cwd: options.cwd,
+      shell: true,
+      env: process.env,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf-8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.setEncoding("utf-8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (exitCode) => {
+      resolvePromise({ exitCode, stdout, stderr });
+    });
+  });
 }
 
 export function runQianjiShow(options: {

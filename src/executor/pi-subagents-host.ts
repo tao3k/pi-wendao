@@ -6,6 +6,7 @@ import {
   type PiWendaoAgentHost,
   type PiWendaoAgentRequest,
 } from "./agent-host.js";
+import { throwIfWorkflowInterrupted, waitForWorkflowInterrupt } from "./interrupt.js";
 
 export interface PiSubagentsSpawnRequest {
   prompt: string;
@@ -193,9 +194,11 @@ async function runPiSubagentTask(
   options: PiSubagentsHostOptions,
   request: PiWendaoAgentRequest,
 ): Promise<Record<string, unknown>> {
+  throwIfWorkflowInterrupted(request.signal);
   const config = request.config;
   const key = buildRunKey(request);
   const stored = key && options.runStore ? await options.runStore.get(key) : undefined;
+  throwIfWorkflowInterrupted(request.signal);
   if (
     stored?.status === "completed" &&
     stored.output &&
@@ -207,11 +210,15 @@ async function runPiSubagentTask(
   const spawnRequest = reusableStored?.spawnRequest ?? buildSpawnRequest(options, request);
   const agentId =
     reusableStored?.agentId ??
-    (await spawnAndStoreSubagent(options, request, key, spawnRequest, {
-      activityId: request.activityId,
-      description: spawnRequest.description,
-      onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, undefined, update),
-    }));
+    (await runInterruptible(
+      spawnAndStoreSubagent(options, request, key, spawnRequest, {
+        activityId: request.activityId,
+        description: spawnRequest.description,
+        onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, undefined, update),
+      }),
+      request.signal,
+    ));
+  throwIfWorkflowInterrupted(request.signal);
   emitHostEvent(options, {
     type: reusableStored ? "resumed" : "spawned",
     activityId: request.activityId,
@@ -224,21 +231,25 @@ async function runPiSubagentTask(
     agentId,
     description: spawnRequest.description,
   });
-  const result = await options.client.getResult(
-    {
-      agent_id: agentId,
-      wait: true,
-      ...(options.verboseResult === undefined && !options.onEvent
-        ? {}
-        : { verbose: options.verboseResult ?? true }),
-    },
-    {
-      activityId: request.activityId,
-      description: spawnRequest.description,
-      agentId,
-      onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, agentId, update),
-    },
+  const result = await runInterruptible(
+    options.client.getResult(
+      {
+        agent_id: agentId,
+        wait: true,
+        ...(options.verboseResult === undefined && !options.onEvent
+          ? {}
+          : { verbose: options.verboseResult ?? true }),
+      },
+      {
+        activityId: request.activityId,
+        description: spawnRequest.description,
+        agentId,
+        onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, agentId, update),
+      },
+    ),
+    request.signal,
   );
+  throwIfWorkflowInterrupted(request.signal);
   const resultText = resultToText(result);
   emitHostEvent(options, {
     type: "result",
@@ -278,6 +289,10 @@ async function runPiSubagentTask(
     });
   }
   return output;
+}
+
+function runInterruptible<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  return signal ? Promise.race([operation, waitForWorkflowInterrupt(signal)]) : operation;
 }
 
 function emitHostEvent(options: PiSubagentsHostOptions, event: PiSubagentsHostEvent): void {

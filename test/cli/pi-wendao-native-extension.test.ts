@@ -9,6 +9,7 @@ import {
   resolveNativeRunModel,
   renderTopGraphWidgetLines,
   requestNativeWorkflowInputReply,
+  clearAllNativeWorkflowGraphPanels,
   clearNativeWorkflowGraphPanel,
   setNativeWorkflowGraphPanel,
   renderWorkflowMessage,
@@ -17,6 +18,7 @@ import {
 } from "../../src/cli/pi-wendao-native-extension.js";
 import { buildPiWendaoNativeArgs } from "../../src/cli/pi-wendao-native-launcher.js";
 import { runNativePiAskFlow, runNativeWorkflowPiAskFlow } from "../../src/cli/native/ask.js";
+import { withNativeWorkflowUiEscScope } from "../../src/cli/native/esc-scope.js";
 import { PiWendaoNativeWorkflowRenderer } from "../../src/cli/native/renderer.js";
 import { GraphView } from "../../src/ui/graph-view.js";
 
@@ -31,6 +33,7 @@ describe("pi-wendao native pi extension", () => {
   });
 
   afterEach(() => {
+    clearAllNativeWorkflowGraphPanels();
     restoreEnv("ANTHROPIC_AUTH_TOKEN", originalAuthToken);
     restoreEnv("ANTHROPIC_OAUTH_TOKEN", originalOAuthToken);
     restoreEnv("ANTHROPIC_API_KEY", originalApiKey);
@@ -101,6 +104,9 @@ describe("pi-wendao native pi extension", () => {
       ) => {
         commands.set(name, options);
       },
+      events: {
+        emit: (channel: string) => calls.push(`event:${channel}`),
+      },
     } as never);
 
     const calls: string[] = [];
@@ -109,19 +115,28 @@ describe("pi-wendao native pi extension", () => {
       waitForIdle: async () => calls.push("waitForIdle"),
       newSession: async (options?: {
         withSession?: (ctx: {
-          ui: { notify(message: string, severity: string): void };
+          ui: {
+            notify(message: string, severity: string): void;
+            setStatus(key: string, value: string | undefined): void;
+          };
         }) => Promise<void>;
       }) => {
         calls.push("newSession");
         await options?.withSession?.({
           ui: {
             notify: (message, severity) => calls.push(`new:${severity}:${message}`),
+            setStatus: (key, value) => calls.push(value ? `newStatus:${key}:${value}` : `newClearStatus:${key}`),
+            setWidget: (key, value) => calls.push(value ? `newWidget:${key}` : `newClearWidget:${key}`),
           },
         });
         return { cancelled: false };
       },
       ui: {
         notify: (message: string, severity: string) => calls.push(`old:${severity}:${message}`),
+        setStatus: (key: string, value: string | undefined) =>
+          calls.push(value ? `oldStatus:${key}:${value}` : `oldClearStatus:${key}`),
+        setWidget: (key: string, value: unknown) =>
+          calls.push(value ? `oldWidget:${key}` : `oldClearWidget:${key}`),
       },
     };
 
@@ -133,7 +148,112 @@ describe("pi-wendao native pi extension", () => {
     expect(calls).toEqual([
       "shutdown",
       "waitForIdle",
+      "event:pi-wendao:native-session-surfaces:reset",
+      "oldClearWidget:agents",
+      "oldClearStatus:pi-wendao",
+      "oldClearStatus:subagents",
       "newSession",
+      "event:pi-wendao:native-session-surfaces:reset",
+      "newClearWidget:agents",
+      "newClearStatus:pi-wendao",
+      "newClearStatus:subagents",
+      "new:info:New session started.",
+    ]);
+  });
+
+  it("clears native workflow graph overlays before starting a new session", async () => {
+    const commands = new Map<
+      string,
+      {
+        handler: (args: string, ctx: unknown) => Promise<void>;
+      }
+    >();
+    createPiWendaoNativeExtension({
+      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      thinkingLevel: "medium",
+      invocationCwd: "/repo",
+      piContextCwd: "/repo/.data/qianji",
+      resolvedExtensionPaths: [],
+      baseWorkflowOptions: {},
+      resolvedDmnPaths: [],
+    })({
+      registerProvider: () => undefined,
+      registerMessageRenderer: () => undefined,
+      registerCommand: (
+        name: string,
+        options: {
+          handler: (args: string, ctx: unknown) => Promise<void>;
+        },
+      ) => {
+        commands.set(name, options);
+      },
+      events: {
+        emit: (channel: string) => calls.push(`event:${channel}`),
+      },
+    } as never);
+
+    const calls: string[] = [];
+    const ctx = {
+      waitForIdle: async () => calls.push("waitForIdle"),
+      newSession: async (options?: {
+        withSession?: (ctx: {
+          ui: {
+            notify(message: string, severity: string): void;
+            setStatus(key: string, value: string | undefined): void;
+          };
+        }) => Promise<void>;
+      }) => {
+        calls.push("newSession");
+        await options?.withSession?.({
+          ui: {
+            notify: (message, severity) => calls.push(`new:${severity}:${message}`),
+            setStatus: (key, value) => calls.push(value ? `newStatus:${key}:${value}` : `newClearStatus:${key}`),
+            setWidget: (key, value) => calls.push(value ? `newWidget:${key}` : `newClearWidget:${key}`),
+          },
+        });
+        return { cancelled: false };
+      },
+      ui: {
+        notify: (message: string, severity: string) => calls.push(`old:${severity}:${message}`),
+        setStatus: (key: string, value: string | undefined) =>
+          calls.push(value ? `oldStatus:${key}:${value}` : `oldClearStatus:${key}`),
+        setWidget: (key: string, value: unknown) => {
+          calls.push(value ? `oldWidget:${key}` : `oldClearWidget:${key}`);
+          if (typeof value === "function") {
+            value({ requestRender: () => undefined }, {});
+          }
+        },
+        setHeader: (value: unknown) => {
+          calls.push(value ? "oldHeader" : "oldClearHeader");
+          if (typeof value === "function") {
+            value({ requestRender: () => undefined }, {});
+          }
+        },
+      },
+    };
+
+    setNativeWorkflowGraphPanel(ctx as never, () => ({
+      render: () => [],
+      invalidate: () => undefined,
+      dispose: () => calls.push("disposeGraph"),
+    }));
+
+    await commands.get("clear")?.handler("", ctx);
+
+    expect(calls).toEqual([
+      "oldHeader",
+      "waitForIdle",
+      "event:pi-wendao:native-session-surfaces:reset",
+      "oldClearHeader",
+      "disposeGraph",
+      "oldClearWidget:agents",
+      "oldClearStatus:pi-wendao",
+      "oldClearStatus:subagents",
+      "newSession",
+      "event:pi-wendao:native-session-surfaces:reset",
+      "newClearWidget:agents",
+      "newClearStatus:pi-wendao",
+      "newClearStatus:subagents",
       "new:info:New session started.",
     ]);
   });
@@ -236,6 +356,8 @@ describe("pi-wendao native pi extension", () => {
       idleStarted = resolve;
     });
     const notifications: string[] = [];
+    let terminalInputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
+    const terminalInputEvents: string[] = [];
     const ctx = {
       waitForIdle: async () => {
         idleStarted?.();
@@ -243,6 +365,11 @@ describe("pi-wendao native pi extension", () => {
       },
       ui: {
         notify: (message: string, severity: string) => notifications.push(`${severity}:${message}`),
+        onTerminalInput: (handler: (data: string) => { consume?: boolean } | undefined) => {
+          terminalInputEvents.push("subscribe");
+          terminalInputHandler = handler;
+          return () => terminalInputEvents.push("unsubscribe");
+        },
         setStatus: () => undefined,
       },
     };
@@ -254,11 +381,17 @@ describe("pi-wendao native pi extension", () => {
         ctx,
       );
     await idleStartedPromise;
+    await expect(
+      withNativeWorkflowUiEscScope(async () => terminalInputHandler?.("\x1b")),
+    ).resolves.toBeUndefined();
+    expect(terminalInputHandler?.("\x1b")).toEqual({ consume: true });
     await commands.get("stop")?.handler("", ctx);
     releaseIdle?.();
     await run;
 
     expect(notifications).toContain("warning:Stopping pi-wendao workflow...");
+    expect(notifications.filter((entry) => entry === "warning:Stopping pi-wendao workflow...")).toHaveLength(1);
+    expect(terminalInputEvents).toEqual(["subscribe", "unsubscribe"]);
     expect(
       sent.some((message) =>
         message.details?.lines?.includes(
@@ -330,51 +463,14 @@ describe("pi-wendao native pi extension", () => {
     expect(firstGraphLine).toBeGreaterThan(1);
   });
 
-  it("mounts the workflow graph as a floating native overlay", () => {
+  it("mounts the workflow graph as a native header surface", () => {
     const calls: string[] = [];
     const ctx = {
       ui: {
-        custom: (
-          factory: (...args: never[]) => { dispose?(): void },
-          options?: {
-            overlay?: boolean;
-            overlayOptions?:
-              | { row?: number; col?: number; width?: string; nonCapturing?: boolean }
-              | (() => { row?: number; col?: number; width?: string; nonCapturing?: boolean });
-            onHandle?: (handle: {
-              hide(): void;
-              setHidden(hidden: boolean): void;
-              isHidden(): boolean;
-              focus(): void;
-              unfocus(): void;
-              isFocused(): boolean;
-            }) => void;
-          },
-        ) => {
-          calls.push(options?.overlay ? "customOverlay" : "custom");
-          const overlayOptions =
-            typeof options?.overlayOptions === "function"
-              ? options.overlayOptions()
-              : options?.overlayOptions;
-          expect(overlayOptions).toMatchObject({
-            row: 0,
-            col: 0,
-            width: "100%",
-            nonCapturing: true,
-          });
-          factory({ requestRender: () => calls.push("render") }, {}, {}, () => calls.push("done"));
-          options?.onHandle?.({
-            hide: () => calls.push("hide"),
-            setHidden: () => undefined,
-            isHidden: () => false,
-            focus: () => undefined,
-            unfocus: () => undefined,
-            isFocused: () => false,
-          });
-          return new Promise<void>(() => undefined);
+        setHeader: (factory: ((...args: never[]) => { dispose?(): void }) | undefined) => {
+          calls.push(factory ? "setHeader" : "clearHeader");
+          factory?.({ requestRender: () => calls.push("render") }, {});
         },
-        setHeader: () => calls.push("setHeader"),
-        setWidget: () => calls.push("setWidget"),
       },
     };
 
@@ -385,7 +481,11 @@ describe("pi-wendao native pi extension", () => {
     }));
     clearNativeWorkflowGraphPanel(handle);
 
-    expect(calls).toEqual(["customOverlay", "done", "dispose"]);
+    expect(calls).toEqual([
+      "setHeader",
+      "clearHeader",
+      "dispose",
+    ]);
   });
 
   it("collects workflow ask through the pi-ask dependency without registering ask_user", async () => {
@@ -582,6 +682,73 @@ describe("pi-wendao native pi extension", () => {
     );
 
     expect(result.answers?.planner_reply?.values).toEqual(["approved"]);
+  });
+
+  it("mounts workflow pi-ask input as a bounded overlay", async () => {
+    let capturedOptions:
+      | {
+          overlay?: boolean;
+          overlayOptions?: {
+            anchor?: string;
+            width?: string;
+            minWidth?: number;
+            maxHeight?: string;
+            margin?: number;
+          };
+        }
+      | undefined;
+
+    const result = await runNativeWorkflowPiAskFlow(
+      {
+        cwd: process.cwd(),
+        hasUI: true,
+        ui: {
+          custom: async (
+            factory: (...args: never[]) => {
+              handleInput?(data: string): void;
+            },
+            options?: typeof capturedOptions,
+          ) => {
+            capturedOptions = options;
+            let doneResult: unknown;
+            const component = await factory(
+              { requestRender: () => undefined },
+              fakeTheme(),
+              {},
+              (result: unknown) => {
+                doneResult = result;
+              },
+            );
+            component.handleInput?.("\x1b");
+            return doneResult;
+          },
+        },
+      } as never,
+      {
+        title: "workflow user input",
+        questions: [
+          {
+            id: "planner_reply",
+            label: "workflow user input",
+            options: [{ label: "Use default reply", value: "default" }],
+            prompt: "Describe the integration direction",
+            type: "single",
+          },
+        ],
+      },
+    );
+
+    expect(result.cancelled).toBe(true);
+    expect(capturedOptions).toMatchObject({
+      overlay: true,
+      overlayOptions: {
+        anchor: "center",
+        width: "80%",
+        minWidth: 52,
+        maxHeight: "80%",
+        margin: 2,
+      },
+    });
   });
 
   it("maps ESC in workflow pi-ask input to a cancelled workflow ask result", async () => {
@@ -978,7 +1145,9 @@ describe("pi-wendao native pi extension", () => {
     expect(args).toContain("--thinking");
     expect(args).toContain("medium");
     expect(args).toContain("/tmp/custom-extension.js");
-    expect(args.some((arg) => arg.includes("@tintinweb/pi-subagents"))).toBe(true);
+    expect(args.some((arg) => arg.endsWith("src/cli/native/pi-subagents-extension.ts"))).toBe(
+      true,
+    );
     expect(args.some((arg) => arg.includes("@eko24ive/pi-ask"))).toBe(false);
   });
 

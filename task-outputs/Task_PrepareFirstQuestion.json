@@ -1,0 +1,30 @@
+{
+  "currentQuestion": "What specific workflow or feature are you looking to build, modify, or troubleshoot with pi-wendao? Are you creating a new skill to compile, fixing an issue in the existing toolchain, extending execution capabilities, or something else entirely?",
+  "currentChoices": [
+    {
+      "value": "new_skill",
+      "label": "Create and compile a new agent skill into a BPMN workflow"
+    },
+    {
+      "value": "extend_execution",
+      "label": "Extend pi-wendao execution or host integration capabilities"
+    },
+    {
+      "value": "fix_issue",
+      "label": "Fix a bug or resolve an issue in the existing toolchain"
+    },
+    {
+      "value": "improve_tui",
+      "label": "Improve or extend the interactive TUI experience"
+    },
+    {
+      "value": "integration",
+      "label": "Integrate pi-wendao with another system or tool"
+    },
+    {
+      "value": "refactor",
+      "label": "Refactor, clean up, or improve existing code quality"
+    }
+  ],
+  "questionsRemaining": 4
+}

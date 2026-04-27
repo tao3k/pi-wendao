@@ -806,6 +806,7 @@ process.exit(2);
           <qianji:tools></qianji:tools>
           <qianji:inputs>idea</qianji:inputs>
           <qianji:outputs>currentQuestion,currentChoices</qianji:outputs>
+          <qianji:outputSchema name="currentChoices" kind="choice_array" value="required" label="optional" description="optional"/>
         </qianji:config>
       </extensionElements>
     </serviceTask>
@@ -850,7 +851,69 @@ process.exit(2);
 
     expect(result.success).toBe(true);
     expect(result.bpmnXml).toContain('<qianji:choices ref="currentChoices"/>');
+    expect(result.bpmnXml).toContain(
+      '<qianji:outputSchema name="currentChoices" kind="choice_array"',
+    );
     expect(result.bpmnXml).not.toContain("<qianji:choice ");
+  });
+
+  it("reports dynamic choice refs whose producer omits the output schema", async () => {
+    const missingDynamicChoicesSchemaXml = `<?xml version="1.0"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:qianji="https://qianji.dev/bpmn/extensions">
+  <process id="P1" isExecutable="true">
+    <startEvent id="S1"/>
+    <serviceTask id="Task_PrepareQuestion" implementation="\${environment.services.runAgent}">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Ask one clarifying question and prefer multiple choice when possible. Output currentQuestion and currentChoices.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>idea</qianji:inputs>
+          <qianji:outputs>currentQuestion,currentChoices</qianji:outputs>
+        </qianji:config>
+      </extensionElements>
+    </serviceTask>
+    <userTask id="Task_Answer">
+      <extensionElements>
+        <qianji:config>
+          <qianji:prompt>Collect the user's answer to the generated brainstorming question.</qianji:prompt>
+          <qianji:tools></qianji:tools>
+          <qianji:inputs>currentQuestion,currentChoices</qianji:inputs>
+          <qianji:outputs>userAnswer</qianji:outputs>
+          <qianji:interaction type="choice_input">
+            <qianji:question ref="currentQuestion"/>
+            <qianji:choices ref="currentChoices"/>
+            <qianji:result output="userAnswer"/>
+          </qianji:interaction>
+        </qianji:config>
+      </extensionElements>
+    </userTask>
+    <endEvent id="E1"/>
+    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_PrepareQuestion"/>
+    <sequenceFlow id="F2" sourceRef="Task_PrepareQuestion" targetRef="Task_Answer"/>
+    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="E1"/>
+  </process>
+</definitions>`;
+
+    faux.setResponses([fauxAssistantMessage("```xml\n" + missingDynamicChoicesSchemaXml + "\n```")]);
+
+    const result = await compileSkill({
+      skillContent: "# Skill\nAsk the user a structured question.",
+      model: faux.getModel(),
+      template: qianjiTemplate(),
+      target: bpmnTarget(),
+      lint: {
+        maxRepairAttempts: 0,
+        runner: async () => ({ success: true, output: "# Lint Passed" }),
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errors?.[0]).toMatchSnapshot();
+    expect(result.errors?.[0]).toContain("PI_WENDAO_DYNAMIC_CHOICES_SCHEMA");
+    expect(result.errors?.[0]).toContain("Task_PrepareQuestion");
+    expect(result.errors?.[0]).toContain('<qianji:outputSchema name="currentChoices"');
+    expect(result.errors?.[0]).toContain('kind="choice_array"');
   });
 
   it("reports gateway conditions that reference undeclared variables", async () => {
@@ -981,6 +1044,7 @@ process.exit(2);
     expect(result.errors?.[0]).toContain("PI_WENDAO_USER_FEEDBACK_LOOP_UNREAD");
     expect(result.errors?.[0]).toContain("userAnswer");
     expect(result.errors?.[0]).toContain("Set qianji:inputs to include: projectScope, userAnswer");
+    expect(result.errors?.[0]).toContain("- loop.interactive.progress");
     expect(result.errors?.[0]).toContain("- user-task.interaction");
     expect(result.errors?.[0]).toContain("- gateway.exclusive.bounded");
   });
@@ -1051,5 +1115,6 @@ process.exit(2);
     expect(result.errors?.[0]).toContain(
       "Set qianji:inputs to include: projectScope, userAnswer, feedback",
     );
+    expect(result.errors?.[0]).toContain("- loop.interactive.progress");
   });
 });

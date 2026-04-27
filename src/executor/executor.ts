@@ -26,7 +26,11 @@ import {
   type HostCompletionFixture,
 } from "./bpmn-config.js";
 import { isObject } from "./data.js";
-import { mapHumanTaskReplyToOutputs, resolveHumanTaskConfig } from "./human-task.js";
+import {
+  mapHumanTaskReplyToOutputs,
+  resolveHumanTaskConfig,
+  validateOutputSchemas,
+} from "./human-task.js";
 import { isWorkflowInterruptedError, throwIfWorkflowInterrupted } from "./interrupt.js";
 import { createPiAiHost } from "./node-runner.js";
 import {
@@ -51,6 +55,7 @@ import type {
   QianjiHostWorkEvent,
   QianjiTraceEvent,
 } from "./qianji-types.js";
+import { WorkflowStallGuard } from "./stall-guard.js";
 
 export type { QianjiHostWorkEvent, QianjiTraceEvent } from "./qianji-types.js";
 export { mapHumanTaskReplyToOutputs } from "./human-task.js";
@@ -383,6 +388,7 @@ async function runQianjiExternalHostLoop(options: {
     streamedTrace: false,
     hostWork: [],
   };
+  const stallGuard = new WorkflowStallGuard();
   const onTraceEvent = async (event: QianjiTraceEvent) => {
     updatePendingActivities(pendingActivities, event);
     await options.onTraceEvent(event);
@@ -415,6 +421,11 @@ async function runQianjiExternalHostLoop(options: {
       throw new Error("qianji external host loop exceeded 100 host-boundary iterations");
     }
     const checkpoint = parseQianjiCheckpointFeedback(latest.stdout, latest.hostWork.length);
+    stallGuard.inspectPendingHostWork({
+      hostWork: latest.hostWork,
+      piWendaoConfigs,
+      variables: options.context,
+    });
     emitQianjiHostWorkEvents(latest.hostWork, options.options);
     applyQianjiHostWorkGraph({
       hostWork: latest.hostWork,
@@ -609,7 +620,9 @@ async function runPiWendaoActivity(options: {
     if (!options.humanTaskHandler) {
       throw new Error(`BPMN userTask '${options.activityId}' requires a human task handler`);
     }
-    const resolvedConfig = resolveHumanTaskConfig(config, options.variables);
+    const resolvedConfig = resolveHumanTaskConfig(config, options.variables, {
+      activityId: options.activityId,
+    });
     const reply = await options.humanTaskHandler({
       activityId: options.activityId,
       config: resolvedConfig,
@@ -631,21 +644,28 @@ async function runPiWendaoActivity(options: {
     tokenId: options.execution.tokenId,
   });
   if (fixtureOutput) {
-    Object.assign(options.variables, fixtureOutput);
-    return fixtureOutput;
+    const validatedOutput = validateOutputSchemas(config, fixtureOutput, {
+      activityId: options.activityId,
+    });
+    Object.assign(options.variables, validatedOutput);
+    return validatedOutput;
   }
   const output = await options.agentHost.run({
     activityId: options.activityId,
     config,
     variables: options.variables,
+    signal: options.signal,
     execution: {
       ...options.execution,
       activityId: options.activityId,
     },
   });
   throwIfWorkflowInterrupted(options.signal);
-  Object.assign(options.variables, output);
-  return output;
+  const validatedOutput = validateOutputSchemas(config, output, {
+    activityId: options.activityId,
+  });
+  Object.assign(options.variables, validatedOutput);
+  return validatedOutput;
 }
 
 function resolveFixtureCompletion(options: {

@@ -300,6 +300,73 @@ describe("createPiSubagentsHost", () => {
     expect(spawnCount).toBe(1);
   });
 
+  it("interrupts an in-flight subagent result wait immediately", async () => {
+    const runStore = createInMemoryPiSubagentsRunStore();
+    const controller = new AbortController();
+    let spawnCount = 0;
+    let releaseResult: (() => void) | undefined;
+    let getResultStarted: (() => void) | undefined;
+    const resultPending = new Promise<void>((resolve) => {
+      releaseResult = resolve;
+    });
+    const getResultStartedPromise = new Promise<void>((resolve) => {
+      getResultStarted = resolve;
+    });
+    const request = {
+      activityId: "Task_Interrupt",
+      variables: {},
+      signal: controller.signal,
+      config: {
+        prompt: "Run interruptible task.",
+        tools: [],
+        inputs: [],
+        outputs: ["result"],
+      },
+      execution: {
+        instanceId: "instance-interrupt",
+        tokenId: 42,
+      },
+    };
+    const host = createPiSubagentsHost({
+      runStore,
+      client: {
+        async spawn() {
+          spawnCount += 1;
+          return "agent-interrupt";
+        },
+        async getResult() {
+          getResultStarted?.();
+          await resultPending;
+          return '```json\n{"result":"late"}\n```';
+        },
+      },
+    });
+
+    const run = host.run(request);
+    await getResultStartedPromise;
+    expect(spawnCount).toBe(1);
+    controller.abort();
+
+    await expect(run).rejects.toMatchObject({ name: "WorkflowInterruptedError" });
+    releaseResult?.();
+
+    const resumedHost = createPiSubagentsHost({
+      runStore,
+      client: {
+        async spawn() {
+          throw new Error("interrupted run should have preserved the spawned agent");
+        },
+        async getResult(resultRequest) {
+          expect(resultRequest.agent_id).toBe("agent-interrupt");
+          return '```json\n{"result":"resumed"}\n```';
+        },
+      },
+    });
+    await expect(resumedHost.run({ ...request, signal: undefined })).resolves.toEqual({
+      result: "resumed",
+    });
+  });
+
   it("persists completed subagent output in a JSON file store", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-wendao-subagent-store-"));
     tempDirs.push(dir);

@@ -3,6 +3,7 @@ import type { GraphNode, GraphView } from "../ui/graph-view.js";
 import type {
   PiWendaoConfig,
   PiWendaoHostWorkKind,
+  QianjiOutputSchema,
   PiWendaoSubagentConfig,
   QianjiInteraction,
   QianjiInteractionChoice,
@@ -108,6 +109,7 @@ export function buildPiWendaoConfigMap(
       tools: csv(readQianjiText(config, "tools")),
       inputs: csv(readQianjiText(config, "inputs")),
       outputs: csv(readQianjiText(config, "outputs")),
+      outputSchemas: readQianjiOutputSchemas(config),
       interaction: readQianjiInteraction(config),
       subagent: readPiWendaoSubagentConfig(config),
     });
@@ -298,6 +300,29 @@ function readQianjiConfig(
 
 function readQianjiText(config: Record<string, unknown>, field: string): string {
   return readText(config[`qianji:${field}`]);
+}
+
+function readQianjiOutputSchemas(config: Record<string, unknown>): Record<string, QianjiOutputSchema> {
+  const schemas: Record<string, QianjiOutputSchema> = {};
+  for (const schema of asArray(config["qianji:outputSchema"]).filter(isObject)) {
+    const name = readString(schema.name);
+    const kind = readString(schema.kind);
+    if (!name || !kind) continue;
+    schemas[name] = {
+      kind,
+      ...(readRequirement(schema.value) ? { value: readRequirement(schema.value) } : {}),
+      ...(readRequirement(schema.label) ? { label: readRequirement(schema.label) } : {}),
+      ...(readRequirement(schema.description)
+        ? { description: readRequirement(schema.description) }
+        : {}),
+    };
+  }
+  return schemas;
+}
+
+function readRequirement(value: unknown): "required" | "optional" | undefined {
+  const text = readString(value);
+  return text === "required" || text === "optional" ? text : undefined;
 }
 
 function readQianjiInteraction(config: Record<string, unknown>): QianjiInteraction | undefined {

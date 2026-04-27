@@ -4,7 +4,11 @@ import type {
   Theme as PiTheme,
 } from "@mariozechner/pi-coding-agent";
 import { createJiti } from "@mariozechner/jiti";
-import { Key, matchesKey, type Component, type TUI } from "@mariozechner/pi-tui";
+import { Key, matchesKey, type Component, type OverlayOptions, type TUI } from "@mariozechner/pi-tui";
+import { withNativeWorkflowUiEscScope } from "./esc-scope.js";
+
+const WORKFLOW_ASK_OVERLAY_MIN_WIDTH = 52;
+const WORKFLOW_ASK_OVERLAY_MARGIN = 2;
 
 export interface NativeAskOption {
   description?: string;
@@ -55,6 +59,8 @@ type NativeAskCustomFactory = (
   done: (result: NativeAskCustomResult) => void,
 ) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>;
 
+type NativeAskCustomOptions = Parameters<ExtensionCommandContext["ui"]["custom"]>[1];
+
 type PiAskControllerModule = {
   runAskFlow(
     ctx: ExtensionCommandContext,
@@ -76,9 +82,9 @@ export async function runNativeWorkflowPiAskFlow(
   ctx: ExtensionCommandContext,
   params: NativeAskParams,
 ): Promise<NativeAskResultDetails> {
-  const result = (await runNativePiAskFlow(withWorkflowInputCancelKeys(ctx), params)) as
-    | NativeAskResultDetails
-    | undefined;
+  const result = (await withNativeWorkflowUiEscScope(() =>
+    runNativePiAskFlow(withWorkflowInputCancelKeys(ctx), params),
+  )) as NativeAskResultDetails | undefined;
   return result ?? cancelledAskResult();
 }
 
@@ -107,8 +113,9 @@ function withWorkflowInputCancelKeys(ctx: ExtensionCommandContext): ExtensionCom
       ...ctx.ui,
       custom: (<T>(
         factory: NativeAskCustomFactory,
-        options?: Parameters<ExtensionCommandContext["ui"]["custom"]>[1],
+        options?: NativeAskCustomOptions,
       ): Promise<T> => {
+        const customOptions = workflowAskCustomOptions(options);
         return ctx.ui.custom<NativeAskCustomResult>(async (tui, theme, keybindings, done) => {
           let completed = false;
           const complete = (result: NativeAskCustomResult) => {
@@ -118,9 +125,30 @@ function withWorkflowInputCancelKeys(ctx: ExtensionCommandContext): ExtensionCom
           };
           const component = await factory(tui, theme, keybindings, complete);
           return withCancelKeyHandling(component, () => complete(cancelledAskResult()));
-        }, options) as Promise<T>;
+        }, customOptions) as Promise<T>;
       }) as ExtensionCommandContext["ui"]["custom"],
     },
+  };
+}
+
+function workflowAskCustomOptions(
+  options?: NativeAskCustomOptions,
+): NativeAskCustomOptions {
+  return {
+    ...options,
+    overlay: true,
+    overlayOptions: options?.overlayOptions ?? workflowAskOverlayOptions(),
+  };
+}
+
+function workflowAskOverlayOptions(): OverlayOptions {
+  const margin = WORKFLOW_ASK_OVERLAY_MARGIN;
+  return {
+    anchor: "center",
+    width: "80%",
+    minWidth: WORKFLOW_ASK_OVERLAY_MIN_WIDTH,
+    maxHeight: "80%",
+    margin,
   };
 }
 

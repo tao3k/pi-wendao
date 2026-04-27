@@ -51,3 +51,22 @@ printf '\n' | pi-wendao workflow.bpmn \
 When pi-wendao owns host handling, `userTask` nodes ignore fixture `user_tasks`
 entries and use native UI input. Non-user host work can complete from
 `service_tasks`, `service_task_tokens`, `manual_tasks`, or `send_tasks`.
+
+## User Prompt Stall Guard
+
+During native host handling, pi-wendao records the resolved user-facing
+`userTask` prompt for the current run. If qianji returns the same user task with
+the same question, choices, and declared `qianji:inputs` values again before
+those inputs change, pi-wendao stops the run with `Workflow user input stall
+detected` and the diagnostic code `pi-wendao.runtime.user_prompt_stall`.
+
+This guard does not replace `qianji lint`. It catches runtime-only loops where
+the BPMN is structurally valid but the next question service did not consume
+the previous user answer or update a route/progress variable. The checkpoint is
+left in qianji so the workflow can be repaired or cancelled explicitly.
+The diagnostic lists the unchanged inputs and userTask outputs so the same text
+can be fed back into the compiler repair loop.
+
+The same `userTask` can still be revisited when the resolved question, choices,
+or declared `qianji:inputs` values change. Iterative workflows should expose
+their loop progress through those declared inputs.

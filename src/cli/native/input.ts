@@ -12,6 +12,7 @@ import {
   type NativeAskParams,
 } from "./ask.js";
 import { WORKFLOW_ASK_CONTEXT_MESSAGE_TYPE, WORKFLOW_ASK_STATUS_KEY } from "./constants.js";
+import { withNativeWorkflowUiEscScope } from "./esc-scope.js";
 import { defaultReply, promptLabel, stripAnsi } from "./text.js";
 
 const PLANNER_REPLY_QUESTION_ID = "planner_reply";
@@ -119,10 +120,12 @@ async function requestPiAskWorkflowInput(
 ): Promise<string> {
   if (signal?.aborted) throw new WorkflowInterruptedError();
   if (shouldUseDirectInputPrompt(details, request)) {
-    const answer = await Promise.race([
-      requestQianjiInteractionReply(ctx, request, signal),
-      waitForWorkflowInterrupt(signal),
-    ]);
+    const answer = await withNativeWorkflowUiEscScope(() =>
+      Promise.race([
+        requestQianjiInteractionReply(ctx, request, signal),
+        waitForWorkflowInterrupt(signal),
+      ]),
+    );
     if (answer === undefined)
       throw new WorkflowInterruptedError("Workflow input cancelled; checkpoint preserved.");
     return answer;

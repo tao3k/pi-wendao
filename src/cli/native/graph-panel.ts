@@ -2,8 +2,6 @@ import { basename } from "node:path";
 import type { ExtensionCommandContext, Theme as PiTheme } from "@mariozechner/pi-coding-agent";
 import {
   type Component,
-  type OverlayHandle,
-  type OverlayOptions,
   type TUI,
   truncateToWidth,
 } from "@mariozechner/pi-tui";
@@ -26,50 +24,31 @@ export interface NativeWorkflowGraphPanelHandle {
   requestRender(): void;
 }
 
+const activeGraphPanels = new Set<NativeWorkflowGraphPanelHandle>();
+
 export function setNativeWorkflowGraphPanel(
   ctx: Pick<ExtensionCommandContext, "ui">,
   factory: (tui: TUI, theme: PiTheme) => NativeWorkflowGraphComponent,
 ): NativeWorkflowGraphPanelHandle {
   let component: NativeWorkflowGraphComponent | undefined;
-  let closeOverlay: (() => void) | undefined;
-  let overlayHandle: OverlayHandle | undefined;
   let closed = false;
 
-  void ctx.ui
-    .custom<void>(
-      (tui, theme, _keybindings, done) => {
-        closeOverlay = () => done(undefined);
-        component = factory(tui, theme);
-        return component;
-      },
-      {
-        overlay: true,
-        overlayOptions: workflowGraphOverlayOptions(),
-        onHandle: (handle) => {
-          overlayHandle = handle;
-          if (closed && closeOverlay) {
-            closeOverlay();
-          } else if (closed) {
-            handle.hide();
-          }
-        },
-      },
-    )
-    .catch(() => {
-      if (closed) return;
-      closed = true;
-      component?.dispose?.();
-    });
+  ctx.ui.setHeader(
+    (tui, theme) => {
+      component = factory(tui, theme);
+      if (closed) {
+        component.dispose?.();
+      }
+      return component;
+    },
+  );
 
-  return {
+  const panel: NativeWorkflowGraphPanelHandle = {
     close: () => {
       if (closed) return;
       closed = true;
-      if (overlayHandle && closeOverlay) {
-        closeOverlay();
-      } else if (!closeOverlay) {
-        overlayHandle?.hide();
-      }
+      activeGraphPanels.delete(panel);
+      ctx.ui.setHeader(undefined);
       component?.dispose?.();
     },
     requestRender: () => {
@@ -77,12 +56,20 @@ export function setNativeWorkflowGraphPanel(
       component?.requestRender?.();
     },
   };
+  activeGraphPanels.add(panel);
+  return panel;
 }
 
 export function clearNativeWorkflowGraphPanel(
   panel: NativeWorkflowGraphPanelHandle | undefined,
 ): void {
   panel?.close();
+}
+
+export function clearAllNativeWorkflowGraphPanels(): void {
+  for (const panel of [...activeGraphPanels]) {
+    panel.close();
+  }
 }
 
 export function createNativeWorkflowWidget(
@@ -120,17 +107,6 @@ export function renderTopGraphWidgetLines(options: {
       ? Math.floor((availableGraphHeight - graphLines.length) / 2)
       : 0;
   return [title, ...new Array(topPadding).fill(""), ...visibleGraph].slice(0, totalHeight);
-}
-
-function workflowGraphOverlayOptions(): OverlayOptions {
-  return {
-    row: 0,
-    col: 0,
-    width: "100%",
-    maxHeight: "42%",
-    nonCapturing: true,
-    visible: (_termWidth, termHeight) => termHeight >= 8,
-  };
 }
 
 class NativeWorkflowWidget implements Component {

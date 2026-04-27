@@ -86,6 +86,38 @@ function lintPiWendaoCompileContract(
   const hostTaskIds = collectPiWendaoTaskIds(document.definitions?.process);
   const declaredVariables = collectPiWendaoDeclaredVariables(document.definitions?.process);
   const defaultGatewayRouteKeys = collectDefaultGatewayRouteKeys(document.definitions?.process);
+  const outputProducers = collectPiWendaoOutputProducers(document.definitions?.process);
+  const outputProducersByName = groupOutputProducersByName(outputProducers);
+  for (const ref of collectDynamicChoiceRefs(document.definitions?.process)) {
+    const producers = outputProducersByName.get(ref.choicesRef) ?? [];
+    if (producers.length === 0) {
+      issues.push({
+        code: "PI_WENDAO_DYNAMIC_CHOICES_PRODUCER",
+        title: "dynamic choices must have a declared producer",
+        summary: `userTask '${ref.taskId}' consumes qianji:choices ref '${ref.choicesRef}', but no pi-wendao task declares '${ref.choicesRef}' in qianji:outputs.`,
+        repairPlan: [
+          `Add an upstream serviceTask before userTask '${ref.taskId}' that outputs '${ref.choicesRef}'.`,
+          "Producer qianji:config must contain this XML:",
+          dynamicChoicesOutputSchemaXml(ref.choicesRef),
+          "Consumer qianji:interaction must contain this XML:",
+          dynamicChoicesRefXml(ref.choicesRef),
+        ].join("\n"),
+      });
+      continue;
+    }
+    if (!producers.some((producer) => producer.outputSchemas.get(ref.choicesRef) === "choice_array")) {
+      issues.push({
+        code: "PI_WENDAO_DYNAMIC_CHOICES_SCHEMA",
+        title: "dynamic choices producer must declare an output schema",
+        summary: `userTask '${ref.taskId}' consumes qianji:choices ref '${ref.choicesRef}', but producer task(s) ${producers.map((producer) => quote(producer.taskId)).join(", ")} do not declare kind="choice_array" qianji:outputSchema for '${ref.choicesRef}'.`,
+        repairPlan: [
+          `Insert this exact XML inside the qianji:config of the task that outputs '${ref.choicesRef}':`,
+          dynamicChoicesOutputSchemaXml(ref.choicesRef),
+          `Keep '${ref.choicesRef}' in qianji:outputs and keep <qianji:choices ref="${ref.choicesRef}"/> in the consuming userTask.`,
+        ].join("\n"),
+      });
+    }
+  }
   for (const boundaryEvent of collectBoundaryEvents(document.definitions?.process)) {
     const boundaryId = readString(boundaryEvent.id) || "(missing boundaryEvent id)";
     const attachedToRef = readString(boundaryEvent.attachedToRef);
@@ -255,7 +287,9 @@ interface PiWendaoCompileContractIssue {
 
 type QianjiConstructCardId =
   | "service-task.agent"
+  | "service-task.multi-instance.parallel"
   | "user-task.interaction"
+  | "loop.interactive.progress"
   | "gateway.exclusive.bounded";
 
 const PI_WENDAO_CONSTRUCT_CARDS_BY_CODE: Record<string, readonly QianjiConstructCardId[]> = {
@@ -269,12 +303,15 @@ const PI_WENDAO_CONSTRUCT_CARDS_BY_CODE: Record<string, readonly QianjiConstruct
   PI_WENDAO_TOOL_UNSUPPORTED: ["service-task.agent"],
   PI_WENDAO_VARIABLE_IDENTIFIER: ["service-task.agent"],
   PI_WENDAO_USER_FEEDBACK_LOOP_UNREAD: [
+    "loop.interactive.progress",
     "service-task.agent",
     "user-task.interaction",
     "gateway.exclusive.bounded",
   ],
   PI_WENDAO_INTERACTION_TYPE: ["user-task.interaction"],
   PI_WENDAO_INTERACTION_CHOICES: ["user-task.interaction"],
+  PI_WENDAO_DYNAMIC_CHOICES_PRODUCER: ["user-task.interaction", "service-task.agent"],
+  PI_WENDAO_DYNAMIC_CHOICES_SCHEMA: ["user-task.interaction", "service-task.agent"],
 };
 
 function renderPiWendaoCompileContractIssues(issues: PiWendaoCompileContractIssue[]): string {
@@ -309,6 +346,17 @@ function collectBoundaryEvents(processes: unknown): Record<string, unknown>[] {
 
 type PiWendaoTaskElement = Record<string, unknown> & { element: string };
 
+interface PiWendaoOutputProducer {
+  taskId: string;
+  outputNames: string[];
+  outputSchemas: Map<string, string>;
+}
+
+interface DynamicChoiceRef {
+  taskId: string;
+  choicesRef: string;
+}
+
 const PI_WENDAO_CONFIG_TASK_ELEMENTS = ["serviceTask", "userTask"] as const;
 
 function collectPiWendaoTasks(processes: unknown): PiWendaoTaskElement[] {
@@ -322,6 +370,53 @@ function collectPiWendaoTasks(processes: unknown): PiWendaoTaskElement[] {
     }
   }
   return tasks;
+}
+
+function collectPiWendaoOutputProducers(processes: unknown): PiWendaoOutputProducer[] {
+  const producers: PiWendaoOutputProducer[] = [];
+  for (const task of collectPiWendaoTasks(processes)) {
+    const taskId = readString(task.id);
+    if (!taskId) continue;
+    const config = readQianjiConfig(firstObject(task.extensionElements));
+    if (!config) continue;
+    const outputNames = csv(readQianjiText(config, "outputs"));
+    if (outputNames.length === 0) continue;
+    producers.push({
+      taskId,
+      outputNames,
+      outputSchemas: readQianjiOutputSchemas(config),
+    });
+  }
+  return producers;
+}
+
+function groupOutputProducersByName(
+  producers: PiWendaoOutputProducer[],
+): Map<string, PiWendaoOutputProducer[]> {
+  const byName = new Map<string, PiWendaoOutputProducer[]>();
+  for (const producer of producers) {
+    for (const outputName of producer.outputNames) {
+      const bucket = byName.get(outputName) ?? [];
+      bucket.push(producer);
+      byName.set(outputName, bucket);
+    }
+  }
+  return byName;
+}
+
+function collectDynamicChoiceRefs(processes: unknown): DynamicChoiceRef[] {
+  const refs: DynamicChoiceRef[] = [];
+  for (const task of collectPiWendaoTasks(processes)) {
+    if (task.element !== "userTask") continue;
+    const taskId = readString(task.id);
+    if (!taskId) continue;
+    const config = readQianjiConfig(firstObject(task.extensionElements));
+    const interaction = config ? firstObject(config[QIANJI_INTERACTION_ELEMENT]) : undefined;
+    if (!interaction) continue;
+    const choicesRef = readQianjiChoicesRef(interaction);
+    if (choicesRef) refs.push({ taskId, choicesRef });
+  }
+  return refs;
 }
 
 function collectPiWendaoTaskIds(processes: unknown): Set<string> {
@@ -523,7 +618,17 @@ function lintQianjiInteraction(
       code: "PI_WENDAO_INTERACTION_CHOICES",
       title: "choice interactions must declare choices",
       summary: `userTask '${taskId}' qianji:interaction type '${type}' does not declare static qianji:choice entries or a dynamic qianji:choices ref.${wrapperGuidance}`,
-      repairPlan: `Choose one legal choice contract for userTask '${taskId}': add direct <qianji:choice value="...">Label</qianji:choice> children under qianji:interaction, or add <qianji:choices ref="currentChoices"/> and have an upstream serviceTask output currentChoices as an array of {value,label,description} objects. Do not use an empty <qianji:choices> wrapper for static choices.`,
+      repairPlan: [
+        `Choose one legal choice contract for userTask '${taskId}'.`,
+        "Static choice XML:",
+        '<qianji:choice value="approved" label="Approve">Continue.</qianji:choice>',
+        '<qianji:choice value="revise" label="Revise">Collect changes.</qianji:choice>',
+        "Dynamic choice XML:",
+        dynamicChoicesRefXml("currentChoices"),
+        "Dynamic producer qianji:config must also contain:",
+        dynamicChoicesOutputSchemaXml("currentChoices"),
+        "Do not use an empty <qianji:choices> wrapper for static choices.",
+      ].join("\n"),
     });
   }
   return issues;
@@ -543,6 +648,24 @@ function readQianjiChoices(interaction: Record<string, unknown>): string[] {
 function readQianjiChoicesRef(interaction: Record<string, unknown>): string | undefined {
   const choices = firstObject(interaction["qianji:choices"]);
   return choices ? readString(choices.ref) || undefined : undefined;
+}
+
+function readQianjiOutputSchemas(config: Record<string, unknown>): Map<string, string> {
+  const schemas = new Map<string, string>();
+  for (const schema of asArray(config["qianji:outputSchema"]).filter(isObject)) {
+    const name = readString(schema.name);
+    const kind = readString(schema.kind);
+    if (name && kind) schemas.set(name, kind);
+  }
+  return schemas;
+}
+
+function dynamicChoicesOutputSchemaXml(ref: string): string {
+  return `<qianji:outputSchema name="${ref}" kind="choice_array" value="required" label="optional" description="optional"/>`;
+}
+
+function dynamicChoicesRefXml(ref: string): string {
+  return `<qianji:choices ref="${ref}"/>`;
 }
 
 function hasQianjiField(config: Record<string, unknown>, field: string): boolean {

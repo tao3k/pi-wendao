@@ -1,0 +1,27 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`qianji interaction contract parsing > rejects producer choice_array outputs whose items are strings 1`] = `
+"[pi-wendao.runtime.invalid_dynamic_choices] Error: Invalid dynamic qianji:choices payload
+
+Producer activity: Task_PrepareQuestion
+Variable: currentChoices
+Item: 1
+Problem: item is not an object
+Bad payload: "Graph visualization (workflow display and node rendering)"
+
+Help: currentChoices must be Array<{ value: string; label?: string; description?: string }>.
+Contract: qianji:outputSchema kind="choice_array" requires each item to be an object with a non-empty value.
+
+Expected value:
+\`\`\`json
+{
+  "currentChoices": [
+    {
+      "value": "minimal",
+      "label": "Minimal repair",
+      "description": "Repair only the failing contract."
+    }
+  ]
+}
+\`\`\`"
+`;

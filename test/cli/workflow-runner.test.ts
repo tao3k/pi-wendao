@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { fauxAssistantMessage, registerFauxProvider } from "@mariozechner/pi-ai";
 import { runWorkflowInRenderer } from "../../src/cli/workflow-runner.js";
 import { GraphView } from "../../src/ui/graph-view.js";
 import type { PlannerReplyRequest, QianjiTraceLogEvent, Renderer } from "../../src/ui/renderer.js";
@@ -39,6 +40,72 @@ describe("workflow runner", () => {
     expect(renderer.traceEvents).toBeGreaterThan(0);
     expect(renderer.flowTakes).toEqual(["Start_1->Task_1", "Task_1->End_1"]);
     expect(renderer.errors).toEqual([]);
+  });
+
+  it("blocks execution when qianji lint preflight fails", async () => {
+    const renderer = new ReceiverSensitiveRenderer();
+    const workflowPath = join(fixturesDir, "simple-workflow.bpmn");
+
+    const result = await runWorkflowInRenderer({
+      renderer,
+      useGraph: false,
+      resolvedWorkflowPath: workflowPath,
+      options: {
+        qianji: makeFakeQianjiPath({
+          lintExitCode: 2,
+          lintOutput: "[lint:error] old BPMN contract drift",
+        }),
+        traceFrameMs: 0,
+      },
+      invocationCwd: fixturesDir,
+      piContextCwd: fixturesDir,
+      resolvedDmnPaths: [],
+      thinkingLevel: "medium",
+    });
+
+    expect(result.success).toBe(false);
+    expect(renderer.logs.join("\n")).toContain("[lint:error] old BPMN contract drift");
+    expect(renderer.logs.join("\n")).toContain("Workflow was not started.");
+    expect(renderer.traceEvents).toBe(0);
+    expect(renderer.flowTakes).toEqual([]);
+  });
+
+  it("repairs BPMN with the pi-wendao model before execution", async () => {
+    const renderer = new ReceiverSensitiveRenderer();
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-workflow-repair-"));
+    tempDirs.push(dir);
+    const workflowPath = join(dir, "old-workflow.bpmn");
+    const repairedXml = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
+    writeFileSync(workflowPath, repairedXml.replace("List files", "needs-repair"), "utf-8");
+    const faux = registerFauxProvider();
+    faux.setResponses([fauxAssistantMessage("```bpmn\n" + repairedXml + "\n```")]);
+
+    try {
+      const result = await runWorkflowInRenderer({
+        renderer,
+        useGraph: true,
+        resolvedWorkflowPath: workflowPath,
+        options: {
+          qianji: makeFakeQianjiPath({
+            lintFailureMarker: "needs-repair",
+            lintOutput: "[lint:error] old BPMN contract drift",
+          }),
+          traceFrameMs: 0,
+        },
+        invocationCwd: fixturesDir,
+        piContextCwd: fixturesDir,
+        resolvedDmnPaths: [],
+        thinkingLevel: "medium",
+        resolveRepairModel: async () => ({ model: faux.getModel() }),
+      });
+
+      expect(result.success).toBe(true);
+      expect(renderer.logs.join("\n")).toContain("requesting BPMN repair 1/2");
+      expect(renderer.logs.join("\n")).toContain("qianji lint preflight passed after repair");
+      expect(renderer.flowTakes).toEqual(["Start_1->Task_1", "Task_1->End_1"]);
+    } finally {
+      faux.unregister();
+    }
   });
 });
 
@@ -114,16 +181,24 @@ class ReceiverSensitiveRenderer implements Renderer {
   }
 }
 
-function makeFakeQianjiPath(): string {
+function makeFakeQianjiPath(
+  options: { lintExitCode?: number; lintOutput?: string; lintFailureMarker?: string } = {},
+): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-workflow-runner-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "qianji");
-  writeFakeQianjiScript(scriptPath);
+  writeFakeQianjiScript(scriptPath, options);
   chmodSync(scriptPath, 0o755);
   return scriptPath;
 }
 
-function writeFakeQianjiScript(scriptPath: string): void {
+function writeFakeQianjiScript(
+  scriptPath: string,
+  options: { lintExitCode?: number; lintOutput?: string; lintFailureMarker?: string },
+): void {
+  const lintExitCode = options.lintExitCode;
+  const lintOutput = options.lintOutput ?? "[ok] lint passed";
+  const lintFailureMarker = options.lintFailureMarker;
   writeFileSync(
     scriptPath,
     `#!/usr/bin/env node
@@ -133,6 +208,20 @@ const get = (flag) => {
   const index = args.indexOf(flag);
   return index === -1 ? undefined : args[index + 1];
 };
+if (args[0] === "lint") {
+  const lintBpmnPath = get("--bpmn");
+  if (${JSON.stringify(lintFailureMarker)} && lintBpmnPath) {
+    const source = readFileSync(lintBpmnPath, "utf-8");
+    if (source.includes(${JSON.stringify(lintFailureMarker)})) {
+      console.log(${JSON.stringify(lintOutput)});
+      process.exit(2);
+    }
+    console.log("[ok] lint passed");
+    process.exit(0);
+  }
+  console.log(${JSON.stringify(lintOutput)});
+  process.exit(${lintExitCode ?? 0});
+}
 if (args[0] !== "bpmn" || args[1] !== "run") {
   console.error("unexpected qianji command: " + args.join(" "));
   process.exit(64);

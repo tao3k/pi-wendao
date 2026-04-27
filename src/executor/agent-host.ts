@@ -4,11 +4,25 @@ export interface PiWendaoConfig {
   tools: string[];
   inputs: string[];
   outputs: string[];
+  outputSchemas?: Record<string, QianjiOutputSchema>;
   interaction?: QianjiInteraction;
   subagent?: PiWendaoSubagentConfig;
 }
 
 export type QianjiInteractionType = "input" | "confirm" | "choice" | "choice_input";
+export type QianjiOutputSchemaRequirement = "required" | "optional";
+
+export interface QianjiOutputSchema {
+  kind: string;
+  value?: QianjiOutputSchemaRequirement;
+  label?: QianjiOutputSchemaRequirement;
+  description?: QianjiOutputSchemaRequirement;
+}
+
+type QianjiPromptOutputSchema = QianjiOutputSchema & {
+  jsonSchema?: unknown;
+  example?: unknown;
+};
 
 export interface QianjiInteraction {
   type: QianjiInteractionType;
@@ -81,6 +95,7 @@ export interface PiWendaoAgentRequest {
   config: PiWendaoConfig;
   variables: Record<string, unknown>;
   execution?: PiWendaoAgentExecutionMetadata;
+  signal?: AbortSignal;
 }
 
 export interface PiWendaoAgentHost {
@@ -132,10 +147,58 @@ export function buildPiWendaoAgentPrompt(
       `\nAfter completing the task, output the following variables in a JSON code block with exactly these keys:\n${config.outputs.map((o) => `- ${o}`).join("\n")}`,
     );
   }
+  const outputSchemaContext = formatOutputSchemas(config);
+  if (outputSchemaContext) {
+    promptParts.push(`\n\nqianji_output_schema:\n\`\`\`json\n${outputSchemaContext}\n\`\`\``);
+  }
   promptParts.push(
     "\nQianji owns BPMN scheduling, gateway routing, retries, joins, checkpoint persistence, and resume state. Do not advance the workflow or decide the next BPMN node; only complete this service task and return its declared outputs.",
   );
   return promptParts.join("");
+}
+
+function formatOutputSchemas(config: PiWendaoConfig): string {
+  const schemas = config.outputSchemas ?? {};
+  const declaredSchemas = Object.fromEntries(
+    config.outputs
+      .map((name) => {
+        const schema = schemas[name];
+        return [name, schema ? formatOutputSchema(schema) : undefined] as const;
+      })
+      .filter((entry): entry is readonly [string, QianjiPromptOutputSchema] =>
+        Boolean(entry[1]),
+      ),
+  );
+  return Object.keys(declaredSchemas).length > 0
+    ? JSON.stringify(declaredSchemas, null, 2)
+    : "";
+}
+
+function formatOutputSchema(schema: QianjiOutputSchema): QianjiPromptOutputSchema {
+  if (schema.kind !== "choice_array") return schema;
+  return {
+    ...schema,
+    jsonSchema: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["value"],
+        properties: {
+          value: { type: "string", minLength: 1 },
+          label: { type: "string" },
+          description: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    example: [
+      {
+        value: "minimal",
+        label: "Minimal repair",
+        description: "Repair only the failing contract.",
+      },
+    ],
+  };
 }
 
 function formatExecutionContext(execution: PiWendaoAgentExecutionMetadata | undefined): string {
