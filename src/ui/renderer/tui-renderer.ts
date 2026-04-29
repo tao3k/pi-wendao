@@ -1,14 +1,15 @@
 import { matchesKey, ProcessTerminal, TUI } from "@mariozechner/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
 import type { PiWendaoAgentEvent } from "../../executor/agent-runtime-types.js";
+import { WorkflowInterruptedError } from "../../executor/interrupt.js";
 import { GraphView, LogView } from "../graph-view.js";
 import { AgentEventLogBuffer, formatVariableValueForLog } from "./log-format.js";
 import { isPrintableInput } from "./input.js";
 import { appendLogBlock } from "./log-block.js";
 import {
   appendPlannerPrompt,
-  defaultReplyForRequest,
   replyPromptForRequest,
+  resolveReplyForRequest,
 } from "./planner-prompt.js";
 import { SplitLayout } from "./split-layout.js";
 import { appendTraceEvent } from "./trace-log.js";
@@ -146,20 +147,26 @@ export function createTuiRenderer(): Renderer {
     appendPlannerPrompt(logView, next.request);
     refresh();
     if (next.signal?.aborted) {
-      completePlannerInput("rejected");
+      failPlannerInput(new WorkflowInterruptedError());
     }
   }
 
   function handlePlannerInput(data: string): void {
     if (!activePlannerInput) return;
     if (matchesKey(data, "return") || matchesKey(data, "enter")) {
-      completePlannerInput(
-        activePlannerInput.value.trim() || defaultReplyForRequest(activePlannerInput.request),
-      );
+      try {
+        completePlannerInput(
+          resolveReplyForRequest(activePlannerInput.request, activePlannerInput.value),
+        );
+      } catch (error) {
+        failPlannerInput(error instanceof Error ? error : new Error(String(error)));
+      }
       return;
     }
     if (matchesKey(data, "escape")) {
-      completePlannerInput("rejected");
+      failPlannerInput(
+        new WorkflowInterruptedError("Workflow input cancelled; checkpoint preserved."),
+      );
       return;
     }
     if (matchesKey(data, "backspace")) {
@@ -179,6 +186,16 @@ export function createTuiRenderer(): Renderer {
     activePlannerInput = undefined;
     logView.replaceLastLine(green(`${replyPromptForRequest(completed.request).prefix}> ${answer}`));
     completed.resolve(answer);
+    refresh();
+    startNextPlannerInput();
+  }
+
+  function failPlannerInput(error: Error): void {
+    if (!activePlannerInput) return;
+    const completed = activePlannerInput;
+    activePlannerInput = undefined;
+    logView.replaceLastLine(red(`${replyPromptForRequest(completed.request).prefix}> cancelled`));
+    completed.reject(error);
     refresh();
     startNextPlannerInput();
   }

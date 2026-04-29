@@ -1,122 +1,259 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_Brainstorming"
              targetNamespace="https://qianji.dev">
   <process id="Process_Brainstorming" name="Brainstorming Design Process" isExecutable="true">
     <startEvent id="Start_1" name="Start brainstorming"/>
 
     <serviceTask id="Task_ExploreContext" name="Explore project context" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Explore the current project state before design discussion. Check relevant files, docs, and recent context. If the request is too broad, summarize the decomposition needed. Output contextFindings and scopeReady.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>contextFindings,scopeReady</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Explore the current project state before design discussion. Check relevant files, docs, and recent context. If the request is too broad, summarize the decomposition needed. Output contextFindings and scopeReady.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_ExploreContext_output_contextFindings" name="contextFindings" />
+    <dataOutput id="Task_ExploreContext_output_scopeReady" name="scopeReady" />
+    <inputSet id="Task_ExploreContext_input_set"></inputSet>
+    <outputSet id="Task_ExploreContext_output_set">
+    <dataOutputRefs>Task_ExploreContext_output_contextFindings</dataOutputRefs>
+    <dataOutputRefs>Task_ExploreContext_output_scopeReady</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_ExploreContext_output_contextFindings</sourceRef>
+    <targetRef>contextFindings</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_ExploreContext_output_scopeReady</sourceRef>
+    <targetRef>scopeReady</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <userTask id="Task_Clarify" name="Clarify design intent">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask the user for the next clarification needed to understand purpose, constraints, or success criteria.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>contextFindings</qianji:inputs>
-          <qianji:outputs>clarificationAnswer</qianji:outputs>
-          <qianji:interaction type="input">
-            <qianji:question>What is the most important constraint or success criterion for this design?</qianji:question>
-            <qianji:freeText name="clarificationAnswer" optional="false" placeholder="Answer"/>
-            <qianji:result output="clarificationAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>What is the most important constraint or success criterion for this design?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Clarify_input_contextFindings" name="contextFindings" />
+    <dataInput id="Task_Clarify_input_interactionType" name="interactionType" />
+    <dataInput id="Task_Clarify_input_freeText" name="freeText" />
+    <dataOutput id="Task_Clarify_output_answer" name="answer" />
+    <inputSet id="Task_Clarify_input_set">
+    <dataInputRefs>Task_Clarify_input_contextFindings</dataInputRefs>
+    <dataInputRefs>Task_Clarify_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_Clarify_input_freeText</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Clarify_output_set">
+    <dataOutputRefs>Task_Clarify_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>contextFindings</sourceRef>
+    <targetRef>Task_Clarify_input_contextFindings</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>input</from><to>Task_Clarify_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>{"name":"clarificationAnswer","placeholder":"Answer","optional":false}</from><to>Task_Clarify_input_freeText</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Clarify_output_answer</sourceRef>
+    <targetRef>clarificationAnswer</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <serviceTask id="Task_ProposeApproaches" name="Propose approaches" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Use the context findings and clarification answer to propose two or three design approaches with trade-offs. Recommend one. Output approaches and recommendedApproach.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>contextFindings,clarificationAnswer</qianji:inputs>
-          <qianji:outputs>approaches,recommendedApproach</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Use the context findings and clarification answer to propose two or three design approaches with trade-offs. Recommend one. Output approaches and recommendedApproach.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_ProposeApproaches_input_contextFindings" name="contextFindings" />
+    <dataInput id="Task_ProposeApproaches_input_clarificationAnswer" name="clarificationAnswer" />
+    <dataOutput id="Task_ProposeApproaches_output_approaches" name="approaches" />
+    <dataOutput id="Task_ProposeApproaches_output_recommendedApproach" name="recommendedApproach" />
+    <inputSet id="Task_ProposeApproaches_input_set">
+    <dataInputRefs>Task_ProposeApproaches_input_contextFindings</dataInputRefs>
+    <dataInputRefs>Task_ProposeApproaches_input_clarificationAnswer</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_ProposeApproaches_output_set">
+    <dataOutputRefs>Task_ProposeApproaches_output_approaches</dataOutputRefs>
+    <dataOutputRefs>Task_ProposeApproaches_output_recommendedApproach</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>contextFindings</sourceRef>
+    <targetRef>Task_ProposeApproaches_input_contextFindings</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>clarificationAnswer</sourceRef>
+    <targetRef>Task_ProposeApproaches_input_clarificationAnswer</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_ProposeApproaches_output_approaches</sourceRef>
+    <targetRef>approaches</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_ProposeApproaches_output_recommendedApproach</sourceRef>
+    <targetRef>recommendedApproach</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <serviceTask id="Task_PresentDesign" name="Present design" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Turn the recommended approach into a concrete design. Cover architecture, components, data flow, error handling, and tests. Output designSummary.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>approaches,recommendedApproach</qianji:inputs>
-          <qianji:outputs>designSummary</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Turn the recommended approach into a concrete design. Cover architecture, components, data flow, error handling, and tests. Output designSummary.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_PresentDesign_input_approaches" name="approaches" />
+    <dataInput id="Task_PresentDesign_input_recommendedApproach" name="recommendedApproach" />
+    <dataOutput id="Task_PresentDesign_output_designSummary" name="designSummary" />
+    <inputSet id="Task_PresentDesign_input_set">
+    <dataInputRefs>Task_PresentDesign_input_approaches</dataInputRefs>
+    <dataInputRefs>Task_PresentDesign_input_recommendedApproach</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_PresentDesign_output_set">
+    <dataOutputRefs>Task_PresentDesign_output_designSummary</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>approaches</sourceRef>
+    <targetRef>Task_PresentDesign_input_approaches</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>recommendedApproach</sourceRef>
+    <targetRef>Task_PresentDesign_input_recommendedApproach</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_PresentDesign_output_designSummary</sourceRef>
+    <targetRef>designSummary</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <userTask id="Task_ApproveDesign" name="Approve design">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask the user whether the design is acceptable before any implementation begins.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>designSummary</qianji:inputs>
-          <qianji:outputs>designApproved,designFeedback</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question>Does this design look right enough to write the spec?</qianji:question>
-            <qianji:choice value="approved" label="Approve">Proceed to write the design spec.</qianji:choice>
-            <qianji:choice value="revise" label="Revise">Return to the design step with feedback.</qianji:choice>
-            <qianji:freeText name="designFeedback" optional="true" placeholder="Feedback"/>
-            <qianji:result output="designApproved"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>Does this design look right enough to write the spec?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_ApproveDesign_input_designSummary" name="designSummary" />
+    <dataInput id="Task_ApproveDesign_input_interactionType" name="interactionType" />
+    <dataInput id="Task_ApproveDesign_input_choices" name="choices" />
+    <dataInput id="Task_ApproveDesign_input_freeText" name="freeText" />
+    <dataOutput id="Task_ApproveDesign_output_answer" name="answer" />
+    <inputSet id="Task_ApproveDesign_input_set">
+    <dataInputRefs>Task_ApproveDesign_input_designSummary</dataInputRefs>
+    <dataInputRefs>Task_ApproveDesign_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_ApproveDesign_input_choices</dataInputRefs>
+    <dataInputRefs>Task_ApproveDesign_input_freeText</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_ApproveDesign_output_set">
+    <dataOutputRefs>Task_ApproveDesign_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>designSummary</sourceRef>
+    <targetRef>Task_ApproveDesign_input_designSummary</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>choice_input</from><to>Task_ApproveDesign_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>[{"value":"approved","label":"Approve","description":"Proceed to write the design spec."},{"value":"revise","label":"Revise","description":"Return to the design step with feedback."}]</from><to>Task_ApproveDesign_input_choices</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>{"name":"designFeedback","placeholder":"Feedback","optional":true}</from><to>Task_ApproveDesign_input_freeText</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_ApproveDesign_output_answer</sourceRef>
+    <targetRef>designApproved</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <exclusiveGateway id="Gateway_DesignApproved" name="Design approved?" default="Flow_ReviseDesign"/>
 
     <serviceTask id="Task_WriteSpec" name="Write design spec" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Write the approved design as a concise spec document in the project-appropriate docs location. Output specPath and specWritten.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>designSummary,designFeedback</qianji:inputs>
-          <qianji:outputs>specPath,specWritten</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Write the approved design as a concise spec document in the project-appropriate docs location. Output specPath and specWritten.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_WriteSpec_input_designSummary" name="designSummary" />
+    <dataInput id="Task_WriteSpec_input_designFeedback" name="designFeedback" />
+    <dataOutput id="Task_WriteSpec_output_specPath" name="specPath" />
+    <dataOutput id="Task_WriteSpec_output_specWritten" name="specWritten" />
+    <inputSet id="Task_WriteSpec_input_set">
+    <dataInputRefs>Task_WriteSpec_input_designSummary</dataInputRefs>
+    <dataInputRefs>Task_WriteSpec_input_designFeedback</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_WriteSpec_output_set">
+    <dataOutputRefs>Task_WriteSpec_output_specPath</dataOutputRefs>
+    <dataOutputRefs>Task_WriteSpec_output_specWritten</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>designSummary</sourceRef>
+    <targetRef>Task_WriteSpec_input_designSummary</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>designFeedback</sourceRef>
+    <targetRef>Task_WriteSpec_input_designFeedback</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_WriteSpec_output_specPath</sourceRef>
+    <targetRef>specPath</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_WriteSpec_output_specWritten</sourceRef>
+    <targetRef>specWritten</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <userTask id="Task_ReviewSpec" name="Review spec">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask the user to review the written spec before implementation planning begins.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>specPath</qianji:inputs>
-          <qianji:outputs>specApproved,specFeedback</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question>Spec written. Is it approved for implementation planning?</qianji:question>
-            <qianji:choice value="approved" label="Approve">Proceed to implementation planning.</qianji:choice>
-            <qianji:choice value="changes" label="Request changes">Revise the spec first.</qianji:choice>
-            <qianji:freeText name="specFeedback" optional="true" placeholder="Requested changes"/>
-            <qianji:result output="specApproved"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>Spec written. Is it approved for implementation planning?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_ReviewSpec_input_specPath" name="specPath" />
+    <dataInput id="Task_ReviewSpec_input_interactionType" name="interactionType" />
+    <dataInput id="Task_ReviewSpec_input_choices" name="choices" />
+    <dataInput id="Task_ReviewSpec_input_freeText" name="freeText" />
+    <dataOutput id="Task_ReviewSpec_output_answer" name="answer" />
+    <inputSet id="Task_ReviewSpec_input_set">
+    <dataInputRefs>Task_ReviewSpec_input_specPath</dataInputRefs>
+    <dataInputRefs>Task_ReviewSpec_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_ReviewSpec_input_choices</dataInputRefs>
+    <dataInputRefs>Task_ReviewSpec_input_freeText</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_ReviewSpec_output_set">
+    <dataOutputRefs>Task_ReviewSpec_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>specPath</sourceRef>
+    <targetRef>Task_ReviewSpec_input_specPath</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>choice_input</from><to>Task_ReviewSpec_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>[{"value":"approved","label":"Approve","description":"Proceed to implementation planning."},{"value":"changes","label":"Request changes","description":"Revise the spec first."}]</from><to>Task_ReviewSpec_input_choices</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>{"name":"specFeedback","placeholder":"Requested changes","optional":true}</from><to>Task_ReviewSpec_input_freeText</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_ReviewSpec_output_answer</sourceRef>
+    <targetRef>specApproved</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <exclusiveGateway id="Gateway_SpecApproved" name="Spec approved?" default="Flow_ReviseSpec"/>
 
     <serviceTask id="Task_InvokeWritingPlans" name="Create implementation plan" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Create the implementation plan from the approved spec. Do not implement code in this task. Output planCreated.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>specPath</qianji:inputs>
-          <qianji:outputs>planCreated</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Create the implementation plan from the approved spec. Do not implement code in this task. Output planCreated.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_InvokeWritingPlans_input_specPath" name="specPath" />
+    <dataOutput id="Task_InvokeWritingPlans_output_planCreated" name="planCreated" />
+    <inputSet id="Task_InvokeWritingPlans_input_set">
+    <dataInputRefs>Task_InvokeWritingPlans_input_specPath</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_InvokeWritingPlans_output_set">
+    <dataOutputRefs>Task_InvokeWritingPlans_output_planCreated</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>specPath</sourceRef>
+    <targetRef>Task_InvokeWritingPlans_input_specPath</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_InvokeWritingPlans_output_planCreated</sourceRef>
+    <targetRef>planCreated</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <endEvent id="End_1" name="Brainstorming complete"/>
 

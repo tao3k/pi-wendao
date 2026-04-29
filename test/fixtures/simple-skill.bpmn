@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
              targetNamespace="https://qianji.dev">
 
@@ -12,30 +11,56 @@
     <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_FindFiles"/>
 
     <serviceTask id="Task_FindFiles" name="Find TypeScript files" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. If the command succeeds, capture the full output, count the number of lines, and output success as true, the raw list as "fileList", and the total count as "fileCount". If it fails, output success as false.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>fileList,fileCount,success</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Run the command `find . -name "*.ts"` to list all TypeScript files in the current directory and its subdirectories. If the command succeeds, capture the full output, count the number of lines, and output success as true, the raw list as "fileList", and the total count as "fileCount". If it fails, output success as false.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_FindFiles_output_fileList" name="fileList" />
+    <dataOutput id="Task_FindFiles_output_fileCount" name="fileCount" />
+    <dataOutput id="Task_FindFiles_output_success" name="success" />
+    <inputSet id="Task_FindFiles_input_set"></inputSet>
+    <outputSet id="Task_FindFiles_output_set">
+    <dataOutputRefs>Task_FindFiles_output_fileList</dataOutputRefs>
+    <dataOutputRefs>Task_FindFiles_output_fileCount</dataOutputRefs>
+    <dataOutputRefs>Task_FindFiles_output_success</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_FindFiles_output_fileList</sourceRef>
+    <targetRef>fileList</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_FindFiles_output_fileCount</sourceRef>
+    <targetRef>fileCount</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_FindFiles_output_success</sourceRef>
+    <targetRef>success</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <exclusiveGateway id="Gateway_FindFilesSuccess" default="Flow_Error"/>
 
     <sequenceFlow id="Flow_FindFilesCheck" sourceRef="Task_FindFiles" targetRef="Gateway_FindFilesSuccess"/>
 
     <serviceTask id="Task_HandleError" name="Handle find error" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>The attempt to find TypeScript files failed. Report that an error occurred while searching for TypeScript files and set fileCount to 0 and report to "report".</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>fileCount,report</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>The attempt to find TypeScript files failed. Report that an error occurred while searching for TypeScript files and set fileCount to 0 and report to "report".</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_HandleError_output_fileCount" name="fileCount" />
+    <dataOutput id="Task_HandleError_output_report" name="report" />
+    <inputSet id="Task_HandleError_input_set"></inputSet>
+    <outputSet id="Task_HandleError_output_set">
+    <dataOutputRefs>Task_HandleError_output_fileCount</dataOutputRefs>
+    <dataOutputRefs>Task_HandleError_output_report</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_HandleError_output_fileCount</sourceRef>
+    <targetRef>fileCount</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_HandleError_output_report</sourceRef>
+    <targetRef>report</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <sequenceFlow id="Flow_ErrorToEnd" sourceRef="Task_HandleError" targetRef="End_1"/>
 
@@ -45,15 +70,32 @@
     <sequenceFlow id="Flow_Error" sourceRef="Gateway_FindFilesSuccess" targetRef="Task_HandleError"/>
 
     <serviceTask id="Task_Report" name="Report the count" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>You are given a list of TypeScript files and their count. Generate a clear, human-readable summary report. State the total number of TypeScript files found (from "fileCount") and list the files (from "fileList"). Output the summary as "report".</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>fileList,fileCount</qianji:inputs>
-          <qianji:outputs>report</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>You are given a list of TypeScript files and their count. Generate a clear, human-readable summary report. State the total number of TypeScript files found (from "fileCount") and list the files (from "fileList"). Output the summary as "report".</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Report_input_fileList" name="fileList" />
+    <dataInput id="Task_Report_input_fileCount" name="fileCount" />
+    <dataOutput id="Task_Report_output_report" name="report" />
+    <inputSet id="Task_Report_input_set">
+    <dataInputRefs>Task_Report_input_fileList</dataInputRefs>
+    <dataInputRefs>Task_Report_input_fileCount</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Report_output_set">
+    <dataOutputRefs>Task_Report_output_report</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>fileList</sourceRef>
+    <targetRef>Task_Report_input_fileList</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>fileCount</sourceRef>
+    <targetRef>Task_Report_input_fileCount</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Report_output_report</sourceRef>
+    <targetRef>report</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <sequenceFlow id="Flow_3" sourceRef="Task_Report" targetRef="End_1"/>
 

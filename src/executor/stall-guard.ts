@@ -3,7 +3,7 @@ import {
   type PiWendaoConfig,
   type QianjiInteractionChoice,
 } from "./agent-host.js";
-import { resolveHumanTaskConfig } from "./human-task.js";
+import { mergeQianjiHostWorkFormConfig, resolveHumanTaskConfig } from "./human-task.js";
 import type { QianjiHostWork } from "./qianji-types.js";
 
 export class WorkflowStallGuard {
@@ -47,10 +47,14 @@ function buildUserPromptOccurrence(
   configs: Map<string, PiWendaoConfig>,
   variables: Record<string, unknown>,
 ): UserPromptOccurrence {
-  const config = configs.get(work.node_id) ?? EMPTY_PI_WENDAO_CONFIG;
+  const activityId = work.activity_id?.trim() || work.node_id;
+  const config = mergeQianjiHostWorkFormConfig(
+    configs.get(activityId) ?? EMPTY_PI_WENDAO_CONFIG,
+    work,
+  );
   const scopedVariables = { ...variables, ...(work.variables ?? {}) };
   const resolvedConfig = resolveHumanTaskConfig(config, scopedVariables, {
-    activityId: work.node_id,
+    activityId,
   });
   const question = resolvedConfig.interaction?.question || resolvedConfig.prompt || "";
   const choices = resolvedConfig.interaction?.choices ?? [];
@@ -58,7 +62,7 @@ function buildUserPromptOccurrence(
     config.inputs.map((name) => [name, canonicalize(scopedVariables[name])]),
   );
   const fingerprint = stableStringify({
-    activityId: work.node_id,
+    activityId,
     interactionType: resolvedConfig.interaction?.type,
     question,
     choices: choices.map((choice) => ({
@@ -70,7 +74,7 @@ function buildUserPromptOccurrence(
   });
   return {
     fingerprint,
-    activityId: work.node_id,
+    activityId,
     question,
     choices,
     inputNames: config.inputs,
@@ -99,13 +103,13 @@ function formatStallMessage(
     `Choices: ${choices}`,
     `UserTask outputs: ${outputs}`,
     "",
-    "Unchanged qianji inputs:",
+    "Unchanged native inputs:",
     inputs,
     "",
     "Fix:",
     "- Feed the userTask output into the serviceTask that generates the next question, choices, or route state.",
-    "- Emit a changed declared qianji input, such as currentQuestion, currentChoices, attempt, or remaining count, before routing back to the same userTask.",
-    "- If the repeat is intentional, model the progress explicitly in qianji:inputs so the next prompt fingerprint changes.",
+    "- Emit a changed declared native input, such as currentQuestion, currentChoices, attempt, or remaining count, before routing back to the same userTask.",
+    "- If the repeat is intentional, model progress explicitly with native BPMN IO so the next prompt fingerprint changes.",
   ].join("\n");
 }
 

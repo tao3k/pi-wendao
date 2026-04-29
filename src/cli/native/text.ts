@@ -29,7 +29,7 @@ export function promptLabel(request: PlannerReplyRequest): string {
 export function defaultReply(request: PlannerReplyRequest): string {
   if (request.action === "workflow_path") return "";
   if (request.action === "human_task" || request.to === "user") {
-    return request.interaction?.type === "confirm" ? "approved" : "";
+    return "";
   }
   return "approved";
 }

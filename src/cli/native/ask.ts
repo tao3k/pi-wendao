@@ -16,8 +16,15 @@ export interface NativeAskOption {
   value: string;
 }
 
+export interface NativeAskFreeText {
+  name?: string;
+  optional?: boolean;
+  placeholder?: string;
+}
+
 export interface NativeAskParams {
   questions: Array<{
+    freeText?: NativeAskFreeText;
     id: string;
     label?: string;
     options: NativeAskOption[];

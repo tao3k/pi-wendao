@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`compileSkill > reports dynamic choice refs whose producer omits the output schema 1`] = `
+exports[`compileSkill > reports dynamic choice refs whose producer omits the native choices output 1`] = `
 "qianji lint failed after 0 repair attempt(s):
 # BPMN lint
 
@@ -10,16 +10,10 @@ exports[`compileSkill > reports dynamic choice refs whose producer omits the out
 
 Issues: 1
 
-## [PI_WENDAO_DYNAMIC_CHOICES_SCHEMA] dynamic choices producer must declare an output schema
+## [PI_WENDAO_DYNAMIC_CHOICES_PRODUCER] dynamic choices must have a declared producer
 Severity: error
-Summary: userTask 'Task_Answer' consumes qianji:choices ref 'currentChoices', but producer task(s) 'Task_PrepareQuestion' do not declare kind="choice_array" qianji:outputSchema for 'currentChoices'.
-
-### Related Construct Cards
-- user-task.interaction
-- service-task.agent
+Summary: userTask 'Task_Answer' consumes choices source 'currentChoices', but no native BPMN task declares that output.
 
 ### Repair Plan
-Insert this exact XML inside the qianji:config of the task that outputs 'currentChoices':
-<qianji:outputSchema name="currentChoices" kind="choice_array" value="required" label="optional" description="optional"/>
-Keep 'currentChoices' in qianji:outputs and keep <qianji:choices ref="currentChoices"/> in the consuming userTask."
+Add an upstream serviceTask that declares dataOutput 'currentChoices' and maps it with dataOutputAssociation before userTask 'Task_Answer'."
 `;

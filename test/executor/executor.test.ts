@@ -6,12 +6,18 @@ import { fauxAssistantMessage, registerFauxProvider, type Context } from "@mario
 import {
   execute,
   mapHumanTaskReplyToOutputs,
+  resolveTraceFrameDelayMs,
   type QianjiHostWorkEvent,
 } from "../../src/executor/executor.js";
 import type { PiWendaoAgentHost } from "../../src/executor/agent-host.js";
 import { buildPiWendaoConfigMap } from "../../src/executor/bpmn-config.js";
-import { buildQianjiArgs, runQianjiCli } from "../../src/executor/qianji-cli.js";
+import { buildQianjiArgs, QianjiHostSession, runQianjiCli } from "../../src/executor/qianji-cli.js";
 import { GraphView } from "../../src/ui/graph-view.js";
+import {
+  nativeDefinitions,
+  nativeHumanTask,
+  nativeServiceTask,
+} from "../support/native-bpmn.js";
 
 const fixturesDir = join(import.meta.dirname, "../fixtures");
 const tempDirs: string[] = [];
@@ -21,6 +27,26 @@ describe("executor", () => {
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("parses native service-task documentation and IO metadata", () => {
+    const source = nativeDefinitions(
+      "Process_1",
+      nativeServiceTask({
+        id: "Task_Run",
+        documentation: "Run npm test.",
+        outputs: ["ok"],
+      }),
+    );
+
+    const config = buildPiWendaoConfigMap(source, "Process_1").get("Task_Run");
+
+    expect(config).toMatchObject({
+      prompt: "Run npm test.",
+      inputs: [],
+      outputs: ["ok"],
+      tools: [],
+    });
   });
 
   it("executes a workflow through qianji CLI", async () => {
@@ -42,8 +68,8 @@ describe("executor", () => {
       process: "Process_1",
       instance: "wf_test",
       bpmnSeen: true,
-      hostFixtureSeen: true,
-      fixtureServiceTasks: ["Task_1"],
+      hostFixtureSeen: false,
+      fixtureServiceTasks: [],
     });
     expect(outputChunks.join("\n")).toContain("# BPMN Run");
   });
@@ -78,6 +104,28 @@ describe("executor", () => {
     setTimeout(() => controller.abort(), 25);
 
     await expect(run).rejects.toMatchObject({ name: "WorkflowInterruptedError" });
+  });
+
+  it("ignores broken pipe errors while closing a finished host-session", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-closed-stdin-"));
+    tempDirs.push(dir);
+    const scriptPath = join(dir, "fake-qianji-closed-stdin.cjs");
+    writeFileSync(
+      scriptPath,
+      `const result = { exitCode: 0, stdout: "", stderr: "", pendingHostWork: 0, variables: {} };
+console.log("@@QIANJI_SESSION_RESULT " + JSON.stringify(result));
+process.stdin.destroy();
+setTimeout(() => {}, 200);
+`,
+    );
+    const session = new QianjiHostSession(process.execPath, [scriptPath], process.cwd(), () => {
+      return undefined;
+    });
+
+    await expect(session.initial).resolves.toMatchObject({ exitCode: 0 });
+    expect(() => session.close()).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    session.terminate();
   });
 
   it("passes explicit process and context to qianji", async () => {
@@ -235,6 +283,30 @@ describe("executor", () => {
     expect(cliOutputSeen).toBe(true);
   });
 
+  it("does not pace graph trace updates by default", () => {
+    const original = process.env.PI_WENDAO_TRACE_FRAME_MS;
+    try {
+      delete process.env.PI_WENDAO_TRACE_FRAME_MS;
+      expect(resolveTraceFrameDelayMs({ graphView: new GraphView() })).toBe(0);
+      expect(resolveTraceFrameDelayMs({})).toBe(0);
+    } finally {
+      restoreEnv("PI_WENDAO_TRACE_FRAME_MS", original);
+    }
+  });
+
+  it("allows explicit graph trace pacing", () => {
+    const original = process.env.PI_WENDAO_TRACE_FRAME_MS;
+    try {
+      process.env.PI_WENDAO_TRACE_FRAME_MS = "7";
+      expect(resolveTraceFrameDelayMs({ graphView: new GraphView() })).toBe(7);
+      expect(resolveTraceFrameDelayMs({ graphView: new GraphView(), traceFrameDelayMs: 5 })).toBe(
+        5,
+      );
+    } finally {
+      restoreEnv("PI_WENDAO_TRACE_FRAME_MS", original);
+    }
+  });
+
   it("resolves qianji from PATH by default", async () => {
     const source = readFileSync(join(fixturesDir, "simple-workflow.bpmn"), "utf-8");
     const originalPath = process.env.PATH;
@@ -289,14 +361,16 @@ describe("executor", () => {
       expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
       expect(prompts[0]).toContain('item: "alpha"');
       expect(prompts[1]).toContain('item: "beta"');
-      expect(prompts[0]).toContain("Qianji BPMN execution context");
+      expect(prompts[0]).toContain("Current qianji task inputs");
+      expect(prompts[0]).toContain("Qianji BPMN task identity");
       expect(prompts[0]).toContain("processId: Process_1");
-      expect(prompts[0]).toContain("instanceId: wf_token_host");
       expect(prompts[0]).toContain("activityId: Task_Review");
       expect(prompts[0]).toContain("tokenId: 11");
-      expect(prompts[0]).toContain("checkpoint.backend: duckdb");
-      expect(prompts[0]).toContain("checkpoint.source: fresh");
-      expect(prompts[0]).toContain("checkpoint.pendingHostWork: 2");
+      expect(prompts[0]).not.toContain("instanceId: wf_token_host");
+      expect(prompts[0]).not.toContain("checkpoint.backend");
+      expect(prompts[0]).not.toContain("checkpoint.source");
+      expect(prompts[0]).not.toContain("checkpoint.pendingHostWork");
+      expect(prompts[0]).not.toContain("blocked_on_host");
       expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
       expect(result.variables).toMatchObject({
         results: ["alpha_done", "beta_done"],
@@ -347,8 +421,8 @@ describe("executor", () => {
     expect(result.success).toBe(true);
     expect(Math.abs(starts.beta - starts.alpha)).toBeLessThan(60);
     expect(executions).toEqual([
-      { activityId: "Task_Review", tokenId: 11, item: "alpha", subagentType: "pi-wendao-worker" },
-      { activityId: "Task_Review", tokenId: 12, item: "beta", subagentType: "pi-wendao-worker" },
+      { activityId: "Task_Review", tokenId: 11, item: "alpha", subagentType: undefined },
+      { activityId: "Task_Review", tokenId: 12, item: "beta", subagentType: undefined },
     ]);
     expect(result.variables).toMatchObject({
       results: ["alpha_done", "beta_done"],
@@ -361,7 +435,6 @@ describe("executor", () => {
       "host:2 pi-subagents",
       "parallel:2 jobs tokens=11,12",
       "checkpoint:duckdb/fresh/saved",
-      "subagent:pi-wendao-worker",
     ]);
     expect(hostWorkEvents).toEqual([
       {
@@ -386,20 +459,15 @@ describe("executor", () => {
       qianjiCommand: makeFakeUserTaskExternalHostQianjiCommand(),
       instanceId: "wf_human_approval",
       humanTaskHandler: async (request) => {
-        prompts.push(request.config.prompt);
+        prompts.push(request.config.interaction?.question ?? request.config.prompt);
         expect(request.config.interaction).toEqual({
           type: "choice_input",
           question: "How should the workflow proceed?",
           choices: [
-            {
-              value: "approved",
-              label: "Approve",
-              description: "Continue to the next BPMN checkpoint.",
-            },
-            { value: "rejected", label: "Reject", description: "Stop and revise the plan." },
+            { value: "approved", label: "Approve" },
+            { value: "rejected", label: "Reject" },
           ],
-          freeText: { name: "approvedReply", optional: true },
-          result: { output: "approvedReply" },
+          result: { output: "approved" },
         });
         return "y";
       },
@@ -408,17 +476,342 @@ describe("executor", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(prompts).toEqual(["Review the proposal and approve before continuing."]);
+    expect(prompts).toEqual(["How should the workflow proceed?"]);
     expect(result.rawOutput).not.toContain("@@QIANJI_HOST_WORK");
     expect(result.variables).toMatchObject({
-      approved: true,
-      approvedReply: "y",
+      approved: "y",
       fixtureUserTasks: ["Task_Approve"],
     });
     const internals = graphView as unknown as {
       nodes: Map<string, { details?: string[] }>;
     };
     expect(internals.nodes.get("Task_Approve")?.details).toContain("host:user:1 human");
+  });
+
+  it("rejects streamed userTask host work without native form metadata", async () => {
+    const result = await execute({
+      source: humanApprovalWorkflow(),
+      qianjiCommand: makeFakeMissingFormUserTaskQianjiCommand(),
+      instanceId: "wf_missing_human_form",
+      humanTaskHandler: async () => "approved",
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("[pi-wendao.runtime.missing_native_human_task_form]");
+    expect(result.error).toContain("did not include native host-work form metadata");
+    expect(result.error).toContain("no longer infers human-task interaction metadata");
+  });
+
+  it("rejects streamed userTask host work without native result_output", async () => {
+    const result = await execute({
+      source: humanApprovalWorkflow(),
+      qianjiCommand: makeFakeMissingResultOutputUserTaskQianjiCommand(),
+      instanceId: "wf_missing_human_result_output",
+      humanTaskHandler: async () => "approved",
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("[pi-wendao.runtime.missing_native_answer_output]");
+    expect(result.error).toContain("did not include native form result_output");
+    expect(result.error).toContain("pi-wendao does not infer outputs from local XML");
+  });
+
+  it("uses streamed qianji human-task form and claim identity for typed completion", async () => {
+    const interactions: unknown[] = [];
+    const assignments: unknown[] = [];
+    const claims: unknown[] = [];
+    const hostWorkEvents: QianjiHostWorkEvent[] = [];
+    const graphView = new GraphView();
+
+    const result = await execute({
+      source: rustSourcedHumanTaskWorkflow(),
+      qianjiCommand: makeFakeRustFormHumanTaskQianjiCommand(),
+      instanceId: "wf_rust_sourced_human_task",
+      humanTaskHandler: async (request) => {
+        expect(request.activityId).toBe("Task_RustApprove");
+        expect(request.execution).toMatchObject({
+          processId: "Rust_Process",
+          activityId: "Task_RustApprove",
+          tokenId: 91,
+        });
+        expect(request.config.outputs).toEqual(["rustAnswer"]);
+        expect(request.config.interaction).toEqual({
+          type: "choice_input",
+          question: "Rust-sourced question?",
+          choices: [
+            { value: "direct", label: "Use direct path" },
+            { value: "research", label: "Research first" },
+          ],
+          result: { output: "rustAnswer" },
+        });
+        expect(request.assignment).toEqual({
+          human_performers: [
+            {
+              name: "reviewer",
+              assignment_expression: "users.alice",
+            },
+          ],
+          potential_owners: [
+            {
+              name: "review_team",
+              resource_ref: "reviewers",
+            },
+          ],
+        });
+        expect(request.claim).toEqual({ claimant: "alice", claimed_at_ms: 123 });
+        interactions.push(request.config.interaction);
+        assignments.push(request.assignment);
+        claims.push(request.claim);
+        return "direct";
+      },
+      graphView,
+      onHostWork: (event) => hostWorkEvents.push(event),
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(true);
+    expect(interactions).toHaveLength(1);
+    expect(assignments).toHaveLength(1);
+    expect(claims).toHaveLength(1);
+    expect(hostWorkEvents).toEqual([
+      {
+        activityId: "Task_RustApprove",
+        hostWorkCount: 1,
+        batchHostWorkCount: 1,
+        tokenIds: [91],
+        hostKinds: ["user"],
+        parallel: false,
+        repeatKinds: [],
+        repeatSummaries: [],
+        assignmentSummaries: [
+          "human_performer:reviewer:expr=users.alice;potential_owner:review_team:ref=reviewers",
+        ],
+      },
+    ]);
+    expect(result.variables).toMatchObject({
+      rustAnswer: "direct",
+      typedProcess: "Rust_Process",
+      typedActivity: "Task_RustApprove",
+      claimant: "alice",
+    });
+    const internals = graphView as unknown as {
+      nodes: Map<string, { details?: string[] }>;
+    };
+    expect(internals.nodes.get("Task_RustApprove")?.details).toContain(
+      "assignment:human_performer:reviewer:expr=users.alice;potential_owner:review_team:ref=reviewers",
+    );
+  });
+
+  it("does not synthesize assignment or claim metadata when qianji host-work omits them", async () => {
+    const humanRequests: unknown[] = [];
+
+    const result = await execute({
+      source: manualCheckpointWorkflow(),
+      qianjiCommand: makeFakeManualTaskExternalHostQianjiCommand(),
+      instanceId: "wf_manual_checkpoint_no_metadata_fallback",
+      humanTaskHandler: async (request) => {
+        humanRequests.push({
+          assignment: request.assignment,
+          claim: request.claim,
+          interaction: request.config.interaction,
+          outputs: request.config.outputs,
+        });
+        return "Operator acknowledged checkpoint";
+      },
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(true);
+    expect(humanRequests).toEqual([
+      {
+        assignment: undefined,
+        claim: undefined,
+        interaction: {
+          type: "input",
+          question: "Complete the manual checkpoint before continuing.",
+          freeText: {
+            name: "manualNote",
+            optional: false,
+          },
+          result: { output: "manualNote" },
+        },
+        outputs: ["manualNote"],
+      },
+    ]);
+    expect(result.variables).toMatchObject({
+      manualNote: "Operator acknowledged checkpoint",
+      fixtureManualTasks: ["Task_ManualCheckpoint"],
+    });
+    expect(result.variables).not.toHaveProperty("claimant");
+  });
+
+  it("uses qianji host-session for external host completions", async () => {
+    const prompts: string[] = [];
+
+    const result = await execute({
+      source: humanApprovalWorkflow(),
+      qianjiCommand: makeFakeHostSessionQianjiCommand(),
+      instanceId: "wf_human_approval_session",
+      humanTaskHandler: async (request) => {
+        prompts.push(request.activityId);
+        expect(request.execution?.processId).toBe("Session_Process");
+        return "approved";
+      },
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(true);
+    expect(prompts).toEqual(["Task_Approve"]);
+    expect(result.variables).toMatchObject({
+      sessionMode: "host-session",
+      receivedKind: "user",
+      usedContinueUntilHumanBoundary: true,
+      receivedProcess: "Session_Process",
+      receivedActivity: "Task_Approve",
+      receivedClaimant: "session-user",
+    });
+    expect(result.rawOutput).toContain("qianji task complete: completed");
+    expect(result.rawOutput).not.toContain("## Variables");
+  });
+
+  it("runs generated BPMN fixture from streamed host-work without local interaction fallback", async () => {
+    const source = readFileSync(join(fixturesDir, "human-approval.bpmn"), "utf-8");
+    expect(source).toContain('<dataOutput id="Task_Approve_output_answer" name="answer"');
+    expect(source).not.toContain("qianji:");
+    const humanRequests: unknown[] = [];
+    const hostWorkEvents: QianjiHostWorkEvent[] = [];
+
+    const result = await execute({
+      source,
+      qianjiCommand: makeFakeGeneratedBpmnSmokeQianjiCommand(),
+      instanceId: "wf_generated_bpmn_smoke",
+      humanTaskHandler: async (request) => {
+        humanRequests.push({
+          activityId: request.activityId,
+          execution: request.execution
+            ? {
+                processId: request.execution.processId,
+                activityId: request.execution.activityId,
+                tokenId: request.execution.tokenId,
+              }
+            : undefined,
+          interaction: request.config.interaction,
+          outputs: request.config.outputs,
+          assignment: request.assignment,
+          claim: request.claim,
+        });
+        return "runtime-approved";
+      },
+      onHostWork: (event) => hostWorkEvents.push(event),
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(true);
+    expect(humanRequests).toEqual([
+      {
+        activityId: "Task_Approve",
+        execution: {
+          processId: "Process_1",
+          activityId: "Task_Approve",
+          tokenId: 151,
+        },
+        interaction: {
+          type: "confirm",
+          question: "Runtime approval streamed by qianji?",
+          result: { output: "runtimeApproval" },
+        },
+        outputs: ["runtimeApproval"],
+        assignment: {
+          potential_owners: [
+            {
+              name: "generated_reviewers",
+              resource_ref: "reviewers",
+            },
+          ],
+        },
+        claim: { claimant: "generated-smoke-user", claimed_at_ms: 789 },
+      },
+    ]);
+    expect(hostWorkEvents).toEqual([
+      {
+        activityId: "Task_Approve",
+        hostWorkCount: 1,
+        batchHostWorkCount: 1,
+        tokenIds: [151],
+        hostKinds: ["user"],
+        parallel: false,
+        repeatKinds: [],
+        repeatSummaries: [],
+        assignmentSummaries: ["potential_owner:generated_reviewers:ref=reviewers"],
+      },
+    ]);
+    expect(result.variables).toMatchObject({
+      runtimeApproval: "runtime-approved",
+      generatedSmoke: true,
+      localInteractionSeen: true,
+      localResultOutput: "approved",
+      completionProcess: "Process_1",
+      completionActivity: "Task_Approve",
+      completionClaimant: "generated-smoke-user",
+    });
+    expect(result.variables).not.toHaveProperty("approved");
+  });
+
+  it("routes qianji manualTask host work through the human task handler", async () => {
+    const prompts: string[] = [];
+    const graphView = new GraphView();
+    const agentHost: PiWendaoAgentHost = {
+      async run() {
+        throw new Error("manual tasks must not run through the agent host");
+      },
+    };
+
+    const result = await execute({
+      source: manualCheckpointWorkflow(),
+      qianjiCommand: makeFakeManualTaskExternalHostQianjiCommand(),
+      instanceId: "wf_manual_checkpoint",
+      agentHost,
+      humanTaskHandler: async (request) => {
+        prompts.push(request.config.prompt);
+        expect(request.config.hostKind).toBe("manual");
+        return "Operator acknowledged checkpoint";
+      },
+      hostBackend: "pi-subagents",
+      graphView,
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(true);
+    expect(prompts).toEqual(["Complete the manual checkpoint before continuing."]);
+    expect(result.variables).toMatchObject({
+      manualNote: "Operator acknowledged checkpoint",
+      fixtureManualTasks: ["Task_ManualCheckpoint"],
+    });
+    const internals = graphView as unknown as {
+      nodes: Map<string, { details?: string[] }>;
+    };
+    expect(internals.nodes.get("Task_ManualCheckpoint")?.details).toContain(
+      "host:manual:1 human",
+    );
+  });
+
+  it("maps userTask replies only to the streamed native result output", async () => {
+    const result = await execute({
+      source: ambiguousHumanOutputsWorkflow(),
+      qianjiCommand: makeFakeUserTaskExternalHostQianjiCommand(),
+      instanceId: "wf_human_ambiguous_outputs",
+      humanTaskHandler: async () => "y",
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.variables).toMatchObject({
+      approvedReply: "y",
+      fixtureUserTasks: ["Task_Approve"],
+    });
+    expect(result.variables).not.toHaveProperty("approved");
   });
 
   it("renders userTask interaction questions from workflow variables", async () => {
@@ -501,16 +894,72 @@ describe("executor", () => {
     expect(result.success).toBe(false);
     expect(prompts).toHaveLength(0);
     expect(result.error).toContain("[pi-wendao.runtime.invalid_dynamic_choices]");
-    expect(result.error).toContain("Producer activity: Task_PrepareQuestion");
+    expect(result.error).toContain("Consumer activity: Task_AskQuestion");
     expect(result.error).toContain("Variable: currentChoices");
     expect(result.error).toContain("Item: 1");
     expect(result.error).toContain("Problem: item is missing required non-empty value");
     expect(result.error).toContain(
-      "Help: currentChoices must be Array<{ value: string; label?: string; description?: string }>.",
+      "Help: currentChoices must be a native Array<{ value: string; label?: string; description?: string }>",
     );
-    expect(result.error).toContain('Contract: qianji:outputSchema kind="choice_array"');
+    expect(result.error).toContain(
+      "Contract: native choices data must be a JSON array whose items have a non-empty string value.",
+    );
     expect(result.error).toContain('"currentChoices": [');
     expect(result.error).toContain('"value": "minimal"');
+  });
+
+  it("reports compact schema diagnostics when a service task generates a non-string question", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-invalid-question-fixture-"));
+    tempDirs.push(dir);
+    const fixturePath = join(dir, "host-fixture.json");
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        service_tasks: {
+          Task_PrepareQuestion: {
+            data: {
+              currentQuestion: {
+                prompt: "Which repair path should the workflow use?",
+                choices: ["minimal", "broaden"],
+              },
+              currentChoices: [
+                {
+                  value: "minimal",
+                  label: "Minimal repair",
+                  description: "Repair only the invalid BPMN contract.",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+    const prompts: unknown[] = [];
+
+    const result = await execute({
+      source: serviceGeneratedDynamicChoicesWorkflow(),
+      qianjiCommand: makeFakeServiceThenUserExternalHostQianjiCommand(),
+      instanceId: "wf_invalid_dynamic_question",
+      hostFixturePath: fixturePath,
+      humanTaskHandler: async (request) => {
+        prompts.push(request.config.interaction);
+        return "minimal";
+      },
+      traceFrameDelayMs: 0,
+    });
+
+    expect(result.success).toBe(false);
+    expect(prompts).toHaveLength(0);
+    expect(result.error).toContain("[pi-wendao.runtime.invalid_dynamic_question]");
+    expect(result.error).toContain("Consumer activity: Task_AskQuestion");
+    expect(result.error).toContain("Variable: currentQuestion");
+    expect(result.error).toContain("Problem: ref did not resolve to a non-empty string");
+    expect(result.error).toContain(
+      "Help: currentQuestion must be a non-empty string used as the user-facing prompt.",
+    );
+    expect(result.error).toContain(
+      "Contract: bpmn.native_human_task_io.v1 requires question source values",
+    );
   });
 
   it("stops before repeating the same userTask prompt without progress", async () => {
@@ -533,6 +982,7 @@ describe("executor", () => {
     expect(result.error).toContain("Question: Ship the plan");
     expect(result.error).toContain("UserTask outputs: userAnswer");
     expect(result.error).toContain('- proposal: "Ship the plan"');
+    expect(result.error).toContain("- currentChoices: [");
     expect(prompts).toHaveLength(1);
   });
 
@@ -591,14 +1041,14 @@ describe("executor", () => {
     expect(result.success).toBe(true);
     expect(prompts).toEqual(["Task_Approve"]);
     expect(result.variables).toMatchObject({
-      approved: true,
+      approved: "approved",
       finalStatus: "fixture-completed",
       fixtureServiceTaskTokens: ["52"],
       fixtureUserTasks: ["Task_Approve"],
     });
   });
 
-  it("parses qianji dynamic choices refs from BPMN userTask metadata", () => {
+  it("parses native dynamic choices refs from BPMN userTask metadata", () => {
     const configs = buildPiWendaoConfigMap(dynamicHumanQuestionWorkflow(), "Process_1");
 
     expect(configs.get("Task_Approve")?.interaction).toMatchObject({
@@ -610,32 +1060,21 @@ describe("executor", () => {
     expect(configs.get("Task_Approve")?.interaction?.choices).toBeUndefined();
   });
 
-  it("maps human replies to approval booleans and raw reply outputs", () => {
-    expect(mapHumanTaskReplyToOutputs("n", ["approved", "approvedReply", "feedback"])).toEqual({
-      approved: false,
-      approvedReply: "n",
-      feedback: "n",
+  it("maps human replies only to the native answer output as plain strings", () => {
+    expect(() => mapHumanTaskReplyToOutputs("n", [])).toThrow(
+      "[pi-wendao.runtime.invalid_native_answer_output]",
+    );
+    expect(() => mapHumanTaskReplyToOutputs("n", ["approved", "approvedReply"])).toThrow(
+      "[pi-wendao.runtime.invalid_native_answer_output]",
+    );
+    expect(mapHumanTaskReplyToOutputs("approved", ["approved"])).toEqual({
+      approved: "approved",
     });
-    expect(mapHumanTaskReplyToOutputs("revise", ["designApproved", "designFeedback"])).toEqual({
-      designApproved: false,
-      designFeedback: "revise",
-    });
-    expect(mapHumanTaskReplyToOutputs("changes", ["specApproved", "specFeedback"])).toEqual({
-      specApproved: false,
-      specFeedback: "changes",
-    });
-    expect(mapHumanTaskReplyToOutputs("approved", ["approved"])).toEqual({ approved: true });
     expect(mapHumanTaskReplyToOutputs("yes", ["needsMoreQuestions"])).toEqual({
-      needsMoreQuestions: true,
-    });
-    expect(mapHumanTaskReplyToOutputs("no", ["needsMoreQuestions"])).toEqual({
-      needsMoreQuestions: false,
+      needsMoreQuestions: "yes",
     });
     expect(mapHumanTaskReplyToOutputs("false", ["redFlagDetected"])).toEqual({
-      redFlagDetected: false,
-    });
-    expect(mapHumanTaskReplyToOutputs("true", ["redFlagDetected"])).toEqual({
-      redFlagDetected: true,
+      redFlagDetected: "false",
     });
     expect(mapHumanTaskReplyToOutputs("false", ["userAnswer"])).toEqual({ userAnswer: "false" });
     expect(mapHumanTaskReplyToOutputs("", ["userAnswer"])).toEqual({ userAnswer: "" });
@@ -788,7 +1227,7 @@ function makeFakeExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-external-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-external-host.cjs");
-  writeFakeExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "parallel-service");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -796,7 +1235,55 @@ function makeFakeUserTaskExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-user-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-user-host.cjs");
-  writeFakeUserTaskExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "user-task");
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function makeFakeMissingFormUserTaskQianjiCommand(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-missing-form-user-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-missing-form-user-host.cjs");
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "missing-form");
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function makeFakeMissingResultOutputUserTaskQianjiCommand(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-missing-result-user-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-missing-result-user-host.cjs");
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "missing-result-output");
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function makeFakeRustFormHumanTaskQianjiCommand(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-rust-form-human-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-rust-form-human-host.cjs");
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "rust-form");
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function makeFakeHostSessionQianjiCommand(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-host-session-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-host-session.cjs");
+  writeFakeHostSessionQianjiScript(scriptPath);
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function makeFakeGeneratedBpmnSmokeQianjiCommand(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-generated-bpmn-smoke-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-generated-bpmn-smoke.cjs");
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "generated-bpmn-smoke");
+  return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function makeFakeManualTaskExternalHostQianjiCommand(): string {
+  const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-manual-host-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "fake-qianji-manual-host.cjs");
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "manual-task");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -804,7 +1291,7 @@ function makeFakeRepeatingUserTaskExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-repeating-user-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-repeating-user-host.cjs");
-  writeFakeRepeatingUserTaskExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "repeating-user");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -812,7 +1299,7 @@ function makeFakeProgressingUserTaskExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-progressing-user-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-progressing-user-host.cjs");
-  writeFakeProgressingUserTaskExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "progressing-user");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -820,7 +1307,7 @@ function makeFakeUserThenServiceExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-user-service-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-user-service-host.cjs");
-  writeFakeUserThenServiceExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "user-then-service");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -828,7 +1315,7 @@ function makeFakeServiceThenUserExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-service-user-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-service-user-host.cjs");
-  writeFakeServiceThenUserExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "service-then-user");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -836,7 +1323,7 @@ function makeFakeSequentialExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-sequential-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-sequential-host.cjs");
-  writeFakeSequentialExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "sequential-service");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -844,7 +1331,7 @@ function makeFakeRetryLoopExternalHostQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-retry-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-retry-host.cjs");
-  writeFakeRetryLoopExternalHostQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "retry-loop");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
 }
 
@@ -852,8 +1339,563 @@ function makeFakeSingleHostBoundaryQianjiCommand(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-wendao-fake-qianji-single-host-"));
   tempDirs.push(dir);
   const scriptPath = join(dir, "fake-qianji-single-host.cjs");
-  writeFakeSingleHostBoundaryQianjiScript(scriptPath);
+  writeFakeHostSessionScenarioQianjiScript(scriptPath, "single-service");
   return `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`;
+}
+
+function writeFakeHostSessionScenarioQianjiScript(scriptPath: string, scenario: string): void {
+  writeFileSync(
+    scriptPath,
+    `
+const args = process.argv.slice(2);
+const { readFileSync } = require("node:fs");
+const readline = require("node:readline");
+const scenario = ${JSON.stringify(scenario)};
+const get = (flag) => {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
+const readJsonFile = (path, fallback) => path ? JSON.parse(readFileSync(path, "utf-8")) : fallback;
+const context = JSON.parse(get("--context-json") || "{}");
+const hostFixture = readJsonFile(get("--host-fixture"), {});
+const source = get("--bpmn") ? readFileSync(get("--bpmn"), "utf-8") : "";
+const currentChoices = [
+  { value: "direct", label: "Use direct path", description: "Proceed with the shortest implementation path." },
+  { value: "research", label: "Research first", description: "Pause and gather more context." },
+];
+const state = { variables: {}, completed: {}, step: 0, nextTokenId: 40, awaiting: undefined };
+
+const emitTrace = (node_id, node_kind, status) => {
+  if (args.includes("--trace-stream")) {
+    console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", process_id: get("--process") || "Process_1", node_id, node_kind, status }));
+  }
+};
+const emitResult = (commandLabel, outcome, variables, pendingHostWork, source = "resumed") => {
+  const stdout = commandLabel + ": " + outcome + " (checkpoint=duckdb, source=" + source + ", saved=yes, deleted=no, pending_host=" + pendingHostWork + ")";
+  console.log("@@QIANJI_SESSION_RESULT " + JSON.stringify({
+    exitCode: 0,
+    stdout,
+    stderr: "",
+    outcome,
+    checkpoint: {
+      backend: "duckdb",
+      source,
+      saved: "yes",
+      deleted: "no",
+      status: "saved",
+    },
+    pendingHostWork,
+    variables,
+  }));
+};
+const emitHostWork = (work) => {
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify(work));
+};
+const approveForm = () => {
+  if (source.includes("approvedReply")) {
+    return {
+      interaction_type: "choice_input",
+      question_text: "How should the workflow proceed?",
+      choices: [
+        { value: "approved", label: "Approve" },
+        { value: "rejected", label: "Reject" },
+      ],
+      free_text_fields: [{ name: "approvedReply", optional: true }],
+      result_output: "approvedReply",
+    };
+  }
+  if (source.includes("userAnswer")) {
+    return {
+      interaction_type: "choice_input",
+      question_ref: "proposal",
+      choices_ref: "currentChoices",
+      result_output: "userAnswer",
+    };
+  }
+  return {
+    interaction_type: "choice_input",
+    question_text: "How should the workflow proceed?",
+    choices: [
+      { value: "approved", label: "Approve" },
+      { value: "rejected", label: "Reject" },
+    ],
+    result_output: "approved",
+  };
+};
+const emitApproveTask = (variables = {}) => {
+  emitTrace("Task_Approve", "user_task", "executing");
+  emitHostWork({
+    kind: "user",
+    node_id: "Task_Approve",
+    node_index: 1,
+    token_id: 51,
+    repeat: null,
+    variables: {
+      proposal: "Ship the plan",
+      currentChoices,
+      ...variables,
+    },
+    form: approveForm(),
+    assignment: null,
+    claim: null,
+  });
+};
+const emitDynamicQuestionTask = (nodeId, tokenId, variables) => {
+  emitHostWork({
+    kind: "user",
+    node_id: nodeId,
+    node_index: 2,
+    token_id: tokenId,
+    variables,
+    form: {
+      interaction_type: "choice_input",
+      question_ref: "currentQuestion",
+      choices_ref: "currentChoices",
+      result_output: "userAnswer",
+    },
+  });
+};
+const emitServiceTask = (nodeId, tokenId, variables = {}) => {
+  emitTrace(nodeId, "service_task", "executing");
+  emitHostWork({
+    kind: "service",
+    node_id: nodeId,
+    node_index: tokenId,
+    token_id: tokenId,
+    variables,
+  });
+};
+const startScenario = () => {
+  if (scenario === "parallel-service") {
+    emitTrace("Task_Review", "service_task", "executing");
+    emitHostWork({
+      kind: "service",
+      node_id: "Task_Review",
+      node_index: 1,
+      token_id: 11,
+      variables: { items: ["alpha", "beta"], item: "alpha" },
+      repeat: { kind: "parallel_multi_instance", iteration_index: 0, total_iterations: 2 },
+    });
+    emitHostWork({
+      kind: "service",
+      node_id: "Task_Review",
+      node_index: 1,
+      token_id: 12,
+      variables: { items: ["alpha", "beta"], item: "beta" },
+      repeat: { kind: "parallel_multi_instance", iteration_index: 1, total_iterations: 2 },
+    });
+    emitResult("qianji run", "blocked_on_host", { items: ["alpha", "beta"] }, 2, "fresh");
+    return;
+  }
+  if (scenario === "user-task") {
+    emitApproveTask();
+    emitResult("qianji run", "blocked_on_host", {
+      proposal: "Ship the plan",
+      currentChoices,
+    }, 1, "fresh");
+    return;
+  }
+  if (scenario === "generated-bpmn-smoke") {
+    const localInteractionSeen = source.includes("How should the workflow proceed?");
+    const localResultOutput = source.includes("<targetRef>approved</targetRef>") ? "approved" : "missing";
+    emitTrace("Task_Approve", "user_task", "executing");
+    emitHostWork({
+      kind: "user",
+      process_id: "Process_1",
+      activity_id: "Task_Approve",
+      node_id: "Task_Approve",
+      node_index: 1,
+      token_id: 151,
+      variables: {
+        localInteractionSeen,
+        localResultOutput,
+      },
+      form: {
+        interaction_type: "confirm",
+        question_text: "Runtime approval streamed by qianji?",
+        result_output: "runtimeApproval",
+      },
+      assignment: {
+        potential_owners: [{ name: "generated_reviewers", resource_ref: "reviewers" }],
+      },
+      claim: { claimant: "generated-smoke-user", claimed_at_ms: 789 },
+    });
+    emitResult("qianji run", "blocked_on_host", {
+      localInteractionSeen,
+      localResultOutput,
+    }, 1, "fresh");
+    return;
+  }
+  if (scenario === "missing-form") {
+    emitHostWork({
+      kind: "user",
+      node_id: "Task_Approve",
+      node_index: 1,
+      token_id: 51,
+      variables: {},
+    });
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "missing-result-output") {
+    emitHostWork({
+      kind: "user",
+      node_id: "Task_Approve",
+      node_index: 1,
+      token_id: 51,
+      variables: {},
+      form: {
+        interaction_type: "confirm",
+        question_text: "Continue?",
+      },
+    });
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "rust-form") {
+    emitHostWork({
+      kind: "user",
+      process_id: "Rust_Process",
+      activity_id: "Task_RustApprove",
+      node_id: "Task_RustApprove",
+      node_index: 1,
+      token_id: 91,
+      variables: {},
+      form: {
+        interaction_type: "choice_input",
+        question_text: "Rust-sourced question?",
+        choices: [
+          { value: "direct", label: "Use direct path" },
+          { value: "research", label: "Research first" },
+        ],
+        result_output: "rustAnswer",
+      },
+      assignment: {
+        human_performers: [{ name: "reviewer", assignment_expression: "users.alice" }],
+        potential_owners: [{ name: "review_team", resource_ref: "reviewers" }],
+      },
+      claim: { claimant: "alice", claimed_at_ms: 123 },
+    });
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "manual-task") {
+    emitTrace("Task_ManualCheckpoint", "manual_task", "executing");
+    emitHostWork({
+      kind: "manual",
+      node_id: "Task_ManualCheckpoint",
+      node_index: 1,
+      token_id: 71,
+      variables: {},
+      form: {
+        interaction_type: "input",
+        question_text: "Complete the manual checkpoint before continuing.",
+        free_text_fields: [{ name: "manualNote", optional: false }],
+        result_output: "manualNote",
+      },
+    });
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "repeating-user") {
+    state.variables = { proposal: "Ship the plan", currentChoices };
+    emitHostWork({
+      kind: "user",
+      node_id: "Task_Approve",
+      node_index: 1,
+      token_id: 51,
+      variables: state.variables,
+      form: {
+        interaction_type: "choice_input",
+        question_ref: "proposal",
+        choices_ref: "currentChoices",
+        result_output: "userAnswer",
+      },
+    });
+    emitResult("qianji run", "blocked_on_host", state.variables, 1, "fresh");
+    return;
+  }
+  if (scenario === "progressing-user") {
+    state.step = 1;
+    state.variables = {};
+    const variables = { proposal: "First question?", currentChoices };
+    emitHostWork({
+      kind: "user",
+      node_id: "Task_Approve",
+      node_index: 1,
+      token_id: 51,
+      variables,
+      form: {
+        interaction_type: "choice_input",
+        question_ref: "proposal",
+        choices_ref: "currentChoices",
+        result_output: "userAnswer",
+      },
+    });
+    emitResult("qianji run", "blocked_on_host", variables, 1, "fresh");
+    return;
+  }
+  if (scenario === "user-then-service") {
+    emitHostWork({
+      kind: "user",
+      node_id: "Task_Approve",
+      node_index: 1,
+      token_id: 51,
+      variables: {},
+      form: {
+        interaction_type: "confirm",
+        question_text: "Continue?",
+        result_output: "approved",
+      },
+    });
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "service-then-user") {
+    const serviceTask = hostFixture.service_tasks?.Task_PrepareQuestion;
+    if (serviceTask) {
+      state.variables = { ...serviceTask.data };
+      emitDynamicQuestionTask("Task_AskQuestion", 62, state.variables);
+      emitResult("qianji run", "blocked_on_host", state.variables, 1, "fresh");
+      return;
+    }
+    emitServiceTask("Task_PrepareQuestion", 61);
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "sequential-service") {
+    emitServiceTask("Task_List", 21);
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "retry-loop") {
+    state.awaiting = "Task_1";
+    emitServiceTask("Task_1", 40);
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  if (scenario === "single-service") {
+    emitServiceTask("Task_SetStatus", 31);
+    emitResult("qianji run", "blocked_on_host", {}, 1, "fresh");
+    return;
+  }
+  emitResult("qianji run", "failed", { error: "unknown scenario: " + scenario }, 0, "fresh");
+};
+
+const handleCompletion = (request) => {
+  if (scenario === "parallel-service") {
+    state.completed[String(request.token_id)] = request.data.result;
+    const tokenIds = Object.keys(state.completed).sort((a, b) => Number(a) - Number(b));
+    if (tokenIds.length < 2) {
+      emitResult("qianji task complete", "blocked_on_host", {
+        partialResults: tokenIds.map((tokenId) => state.completed[tokenId]),
+      }, 2 - tokenIds.length);
+      return;
+    }
+    emitTrace("Task_Review", "service_task", "completed");
+    emitResult("qianji task complete", "completed", {
+      results: tokenIds.map((tokenId) => state.completed[tokenId]),
+      fixtureServiceTaskTokens: tokenIds,
+    }, 0);
+    return;
+  }
+  if (scenario === "user-task") {
+    emitTrace("Task_Approve", "user_task", "completed");
+    emitResult("qianji task complete", "completed", {
+      ...request.data,
+      fixtureUserTasks: ["Task_Approve"],
+    }, 0);
+    return;
+  }
+  if (scenario === "generated-bpmn-smoke") {
+    emitTrace("Task_Approve", "user_task", "completed");
+    emitResult("qianji task complete", "completed", {
+      ...request.data,
+      generatedSmoke: true,
+      localInteractionSeen: source.includes("How should the workflow proceed?"),
+      localResultOutput: source.includes("<targetRef>approved</targetRef>") ? "approved" : "missing",
+      completionProcess: request.process_id,
+      completionActivity: request.activity_id,
+      completionClaimant: request.claimant,
+    }, 0);
+    return;
+  }
+  if (scenario === "rust-form") {
+    emitResult("qianji task complete", "completed", {
+      ...request.data,
+      typedProcess: request.process_id,
+      typedActivity: request.activity_id,
+      claimant: request.claimant,
+    }, 0);
+    return;
+  }
+  if (scenario === "manual-task") {
+    emitTrace("Task_ManualCheckpoint", "manual_task", "completed");
+    emitResult("qianji task complete", "completed", {
+      ...request.data,
+      fixtureManualTasks: ["Task_ManualCheckpoint"],
+    }, 0);
+    return;
+  }
+  if (scenario === "repeating-user") {
+    emitHostWork({
+      kind: "user",
+      node_id: "Task_Approve",
+      node_index: 1,
+      token_id: 52,
+      variables: state.variables,
+      form: {
+        interaction_type: "choice_input",
+        question_ref: "proposal",
+        choices_ref: "currentChoices",
+        result_output: "userAnswer",
+      },
+    });
+    emitResult("qianji task complete", "blocked_on_host", state.variables, 1);
+    return;
+  }
+  if (scenario === "progressing-user") {
+    state.variables = { ...state.variables, ...request.data };
+    if (state.step === 1) {
+      state.step = 2;
+      const variables = { ...state.variables, proposal: "Second question?", currentChoices };
+      emitHostWork({
+        kind: "user",
+        node_id: "Task_Approve",
+        node_index: 1,
+        token_id: 52,
+        variables,
+        form: {
+          interaction_type: "choice_input",
+          question_ref: "proposal",
+          choices_ref: "currentChoices",
+          result_output: "userAnswer",
+        },
+      });
+      emitResult("qianji task complete", "blocked_on_host", variables, 1);
+      return;
+    }
+    emitResult("qianji task complete", "completed", {
+      ...state.variables,
+      fixtureUserTasks: ["Task_Approve"],
+    }, 0);
+    return;
+  }
+  if (scenario === "user-then-service") {
+    state.variables = { ...state.variables, ...request.data };
+    const serviceTask = hostFixture.service_tasks?.Task_Final;
+    if (serviceTask) {
+      state.variables = { ...state.variables, ...serviceTask.data };
+      emitResult("qianji task complete", "completed", {
+        ...state.variables,
+        fixtureServiceTaskTokens: ["52"],
+        fixtureServiceTasks: Object.keys(hostFixture.service_tasks ?? {}),
+        fixtureUserTasks: ["Task_Approve"],
+      }, 0);
+      return;
+    }
+    emitServiceTask("Task_Final", 52, state.variables);
+    emitResult("qianji task complete", "blocked_on_host", {
+      ...state.variables,
+      fixtureUserTasks: ["Task_Approve"],
+    }, 1);
+    return;
+  }
+  if (scenario === "service-then-user") {
+    if (request.kind === "service") {
+      state.variables = { ...state.variables, ...request.data };
+      emitDynamicQuestionTask("Task_AskQuestion", 62, state.variables);
+      emitResult("qianji task complete", "blocked_on_host", state.variables, 1);
+      return;
+    }
+    state.variables = { ...state.variables, ...request.data };
+    emitResult("qianji task complete", "completed", state.variables, 0);
+    return;
+  }
+  if (scenario === "sequential-service") {
+    if (request.token_id === 21) {
+      state.variables = { ...state.variables, ...request.data };
+      emitServiceTask("Task_Report", 22, state.variables);
+      emitResult("qianji task complete", "blocked_on_host", state.variables, 1);
+      return;
+    }
+    state.variables = { ...state.variables, ...request.data };
+    emitResult("qianji task complete", "completed", state.variables, 0);
+    return;
+  }
+  if (scenario === "retry-loop") {
+    state.variables = { ...state.variables, ...request.data };
+    if (state.awaiting === "Task_1") {
+      state.awaiting = "Task_2";
+      emitServiceTask("Task_2", 41, { retryCount: state.variables.retryCount });
+      emitResult("qianji task complete", "blocked_on_host", state.variables, 1);
+      return;
+    }
+    if (state.awaiting === "Task_2") {
+      if (state.variables.isRetryComplete === true) {
+        state.awaiting = "Task_3";
+        emitServiceTask("Task_3", 42, {
+          retryCount: state.variables.retryCount,
+          isRetryComplete: true,
+        });
+        emitResult("qianji task complete", "blocked_on_host", state.variables, 1);
+        return;
+      }
+      state.awaiting = "Task_4";
+      emitServiceTask("Task_4", 43, { retryCount: state.variables.retryCount });
+      emitResult("qianji task complete", "blocked_on_host", state.variables, 1);
+      return;
+    }
+    if (state.awaiting === "Task_4") {
+      state.awaiting = "Task_2";
+      emitServiceTask("Task_2", 44, { retryCount: state.variables.retryCount });
+      emitResult("qianji task complete", "blocked_on_host", state.variables, 1);
+      return;
+    }
+    if (state.awaiting === "Task_3") {
+      emitResult("qianji task complete", "completed", state.variables, 0);
+      return;
+    }
+  }
+  if (scenario === "single-service") {
+    emitResult("qianji task complete", "completed", request.data, 0);
+    return;
+  }
+  emitResult("qianji task complete", "failed", { error: "unexpected completion" }, 0);
+};
+
+if (args[0] !== "bpmn") {
+  console.error("unexpected qianji command: " + args.join(" "));
+  process.exit(64);
+}
+if (args.includes("--checkpoint-runtime") || args.includes("--checkpoint-sqlite")) {
+  console.error("pi-wendao must let qianji choose its checkpoint backend: " + args.join(" "));
+  process.exit(65);
+}
+if (args[1] === "status") {
+  emitResult("qianji status", "missing", {}, 0, "fresh");
+  process.exit(0);
+}
+if (args[1] !== "host-session") {
+  console.error("non-session qianji command should not be used: " + args.join(" "));
+  process.exit(64);
+}
+startScenario();
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  if (request.type === "stop") {
+    process.exit(0);
+  }
+  if (request.type !== "task_complete") {
+    emitResult("qianji host-session", "failed", { error: "unexpected request" }, 0);
+    return;
+  }
+  handleCompletion(request);
+});
+`,
+    "utf-8",
+  );
 }
 
 function writeFakeQianjiGraphSnapshotScript(scriptPath: string): void {
@@ -960,14 +2002,54 @@ function writeFakeExternalHostQianjiScript(scriptPath: string): void {
     scriptPath,
     `
 const args = process.argv.slice(2);
-const { readFileSync } = require("node:fs");
+const { existsSync, readFileSync, writeFileSync } = require("node:fs");
+const { join } = require("node:path");
+const statePath = join(__dirname, "parallel-state.json");
 const get = (flag) => {
   const index = args.indexOf(flag);
   return index === -1 ? undefined : args[index + 1];
 };
+const load = () => existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf-8")) : { results: {}, tokenIds: [] };
+const save = (state) => writeFileSync(statePath, JSON.stringify(state, null, 2));
 const fence = String.fromCharCode(96, 96, 96);
 const printVariables = (title, outcome, variables, checkpoint = "") => {
   console.log("# " + title + "\\n\\nOutcome: " + outcome + checkpoint + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
+};
+const source = readFileSync(get("--bpmn"), "utf-8");
+const hostForm = () => {
+  if (source.includes("approvedReply")) {
+    return {
+      interaction_type: "choice_input",
+      question_ref: null,
+      question_text: "How should the workflow proceed?",
+      choices_ref: null,
+      choices: [
+        { value: "approved", label: "Approve", description: "Continue the workflow." },
+        { value: "rejected", label: "Reject", description: "Stop the workflow." },
+      ],
+      free_text_fields: [{ name: "approvedReply", optional: true }],
+      result_output: "approvedReply",
+    };
+  }
+  if (source.includes("userAnswer")) {
+    return {
+      interaction_type: "choice_input",
+      question_ref: "proposal",
+      choices_ref: "currentChoices",
+      result_output: "userAnswer",
+    };
+  }
+  return {
+    interaction_type: "choice_input",
+    question_ref: null,
+    question_text: "How should the workflow proceed?",
+    choices_ref: null,
+    choices: [
+      { value: "approved", label: "Approve", description: "Continue the workflow." },
+      { value: "rejected", label: "Reject", description: "Stop the workflow." },
+    ],
+    result_output: "approved",
+  };
 };
 if (args[0] !== "bpmn") {
   console.error("unexpected qianji command: " + args.join(" "));
@@ -978,6 +2060,7 @@ if (args.includes("--checkpoint-runtime") || args.includes("--checkpoint-sqlite"
   process.exit(65);
 }
 if (args[1] === "run") {
+  save({ results: {}, tokenIds: [] });
   const processId = get("--process");
   if (args.includes("--trace-stream")) {
     console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", process_id: processId, node_id: "Task_Review", node_kind: "service_task", status: "executing" }));
@@ -1002,16 +2085,20 @@ if (args[1] === "run") {
   process.exit(0);
 }
 if (args[1] === "tasks" && args[2] === "complete") {
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const serviceTaskTokens = hostFixture.service_task_tokens ?? {};
-  const tokenIds = Object.keys(serviceTaskTokens);
+  const state = load();
+  const tokenId = get("--token-id");
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  state.results[tokenId] = data.result;
+  state.tokenIds = Array.from(new Set([...(state.tokenIds ?? []), tokenId]));
+  save(state);
   if (args.includes("--trace-stream")) {
     console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", node_id: "Task_Review", node_kind: "service_task", status: "completed" }));
   }
-  printVariables("BPMN Task Complete", "completed", {
-    results: tokenIds.map((tokenId) => serviceTaskTokens[tokenId].data.result),
-    fixtureServiceTaskTokens: tokenIds,
-  });
+  const completed = state.tokenIds.length >= 2;
+  printVariables("BPMN Task Complete", completed ? "completed" : "blocked_on_host", {
+    results: state.tokenIds.map((tokenId) => state.results[tokenId]),
+    fixtureServiceTaskTokens: state.tokenIds,
+  }, completed ? "" : "\\nCheckpoint backend: duckdb\\nCheckpoint source: resumed\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1");
   process.exit(0);
 }
 console.error("unexpected qianji command: " + args.join(" "));
@@ -1035,6 +2122,38 @@ const fence = String.fromCharCode(96, 96, 96);
 const printVariables = (title, outcome, variables, checkpoint = "") => {
   console.log("# " + title + "\\n\\nOutcome: " + outcome + checkpoint + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
 };
+const source = readFileSync(get("--bpmn"), "utf-8");
+const hostForm = () => {
+  if (source.includes("approvedReply")) {
+    return {
+      interaction_type: "choice_input",
+      question_text: "How should the workflow proceed?",
+      choices: [
+        { value: "approved", label: "Approve" },
+        { value: "rejected", label: "Reject" },
+      ],
+      free_text_fields: [{ name: "approvedReply", optional: true }],
+      result_output: "approvedReply",
+    };
+  }
+  if (source.includes("userAnswer")) {
+    return {
+      interaction_type: "choice_input",
+      question_ref: "proposal",
+      choices_ref: "currentChoices",
+      result_output: "userAnswer",
+    };
+  }
+  return {
+    interaction_type: "choice_input",
+    question_text: "How should the workflow proceed?",
+    choices: [
+      { value: "approved", label: "Approve" },
+      { value: "rejected", label: "Reject" },
+    ],
+    result_output: "approved",
+  };
+};
 if (args[0] !== "bpmn") {
   console.error("unexpected qianji command: " + args.join(" "));
   process.exit(64);
@@ -1052,6 +2171,7 @@ if (args[1] === "run") {
     node_id: "Task_Approve",
     node_index: 1,
     token_id: 51,
+    repeat: null,
     variables: {
       proposal: "Ship the plan",
       currentChoices: [
@@ -1059,6 +2179,9 @@ if (args[1] === "run") {
         { value: "research", label: "Research first", description: "Pause and gather more context." },
       ],
     },
+    form: hostForm(),
+    assignment: null,
+    claim: null,
   }));
   printVariables("BPMN Run", "blocked_on_host", {
     proposal: "Ship the plan",
@@ -1070,14 +2193,249 @@ if (args[1] === "run") {
   process.exit(0);
 }
 if (args[1] === "tasks" && args[2] === "complete") {
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const userTasks = hostFixture.user_tasks ?? {};
+  const data = JSON.parse(get("--data-json") ?? "{}");
   if (args.includes("--trace-stream")) {
     console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", node_id: "Task_Approve", node_kind: "user_task", status: "completed" }));
   }
   printVariables("BPMN Task Complete", "completed", {
-    ...userTasks.Task_Approve?.data,
-    fixtureUserTasks: Object.keys(userTasks),
+    ...data,
+    fixtureUserTasks: ["Task_Approve"],
+  });
+  process.exit(0);
+}
+console.error("unexpected qianji command: " + args.join(" "));
+process.exit(64);
+`,
+    "utf-8",
+  );
+}
+
+function writeFakeMissingFormUserTaskQianjiScript(scriptPath: string): void {
+  writeFileSync(
+    scriptPath,
+    `
+const args = process.argv.slice(2);
+const get = (flag) => {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
+const fence = String.fromCharCode(96, 96, 96);
+const printVariables = (title, outcome, variables, checkpoint = "") => {
+  console.log("# " + title + "\\n\\nOutcome: " + outcome + checkpoint + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
+};
+if (args[0] !== "bpmn") {
+  console.error("unexpected qianji command: " + args.join(" "));
+  process.exit(64);
+}
+if (args[1] === "host-session") {
+  console.error("unexpected qianji args: " + args.slice(0, 2).join(" "));
+  process.exit(64);
+}
+if (args[1] === "status") {
+  printVariables("BPMN Status", "missing", {});
+  process.exit(0);
+}
+if (args[1] === "run") {
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+    kind: "user",
+    node_id: "Task_Approve",
+    node_index: 1,
+    token_id: 51,
+    variables: {},
+  }));
+  printVariables("BPMN Run", "blocked_on_host", {}, "\\nCheckpoint backend: duckdb\\nCheckpoint source: fresh\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1");
+  process.exit(0);
+}
+console.error("unexpected qianji command: " + args.join(" "));
+process.exit(64);
+`,
+    "utf-8",
+  );
+}
+
+function writeFakeMissingResultOutputUserTaskQianjiScript(scriptPath: string): void {
+  writeFileSync(
+    scriptPath,
+    `
+const args = process.argv.slice(2);
+const fence = String.fromCharCode(96, 96, 96);
+const printVariables = (title, outcome, variables, checkpoint = "") => {
+  console.log("# " + title + "\\n\\nOutcome: " + outcome + checkpoint + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
+};
+if (args[0] !== "bpmn") {
+  console.error("unexpected qianji command: " + args.join(" "));
+  process.exit(64);
+}
+if (args[1] === "host-session") {
+  console.error("unexpected qianji args: " + args.slice(0, 2).join(" "));
+  process.exit(64);
+}
+if (args[1] === "status") {
+  printVariables("BPMN Status", "missing", {});
+  process.exit(0);
+}
+if (args[1] === "run") {
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+    kind: "user",
+    node_id: "Task_Approve",
+    node_index: 1,
+    token_id: 51,
+    variables: {},
+    form: {
+      interaction_type: "confirm",
+      question_text: "Continue?",
+    },
+  }));
+  printVariables("BPMN Run", "blocked_on_host", {}, "\\nCheckpoint backend: duckdb\\nCheckpoint source: fresh\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1");
+  process.exit(0);
+}
+console.error("unexpected qianji command: " + args.join(" "));
+process.exit(64);
+`,
+    "utf-8",
+  );
+}
+
+function writeFakeRustFormHumanTaskQianjiScript(scriptPath: string): void {
+  writeFileSync(
+    scriptPath,
+    `
+const args = process.argv.slice(2);
+const get = (flag) => {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
+const fence = String.fromCharCode(96, 96, 96);
+const printVariables = (title, outcome, variables, checkpoint = "") => {
+  console.log("# " + title + "\\n\\nOutcome: " + outcome + checkpoint + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
+};
+if (args[0] !== "bpmn") {
+  console.error("unexpected qianji command: " + args.join(" "));
+  process.exit(64);
+}
+if (args[1] === "host-session") {
+  console.error("unexpected qianji args: " + args.slice(0, 2).join(" "));
+  process.exit(64);
+}
+if (args[1] === "status") {
+  printVariables("BPMN Status", "missing", {});
+  process.exit(0);
+}
+if (args[1] === "run") {
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+    kind: "user",
+    process_id: "Rust_Process",
+    activity_id: "Task_RustApprove",
+    node_id: "Task_RustApprove",
+    node_index: 1,
+    token_id: 91,
+    variables: {},
+    form: {
+      interaction_type: "choice_input",
+      question_text: "Rust-sourced question?",
+      choices: [
+        { value: "direct", label: "Use direct path" },
+        { value: "research", label: "Research first" },
+      ],
+      result_output: "rustAnswer",
+    },
+    assignment: {
+      human_performers: [
+        { name: "reviewer", assignment_expression: "users.alice" },
+      ],
+      potential_owners: [
+        { name: "review_team", resource_ref: "reviewers" },
+      ],
+    },
+    claim: { claimant: "alice", claimed_at_ms: 123 },
+  }));
+  printVariables("BPMN Run", "blocked_on_host", {}, "\\nCheckpoint backend: duckdb\\nCheckpoint source: fresh\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1");
+  process.exit(0);
+}
+if (args[1] === "tasks" && args[2] === "complete") {
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  const expected = {
+    processId: "Rust_Process",
+    activityId: "Task_RustApprove",
+    claimant: "alice",
+  };
+  if (get("--process-id") !== expected.processId) {
+    console.error("unexpected process-id: " + get("--process-id"));
+    process.exit(65);
+  }
+  if (get("--activity-id") !== expected.activityId) {
+    console.error("unexpected activity-id: " + get("--activity-id"));
+    process.exit(65);
+  }
+  if (get("--claimant") !== expected.claimant) {
+    console.error("unexpected claimant: " + get("--claimant"));
+    process.exit(65);
+  }
+  if (data.rustAnswer !== "direct") {
+    console.error("unexpected completion data: " + JSON.stringify(data));
+    process.exit(65);
+  }
+  printVariables("BPMN Task Complete", "completed", {
+    ...data,
+    typedProcess: get("--process-id"),
+    typedActivity: get("--activity-id"),
+    claimant: get("--claimant"),
+  });
+  process.exit(0);
+}
+console.error("unexpected qianji command: " + args.join(" "));
+process.exit(64);
+`,
+    "utf-8",
+  );
+}
+
+function writeFakeManualTaskExternalHostQianjiScript(scriptPath: string): void {
+  writeFileSync(
+    scriptPath,
+    `
+const args = process.argv.slice(2);
+const { readFileSync } = require("node:fs");
+const get = (flag) => {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
+const fence = String.fromCharCode(96, 96, 96);
+const printVariables = (title, outcome, variables, checkpoint = "") => {
+  console.log("# " + title + "\\n\\nOutcome: " + outcome + checkpoint + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
+};
+if (args[0] !== "bpmn") {
+  console.error("unexpected qianji command: " + args.join(" "));
+  process.exit(64);
+}
+if (args[1] === "run") {
+  if (args.includes("--trace-stream")) {
+    console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", node_id: "Task_ManualCheckpoint", node_kind: "manual_task", status: "executing" }));
+  }
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+    kind: "manual",
+    node_id: "Task_ManualCheckpoint",
+    node_index: 1,
+    token_id: 71,
+    variables: {},
+    form: {
+      interaction_type: "input",
+      question_text: "Complete the manual checkpoint before continuing.",
+      free_text_fields: [{ name: "manualNote", optional: false }],
+      result_output: "manualNote",
+    },
+  }));
+  printVariables("BPMN Run", "blocked_on_host", {}, "\\nCheckpoint backend: duckdb\\nCheckpoint source: fresh\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1");
+  process.exit(0);
+}
+if (args[1] === "tasks" && args[2] === "complete") {
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  if (args.includes("--trace-stream")) {
+    console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", node_id: "Task_ManualCheckpoint", node_kind: "manual_task", status: "completed" }));
+  }
+  printVariables("BPMN Task Complete", "completed", {
+    ...data,
+    fixtureManualTasks: ["Task_ManualCheckpoint"],
   });
   process.exit(0);
 }
@@ -1111,6 +2469,12 @@ const printVariables = (title, outcome, tokenId) => {
     node_index: 1,
     token_id: tokenId,
     variables,
+    form: {
+      interaction_type: "choice_input",
+      question_ref: "proposal",
+      choices_ref: "currentChoices",
+      result_output: "userAnswer",
+    },
   }));
   console.log("# " + title + "\\n\\nOutcome: " + outcome + "\\nCheckpoint backend: duckdb\\nCheckpoint source: resumed\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
 };
@@ -1127,7 +2491,6 @@ if (args[1] === "run") {
   process.exit(0);
 }
 if (args[1] === "tasks" && args[2] === "complete") {
-  JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
   printVariables("BPMN Task Complete", "blocked_on_host", 52);
   process.exit(0);
 }
@@ -1167,6 +2530,12 @@ const emitUserTask = (title, proposal, tokenId, variables = {}) => {
     node_index: 1,
     token_id: tokenId,
     variables: outputVariables,
+    form: {
+      interaction_type: "choice_input",
+      question_ref: "proposal",
+      choices_ref: "currentChoices",
+      result_output: "userAnswer",
+    },
   }));
   console.log("# " + title + "\\n\\nOutcome: blocked_on_host\\nCheckpoint backend: duckdb\\nCheckpoint source: resumed\\nCheckpoint saved: yes\\nCheckpoint status: saved\\nPending host work: 1\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(outputVariables, null, 2) + "\\n" + fence + "\\n");
 };
@@ -1188,9 +2557,8 @@ if (args[1] === "run") {
 }
 if (args[1] === "tasks" && args[2] === "complete") {
   const state = load();
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const userTasks = hostFixture.user_tasks ?? {};
-  state.variables = { ...state.variables, ...userTasks.Task_Approve?.data };
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  state.variables = { ...state.variables, ...data };
   if (state.step === 1) {
     save({ step: 2, variables: state.variables });
     emitUserTask("BPMN Task Complete", "Second question?", 52, state.variables);
@@ -1198,12 +2566,82 @@ if (args[1] === "tasks" && args[2] === "complete") {
   }
   printCompleted({
     ...state.variables,
-    fixtureUserTasks: Object.keys(userTasks),
+    fixtureUserTasks: ["Task_Approve"],
   });
   process.exit(0);
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
+`,
+    "utf-8",
+  );
+}
+
+function writeFakeHostSessionQianjiScript(scriptPath: string): void {
+  writeFileSync(
+    scriptPath,
+    `
+const args = process.argv.slice(2);
+const readline = require("node:readline");
+const emitResult = (title, outcome, variables, pendingHostWork) => {
+  const commandLabel = title === "BPMN Run" ? "qianji run" : "qianji task complete";
+  const stdout = commandLabel + ": " + outcome + " (checkpoint=duckdb, source=resumed, saved=yes, deleted=no, pending_host=" + pendingHostWork + ")";
+  console.log("@@QIANJI_SESSION_RESULT " + JSON.stringify({
+    exitCode: 0,
+    stdout,
+    stderr: "",
+    outcome,
+    checkpoint: {
+      backend: "duckdb",
+      source: "resumed",
+      saved: "yes",
+      deleted: "no",
+      status: "saved",
+    },
+    pendingHostWork,
+    variables,
+  }));
+};
+if (args[0] !== "bpmn" || args[1] !== "host-session") {
+  console.error("non-session qianji command should not be used: " + args.join(" "));
+  process.exit(64);
+}
+console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+  kind: "user",
+  process_id: "Session_Process",
+  activity_id: "Task_Approve",
+  node_id: "Task_Approve",
+  node_index: 1,
+  token_id: 51,
+  variables: {},
+  form: {
+    interaction_type: "confirm",
+    question_text: "Continue?",
+    result_output: "approved",
+  },
+  claim: { claimant: "session-user", claimed_at_ms: 456 },
+}));
+emitResult("BPMN Run", "blocked_on_host", {}, 1);
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  if (request.type === "stop") {
+    process.exit(0);
+  }
+  if (request.type !== "task_complete") {
+    emitResult("BPMN Host Session", "failed", { error: "unexpected request" }, 0);
+    return;
+  }
+  emitResult("BPMN Task Complete", "completed", {
+    ...request.data,
+    sessionMode: "host-session",
+    receivedKind: request.kind,
+    receivedProcess: request.process_id,
+    receivedActivity: request.activity_id,
+    receivedClaimant: request.claimant,
+    usedContinueUntilHumanBoundary: request.continue_until_human_boundary,
+  }, 0);
+});
 `,
     "utf-8",
   );
@@ -1244,18 +2682,35 @@ if (args[1] === "run") {
     node_index: 1,
     token_id: 51,
     variables: {},
+    form: {
+      interaction_type: "confirm",
+      question_text: "Continue?",
+      result_output: "approved",
+    },
   }));
   printVariables("BPMN Run", "blocked_on_host", {}, 1);
   process.exit(0);
 }
 if (args[1] === "tasks" && args[2] === "complete") {
   const state = load();
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const userTasks = hostFixture.user_tasks ?? {};
-  const serviceTaskTokens = hostFixture.service_task_tokens ?? {};
-  if (userTasks.Task_Approve) {
-    state.variables = { ...state.variables, ...userTasks.Task_Approve.data };
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  const hostFixturePath = get("--host-fixture");
+  const hostFixture = hostFixturePath ? JSON.parse(readFileSync(hostFixturePath, "utf-8")) : {};
+  const serviceTasks = hostFixture.service_tasks ?? {};
+  if (get("--kind") === "user") {
+    state.variables = { ...state.variables, ...data };
     save(state);
+    if (serviceTasks.Task_Final) {
+      state.variables = { ...state.variables, ...serviceTasks.Task_Final.data };
+      save(state);
+      printVariables("BPMN Task Complete", "completed", {
+        ...state.variables,
+        fixtureServiceTaskTokens: ["52"],
+        fixtureServiceTasks: Object.keys(serviceTasks),
+        fixtureUserTasks: ["Task_Approve"],
+      }, 0);
+      process.exit(0);
+    }
     console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
       kind: "service",
       node_id: "Task_Final",
@@ -1265,16 +2720,16 @@ if (args[1] === "tasks" && args[2] === "complete") {
     }));
     printVariables("BPMN Task Complete", "blocked_on_host", {
       ...state.variables,
-      fixtureUserTasks: Object.keys(userTasks),
+      fixtureUserTasks: ["Task_Approve"],
     }, 1);
     process.exit(0);
   }
-  if (serviceTaskTokens["52"]) {
-    state.variables = { ...state.variables, ...serviceTaskTokens["52"].data };
+  if (get("--kind") === "service") {
+    state.variables = { ...state.variables, ...data };
     save(state);
     printVariables("BPMN Task Complete", "completed", {
       ...state.variables,
-      fixtureServiceTaskTokens: Object.keys(serviceTaskTokens),
+      fixtureServiceTaskTokens: [get("--token-id")],
       fixtureUserTasks: ["Task_Approve"],
     }, 0);
     process.exit(0);
@@ -1316,6 +2771,28 @@ if (args[1] === "status") {
 }
 if (args[1] === "run") {
   save({ variables: {} });
+  const hostFixturePath = get("--host-fixture");
+  const hostFixture = hostFixturePath ? JSON.parse(readFileSync(hostFixturePath, "utf-8")) : {};
+  const serviceTasks = hostFixture.service_tasks ?? {};
+  if (serviceTasks.Task_PrepareQuestion) {
+    const state = { variables: { ...serviceTasks.Task_PrepareQuestion.data } };
+    save(state);
+    console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+      kind: "user",
+      node_id: "Task_AskQuestion",
+      node_index: 2,
+      token_id: 62,
+      variables: state.variables,
+      form: {
+        interaction_type: "choice_input",
+        question_ref: "currentQuestion",
+        choices_ref: "currentChoices",
+        result_output: "userAnswer",
+      },
+    }));
+    printVariables("BPMN Run", "blocked_on_host", state.variables, 1);
+    process.exit(0);
+  }
   console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
     kind: "service",
     node_id: "Task_PrepareQuestion",
@@ -1328,11 +2805,9 @@ if (args[1] === "run") {
 }
 if (args[1] === "tasks" && args[2] === "complete") {
   const state = load();
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const serviceTaskTokens = hostFixture.service_task_tokens ?? {};
-  const userTasks = hostFixture.user_tasks ?? {};
-  if (serviceTaskTokens["61"]) {
-    state.variables = { ...state.variables, ...serviceTaskTokens["61"].data };
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  if (get("--kind") === "service") {
+    state.variables = { ...state.variables, ...data };
     save(state);
     console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
       kind: "user",
@@ -1340,12 +2815,18 @@ if (args[1] === "tasks" && args[2] === "complete") {
       node_index: 2,
       token_id: 62,
       variables: state.variables,
+      form: {
+        interaction_type: "choice_input",
+        question_ref: "currentQuestion",
+        choices_ref: "currentChoices",
+        result_output: "userAnswer",
+      },
     }));
     printVariables("BPMN Task Complete", "blocked_on_host", state.variables, 1);
     process.exit(0);
   }
-  if (userTasks.Task_AskQuestion) {
-    state.variables = { ...state.variables, ...userTasks.Task_AskQuestion.data };
+  if (get("--kind") === "user") {
+    state.variables = { ...state.variables, ...data };
     save(state);
     printVariables("BPMN Task Complete", "completed", state.variables, 0);
     process.exit(0);
@@ -1392,9 +2873,8 @@ if (args[1] === "run") {
   process.exit(0);
 }
 if (args[1] === "tasks" && args[2] === "complete") {
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const serviceTaskTokens = hostFixture.service_task_tokens ?? {};
-  if (serviceTaskTokens["21"]) {
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  if (get("--token-id") === "21") {
     console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
       kind: "service",
       node_id: "Task_Report",
@@ -1405,7 +2885,7 @@ if (args[1] === "tasks" && args[2] === "complete") {
     printVariables("BPMN Task Complete", "blocked_on_host", {});
     process.exit(0);
   }
-  printVariables("BPMN Task Complete", "completed", serviceTaskTokens["22"]?.data ?? {});
+  printVariables("BPMN Task Complete", "completed", data);
   process.exit(0);
 }
 console.error("unexpected qianji command: " + args.join(" "));
@@ -1472,10 +2952,7 @@ if (args[1] === "run") {
 }
 if (args[1] === "tasks" && args[2] === "complete") {
   const state = load();
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const serviceTaskTokens = hostFixture.service_task_tokens ?? {};
-  const tokenId = Object.keys(serviceTaskTokens)[0];
-  const data = serviceTaskTokens[tokenId]?.data ?? {};
+  const data = JSON.parse(get("--data-json") ?? "{}");
   state.variables = { ...state.variables, ...data };
   if (state.awaiting === "Task_1") {
     emitHostWork(state, "Task_2", { retryCount: state.variables.retryCount }, "resumed");
@@ -1537,10 +3014,8 @@ if (args[1] === "run") {
   process.exit(0);
 }
 if (args[1] === "tasks" && args[2] === "complete") {
-  const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
-  const serviceTaskTokens = hostFixture.service_task_tokens ?? {};
-  const tokenId = Object.keys(serviceTaskTokens)[0];
-  printVariables("BPMN Task Complete", "completed", serviceTaskTokens[tokenId]?.data ?? {});
+  const data = JSON.parse(get("--data-json") ?? "{}");
+  printVariables("BPMN Task Complete", "completed", data);
   process.exit(0);
 }
 console.error("unexpected qianji command: " + args.join(" "));
@@ -1551,313 +3026,293 @@ process.exit(64);
 }
 
 function tokenScopedServiceTaskWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-             id="Definitions_1"
-             targetNamespace="https://qianji.dev">
-  <process id="Process_1" isExecutable="true">
-    <startEvent id="Start_1"/>
-    <serviceTask id="Task_Review" name="Review item" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Review the current item and output result.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>item</qianji:inputs>
-          <qianji:outputs>result</qianji:outputs>
-          <qianji:agentType>pi-wendao-worker</qianji:agentType>
-          <qianji:runInBackground>true</qianji:runInBackground>
-          <qianji:maxTurns>8</qianji:maxTurns>
-        </qianji:config>
-      </extensionElements>
-      <multiInstanceLoopCharacteristics>
-        <loopDataInputRef>items</loopDataInputRef>
-        <inputDataItem id="item"/>
-        <loopDataOutputRef>results</loopDataOutputRef>
-        <outputDataItem id="result"/>
-      </multiInstanceLoopCharacteristics>
-    </serviceTask>
-    <endEvent id="End_1"/>
-    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Review"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_Review" targetRef="End_1"/>
-	</process>
-	</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeServiceTask({
+        id: "Task_Review",
+        name: "Review item",
+        documentation: "Review the current item and output result.",
+        inputs: ["item"],
+        outputs: ["result"],
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Review"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_Review" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function humanApprovalWorkflow(): string {
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeHumanTask({
+        id: "Task_Approve",
+        name: "Approve proposal",
+        documentation: "How should the workflow proceed?",
+        inputs: ["proposal"],
+        resultOutput: "approved",
+        interactionType: "choice_input",
+        choices: [
+          {
+            value: "approved",
+            label: "Approve",
+            description: "Continue to the next BPMN checkpoint.",
+          },
+          {
+            value: "rejected",
+            label: "Reject",
+            description: "Stop and revise the plan.",
+          },
+        ],
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="End_1"/>',
+    ].join("\n"),
+  );
+}
+
+function rustSourcedHumanTaskWorkflow(): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-             id="Definitions_1"
+  <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="Definitions_Rust_Form"
              targetNamespace="https://qianji.dev">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1"/>
-    <userTask id="Task_Approve" name="Approve proposal">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Review the proposal and approve before continuing.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>proposal</qianji:inputs>
-          <qianji:outputs>approved,approvedReply</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question>How should the workflow proceed?</qianji:question>
-            <qianji:choice value="approved" label="Approve">Continue to the next BPMN checkpoint.</qianji:choice>
-            <qianji:choice value="rejected" label="Reject">Stop and revise the plan.</qianji:choice>
-            <qianji:freeText name="approvedReply" optional="true"/>
-            <qianji:result output="approvedReply"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+    <userTask id="Task_RustApprove" name="Rust sourced prompt"/>
     <endEvent id="End_1"/>
-    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="End_1"/>
-	</process>
-	</definitions>`;
+    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_RustApprove"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_RustApprove" targetRef="End_1"/>
+  </process>
+  </definitions>`;
+}
+
+function manualCheckpointWorkflow(): string {
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeHumanTask({
+        id: "Task_ManualCheckpoint",
+        kind: "manualTask",
+        name: "Manual checkpoint",
+        documentation: "Complete the manual checkpoint before continuing.",
+        resultOutput: "manualNote",
+        interactionType: "input",
+        freeText: { name: "manualNote", optional: false },
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_ManualCheckpoint"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_ManualCheckpoint" targetRef="End_1"/>',
+    ].join("\n"),
+  );
+}
+
+function ambiguousHumanOutputsWorkflow(): string {
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeHumanTask({
+        id: "Task_Approve",
+        name: "Approve proposal",
+        documentation: "How should the workflow proceed?",
+        inputs: ["proposal"],
+        resultOutput: "approvedReply",
+        interactionType: "choice_input",
+        choices: [
+          {
+            value: "approved",
+            label: "Approve",
+            description: "Continue to the next BPMN checkpoint.",
+          },
+          {
+            value: "rejected",
+            label: "Reject",
+            description: "Stop and revise the plan.",
+          },
+        ],
+        freeText: { name: "approvedReply", optional: true },
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function dynamicHumanQuestionWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-             id="Definitions_1"
-             targetNamespace="https://qianji.dev">
-  <process id="Process_1" isExecutable="true">
-    <startEvent id="Start_1"/>
-    <userTask id="Task_Approve" name="Answer generated question">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Answer the generated question.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>proposal,currentChoices</qianji:inputs>
-          <qianji:outputs>userAnswer</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question>proposal</qianji:question>
-            <qianji:choices ref="currentChoices"/>
-            <qianji:result output="userAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <endEvent id="End_1"/>
-    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="End_1"/>
-	</process>
-	</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeHumanTask({
+        id: "Task_Approve",
+        name: "Answer generated question",
+        documentation: "Answer the generated question.",
+        inputs: ["proposal", "currentChoices"],
+        resultOutput: "userAnswer",
+        interactionType: "choice_input",
+        questionRef: "proposal",
+        choicesRef: "currentChoices",
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function serviceGeneratedDynamicChoicesWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-             id="Definitions_1"
-             targetNamespace="https://qianji.dev">
-  <process id="Process_1" isExecutable="true">
-    <startEvent id="Start_1"/>
-    <serviceTask id="Task_PrepareQuestion" name="Prepare generated question" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Output currentQuestion and currentChoices.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>context</qianji:inputs>
-          <qianji:outputs>currentQuestion,currentChoices</qianji:outputs>
-          <qianji:outputSchema name="currentChoices" kind="choice_array" value="required" label="optional" description="optional"/>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <userTask id="Task_AskQuestion" name="Answer generated question">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Answer the generated question.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>currentQuestion,currentChoices</qianji:inputs>
-          <qianji:outputs>userAnswer</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question ref="currentQuestion"/>
-            <qianji:choices ref="currentChoices"/>
-            <qianji:result output="userAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <endEvent id="End_1"/>
-    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_PrepareQuestion"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_PrepareQuestion" targetRef="Task_AskQuestion"/>
-    <sequenceFlow id="Flow_3" sourceRef="Task_AskQuestion" targetRef="End_1"/>
-	</process>
-	</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeServiceTask({
+        id: "Task_PrepareQuestion",
+        name: "Prepare generated question",
+        documentation: "Output currentQuestion and currentChoices.",
+        inputs: ["context"],
+        outputs: ["currentQuestion", "currentChoices"],
+      }),
+      nativeHumanTask({
+        id: "Task_AskQuestion",
+        name: "Answer generated question",
+        documentation: "Answer the generated question.",
+        inputs: ["currentQuestion", "currentChoices"],
+        resultOutput: "userAnswer",
+        interactionType: "choice_input",
+        questionRef: "currentQuestion",
+        choicesRef: "currentChoices",
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_PrepareQuestion"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_PrepareQuestion" targetRef="Task_AskQuestion"/>',
+      '    <sequenceFlow id="Flow_3" sourceRef="Task_AskQuestion" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function userThenServiceWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-	             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-	             id="Definitions_1"
-	             targetNamespace="https://qianji.dev">
-	  <process id="Process_1" isExecutable="true">
-	    <startEvent id="Start_1"/>
-	    <userTask id="Task_Approve" name="Approve">
-	      <extensionElements>
-	        <qianji:config>
-	          <qianji:prompt>Approve before running the final service task.</qianji:prompt>
-	          <qianji:tools></qianji:tools>
-	          <qianji:inputs></qianji:inputs>
-	          <qianji:outputs>approved</qianji:outputs>
-	          <qianji:interaction type="confirm">
-	            <qianji:question>Continue?</qianji:question>
-	            <qianji:result output="approved"/>
-	          </qianji:interaction>
-	        </qianji:config>
-	      </extensionElements>
-	    </userTask>
-	    <serviceTask id="Task_Final" name="Final service" implementation="\${environment.services.runAgent}">
-	      <extensionElements>
-	        <qianji:config>
-	          <qianji:prompt>Run final service task.</qianji:prompt>
-	          <qianji:tools></qianji:tools>
-	          <qianji:inputs>approved</qianji:inputs>
-	          <qianji:outputs>finalStatus</qianji:outputs>
-	        </qianji:config>
-	      </extensionElements>
-	    </serviceTask>
-	    <endEvent id="End_1"/>
-	    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>
-	    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="Task_Final"/>
-	    <sequenceFlow id="Flow_3" sourceRef="Task_Final" targetRef="End_1"/>
-	  </process>
-	</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeHumanTask({
+        id: "Task_Approve",
+        name: "Approve",
+        documentation: "Continue?",
+        resultOutput: "approved",
+        interactionType: "confirm",
+      }),
+      nativeServiceTask({
+        id: "Task_Final",
+        name: "Final service",
+        documentation: "Run final service task.",
+        inputs: ["approved"],
+        outputs: ["finalStatus"],
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Approve"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_Approve" targetRef="Task_Final"/>',
+      '    <sequenceFlow id="Flow_3" sourceRef="Task_Final" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function promptDerivedOutputWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-	             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-	             id="Definitions_1"
-	             targetNamespace="https://qianji.dev">
-	  <process id="Process_1" isExecutable="true">
-	    <startEvent id="Start_1"/>
-	    <serviceTask id="Task_SetStatus" name="Set status" implementation="\${environment.services.runAgent}">
-	      <extensionElements>
-	        <qianji:config>
-	          <qianji:prompt>Set status to "ready". Output status.</qianji:prompt>
-	          <qianji:tools></qianji:tools>
-	          <qianji:inputs></qianji:inputs>
-	          <qianji:outputs>status</qianji:outputs>
-	        </qianji:config>
-	      </extensionElements>
-	    </serviceTask>
-	    <endEvent id="End_1"/>
-	    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_SetStatus"/>
-	    <sequenceFlow id="Flow_2" sourceRef="Task_SetStatus" targetRef="End_1"/>
-	  </process>
-	</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeServiceTask({
+        id: "Task_SetStatus",
+        name: "Set status",
+        documentation: 'Set status to "ready". Output status.',
+        outputs: ["status"],
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_SetStatus"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_SetStatus" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function retryLoopWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-	<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-             id="Definitions_1"
-             targetNamespace="https://qianji.dev">
-  <process id="Process_1" isExecutable="true">
-    <startEvent id="Start_1"/>
-    <serviceTask id="Task_1" name="Initialize system" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Set retryCount to 1 and status to "not ready". Output both variables.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>retryCount,status</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <serviceTask id="Task_2" name="Check retry count" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Check if retryCount is greater than or equal to 3. Output isRetryComplete as true if retryCount &gt;= 3, false otherwise. Also output the current retryCount value.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>retryCount</qianji:inputs>
-          <qianji:outputs>isRetryComplete,retryCount</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <exclusiveGateway id="Gateway_1" name="Retry complete?" default="Flow_5"/>
-    <serviceTask id="Task_3" name="Set status ready" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Set status to "ready". Output status as "ready".</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>status</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <serviceTask id="Task_4" name="Increment retry count" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Increment retryCount by 1. Output the new retryCount value.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>retryCount</qianji:inputs>
-          <qianji:outputs>retryCount</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <endEvent id="End_1"/>
-    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_1"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_1" targetRef="Task_2"/>
-    <sequenceFlow id="Flow_3" sourceRef="Task_2" targetRef="Gateway_1"/>
-    <sequenceFlow id="Flow_4" sourceRef="Gateway_1" targetRef="Task_3">
-      <conditionExpression xsi:type="tFormalExpression">isRetryComplete</conditionExpression>
-    </sequenceFlow>
-    <sequenceFlow id="Flow_5" sourceRef="Gateway_1" targetRef="Task_4"/>
-    <sequenceFlow id="Flow_6" sourceRef="Task_4" targetRef="Task_2"/>
-    <sequenceFlow id="Flow_7" sourceRef="Task_3" targetRef="End_1"/>
-  </process>
-</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeServiceTask({
+        id: "Task_1",
+        name: "Initialize system",
+        documentation: 'Set retryCount to 1 and status to "not ready". Output both variables.',
+        outputs: ["retryCount", "status"],
+      }),
+      nativeServiceTask({
+        id: "Task_2",
+        name: "Check retry count",
+        documentation:
+          "Check if retryCount is greater than or equal to 3. Output isRetryComplete as true if retryCount >= 3, false otherwise. Also output the current retryCount value.",
+        inputs: ["retryCount"],
+        outputs: ["isRetryComplete", "retryCount"],
+      }),
+      '    <exclusiveGateway id="Gateway_1" name="Retry complete?" default="Flow_5"/>',
+      nativeServiceTask({
+        id: "Task_3",
+        name: "Set status ready",
+        documentation: 'Set status to "ready". Output status as "ready".',
+        outputs: ["status"],
+      }),
+      nativeServiceTask({
+        id: "Task_4",
+        name: "Increment retry count",
+        documentation: "Increment retryCount by 1. Output the new retryCount value.",
+        inputs: ["retryCount"],
+        outputs: ["retryCount"],
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_1"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_1" targetRef="Task_2"/>',
+      '    <sequenceFlow id="Flow_3" sourceRef="Task_2" targetRef="Gateway_1"/>',
+      '    <sequenceFlow id="Flow_4" sourceRef="Gateway_1" targetRef="Task_3">',
+      '      <conditionExpression xsi:type="tFormalExpression">isRetryComplete</conditionExpression>',
+      "    </sequenceFlow>",
+      '    <sequenceFlow id="Flow_5" sourceRef="Gateway_1" targetRef="Task_4"/>',
+      '    <sequenceFlow id="Flow_6" sourceRef="Task_4" targetRef="Task_2"/>',
+      '    <sequenceFlow id="Flow_7" sourceRef="Task_3" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function sequentialServiceTaskWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-             id="Definitions_1"
-             targetNamespace="https://qianji.dev">
-  <process id="Process_1" isExecutable="true">
-    <startEvent id="Start_1"/>
-    <serviceTask id="Task_List" name="List files" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>List files and output fileList.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>fileList</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <serviceTask id="Task_Report" name="Report files" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Write a report from fileList.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>fileList</qianji:inputs>
-          <qianji:outputs>report</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <endEvent id="End_1"/>
-    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_List"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_List" targetRef="Task_Report"/>
-    <sequenceFlow id="Flow_3" sourceRef="Task_Report" targetRef="End_1"/>
-  </process>
-</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeServiceTask({
+        id: "Task_List",
+        name: "List files",
+        documentation: "List files and output fileList.",
+        outputs: ["fileList"],
+      }),
+      nativeServiceTask({
+        id: "Task_Report",
+        name: "Report files",
+        documentation: "Write a report from fileList.",
+        inputs: ["fileList"],
+        outputs: ["report"],
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_List"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_List" targetRef="Task_Report"/>',
+      '    <sequenceFlow id="Flow_3" sourceRef="Task_Report" targetRef="End_1"/>',
+    ].join("\n"),
+  );
 }
 
 function shellQuote(value: string): string {

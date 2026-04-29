@@ -23,5 +23,5 @@ BPMN compiler is being hardened.
 
 Qianji still owns BPMN scheduling, gateway routing, checkpoints, and resume
 state. `pi-wendao` only resolves the named workflow, refreshes the cache, starts
-qianji execution, and renders host-native user interaction declared by
-`qianji:interaction`.
+qianji execution, and renders host-native user interaction declared through
+standard BPMN IO metadata.

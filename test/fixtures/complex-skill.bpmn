@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
              targetNamespace="https://qianji.dev">
 
@@ -13,61 +12,97 @@
 
     <!-- Step 1: Initialize -->
     <serviceTask id="Task_Init" name="Initialize system" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Initialize the system. Sleep for 5 seconds using bash (run: sleep 5). Then set retryCount to 1 and status to "not ready".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>retryCount,status</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Initialize the system. Sleep for 5 seconds using bash (run: sleep 5). Then set retryCount to 1 and status to "not ready".</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_Init_output_retryCount" name="retryCount" />
+    <dataOutput id="Task_Init_output_status" name="status" />
+    <inputSet id="Task_Init_input_set"></inputSet>
+    <outputSet id="Task_Init_output_set">
+    <dataOutputRefs>Task_Init_output_retryCount</dataOutputRefs>
+    <dataOutputRefs>Task_Init_output_status</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_Init_output_retryCount</sourceRef>
+    <targetRef>retryCount</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Init_output_status</sourceRef>
+    <targetRef>status</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_Init_EvalRetry" sourceRef="Task_Init" targetRef="Task_EvalRetry"/>
 
     <!-- Step 2: Evaluate if retryCount >= 3 -->
     <serviceTask id="Task_EvalRetry" name="Evaluate retry count" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Check if retryCount is greater than or equal to 3. If it is, set retriesExhausted to true. Otherwise set retriesExhausted to false.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>retryCount</qianji:inputs>
-          <qianji:outputs>retriesExhausted</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Check if retryCount is greater than or equal to 3. If it is, set retriesExhausted to true. Otherwise set retriesExhausted to false.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_EvalRetry_input_retryCount" name="retryCount" />
+    <dataOutput id="Task_EvalRetry_output_retriesExhausted" name="retriesExhausted" />
+    <inputSet id="Task_EvalRetry_input_set">
+    <dataInputRefs>Task_EvalRetry_input_retryCount</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_EvalRetry_output_set">
+    <dataOutputRefs>Task_EvalRetry_output_retriesExhausted</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>retryCount</sourceRef>
+    <targetRef>Task_EvalRetry_input_retryCount</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_EvalRetry_output_retriesExhausted</sourceRef>
+    <targetRef>retriesExhausted</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_EvalRetry_GW" sourceRef="Task_EvalRetry" targetRef="Gateway_RetryCheck"/>
 
     <!-- Gateway: retries exhausted? -->
-    <exclusiveGateway id="Gateway_RetryCheck" default="Flow_RetryNo"/>
-    <sequenceFlow id="Flow_RetryYes" sourceRef="Gateway_RetryCheck" targetRef="Task_SetReady">
-      <conditionExpression xsi:type="tFormalExpression">retriesExhausted</conditionExpression>
+    <exclusiveGateway id="Gateway_RetryCheck" default="Flow_RetryYes"/>
+    <sequenceFlow id="Flow_RetryYes" sourceRef="Gateway_RetryCheck" targetRef="Task_SetReady"/>
+    <sequenceFlow id="Flow_RetryNo" sourceRef="Gateway_RetryCheck" targetRef="Task_IncrementRetry">
+      <conditionExpression xsi:type="tFormalExpression">not retriesExhausted</conditionExpression>
     </sequenceFlow>
-    <sequenceFlow id="Flow_RetryNo" sourceRef="Gateway_RetryCheck" targetRef="Task_IncrementRetry"/>
 
     <!-- Increment retryCount and loop back -->
     <serviceTask id="Task_IncrementRetry" name="Increment retry count" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Increment retryCount by 1. The current value of retryCount is provided as input. Output the new retryCount value. Also sleep for 5 seconds using bash (run: sleep 5).</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>retryCount</qianji:inputs>
-          <qianji:outputs>retryCount</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Increment retryCount by 1. The current value of retryCount is provided as input. Output the new retryCount value. Also sleep for 5 seconds using bash (run: sleep 5).</documentation>
+  <ioSpecification>
+    <dataInput id="Task_IncrementRetry_input_retryCount" name="retryCount" />
+    <dataOutput id="Task_IncrementRetry_output_retryCount" name="retryCount" />
+    <inputSet id="Task_IncrementRetry_input_set">
+    <dataInputRefs>Task_IncrementRetry_input_retryCount</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_IncrementRetry_output_set">
+    <dataOutputRefs>Task_IncrementRetry_output_retryCount</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>retryCount</sourceRef>
+    <targetRef>Task_IncrementRetry_input_retryCount</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_IncrementRetry_output_retryCount</sourceRef>
+    <targetRef>retryCount</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_Increment_EvalRetry" sourceRef="Task_IncrementRetry" targetRef="Task_EvalRetry"/>
 
     <!-- Set status to ready -->
     <serviceTask id="Task_SetReady" name="Set status to ready" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Set status to "ready". Sleep for 5 seconds using bash (run: sleep 5).</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>status</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Set status to "ready". Sleep for 5 seconds using bash (run: sleep 5).</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_SetReady_output_status" name="status" />
+    <inputSet id="Task_SetReady_input_set"></inputSet>
+    <outputSet id="Task_SetReady_output_set">
+    <dataOutputRefs>Task_SetReady_output_status</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_SetReady_output_status</sourceRef>
+    <targetRef>status</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_SetReady_Fork" sourceRef="Task_SetReady" targetRef="Gateway_Fork"/>
 
     <!-- Step 3: Parallel fork -->
@@ -77,28 +112,36 @@
 
     <!-- Branch A -->
     <serviceTask id="Task_BranchA" name="Branch A" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultA to "alpha".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>resultA</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 5 seconds using bash (run: sleep 5). Then set resultA to "alpha".</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_BranchA_output_resultA" name="resultA" />
+    <inputSet id="Task_BranchA_input_set"></inputSet>
+    <outputSet id="Task_BranchA_output_set">
+    <dataOutputRefs>Task_BranchA_output_resultA</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_BranchA_output_resultA</sourceRef>
+    <targetRef>resultA</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_A_Join" sourceRef="Task_BranchA" targetRef="Gateway_Join"/>
 
     <!-- Branch B -->
     <serviceTask id="Task_BranchB" name="Branch B" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then set resultB to "beta".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>resultB</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 5 seconds using bash (run: sleep 5). Then set resultB to "beta".</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_BranchB_output_resultB" name="resultB" />
+    <inputSet id="Task_BranchB_input_set"></inputSet>
+    <outputSet id="Task_BranchB_output_set">
+    <dataOutputRefs>Task_BranchB_output_resultB</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_BranchB_output_resultB</sourceRef>
+    <targetRef>resultB</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_B_Join" sourceRef="Task_BranchB" targetRef="Gateway_Join"/>
 
     <!-- Step 4: Parallel join -->
@@ -107,40 +150,78 @@
 
     <!-- Merge results -->
     <serviceTask id="Task_Merge" name="Merge results" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Then concatenate resultA and resultB into a single string called merged. For example if resultA is "alpha" and resultB is "beta", merged should be "alphabeta".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>resultA,resultB</qianji:inputs>
-          <qianji:outputs>merged</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 5 seconds using bash (run: sleep 5). Then concatenate resultA and resultB into a single string called merged. For example if resultA is "alpha" and resultB is "beta", merged should be "alphabeta".</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Merge_input_resultA" name="resultA" />
+    <dataInput id="Task_Merge_input_resultB" name="resultB" />
+    <dataOutput id="Task_Merge_output_merged" name="merged" />
+    <inputSet id="Task_Merge_input_set">
+    <dataInputRefs>Task_Merge_input_resultA</dataInputRefs>
+    <dataInputRefs>Task_Merge_input_resultB</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Merge_output_set">
+    <dataOutputRefs>Task_Merge_output_merged</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>resultA</sourceRef>
+    <targetRef>Task_Merge_input_resultA</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>resultB</sourceRef>
+    <targetRef>Task_Merge_input_resultB</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Merge_output_merged</sourceRef>
+    <targetRef>merged</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_Merge_Validate" sourceRef="Task_Merge" targetRef="Task_Validate"/>
 
     <!-- Step 5: Validate -->
     <serviceTask id="Task_Validate" name="Validate merged result" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Validate the merged result. Set valid to true when validation passes; otherwise set valid to false.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>merged</qianji:inputs>
-          <qianji:outputs>valid</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 5 seconds using bash (run: sleep 5). Validate the merged result. Set valid to true when validation passes; otherwise set valid to false.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Validate_input_merged" name="merged" />
+    <dataOutput id="Task_Validate_output_valid" name="valid" />
+    <inputSet id="Task_Validate_input_set">
+    <dataInputRefs>Task_Validate_input_merged</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Validate_output_set">
+    <dataOutputRefs>Task_Validate_output_valid</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>merged</sourceRef>
+    <targetRef>Task_Validate_input_merged</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Validate_output_valid</sourceRef>
+    <targetRef>valid</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <!-- Fallback task -->
     <serviceTask id="Task_Fallback" name="Validation fallback" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set valid to false and reason to "validation failed".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>valid,reason</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 5 seconds using bash (run: sleep 5). Set valid to false and reason to "validation failed".</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_Fallback_output_valid" name="valid" />
+    <dataOutput id="Task_Fallback_output_reason" name="reason" />
+    <inputSet id="Task_Fallback_input_set"></inputSet>
+    <outputSet id="Task_Fallback_output_set">
+    <dataOutputRefs>Task_Fallback_output_valid</dataOutputRefs>
+    <dataOutputRefs>Task_Fallback_output_reason</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_Fallback_output_valid</sourceRef>
+    <targetRef>valid</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Fallback_output_reason</sourceRef>
+    <targetRef>reason</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_Fallback_Reject" sourceRef="Task_Fallback" targetRef="Task_Reject"/>
 
     <!-- Normal flow from validate to gateway -->
@@ -155,30 +236,45 @@
 
     <!-- Publish -->
     <serviceTask id="Task_Publish" name="Publish result" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set published to true.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>published</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 5 seconds using bash (run: sleep 5). Set published to true.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_Publish_output_published" name="published" />
+    <inputSet id="Task_Publish_input_set"></inputSet>
+    <outputSet id="Task_Publish_output_set">
+    <dataOutputRefs>Task_Publish_output_published</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_Publish_output_published</sourceRef>
+    <targetRef>published</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_Publish_End" sourceRef="Task_Publish" targetRef="EndEvent_Published"/>
 
     <endEvent id="EndEvent_Published"/>
 
     <!-- Reject -->
     <serviceTask id="Task_Reject" name="Reject result" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 5 seconds using bash (run: sleep 5). Set rejected to true.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>reason</qianji:inputs>
-          <qianji:outputs>rejected</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 5 seconds using bash (run: sleep 5). Set rejected to true.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Reject_input_reason" name="reason" />
+    <dataOutput id="Task_Reject_output_rejected" name="rejected" />
+    <inputSet id="Task_Reject_input_set">
+    <dataInputRefs>Task_Reject_input_reason</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Reject_output_set">
+    <dataOutputRefs>Task_Reject_output_rejected</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>reason</sourceRef>
+    <targetRef>Task_Reject_input_reason</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Reject_output_rejected</sourceRef>
+    <targetRef>rejected</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <sequenceFlow id="Flow_Reject_End" sourceRef="Task_Reject" targetRef="EndEvent_Rejected"/>
 
     <endEvent id="EndEvent_Rejected"/>

@@ -1,14 +1,15 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, join, resolve as resolvePath } from "node:path";
+import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { XMLParser } from "fast-xml-parser";
 import { streamSimple, type Message, type Model } from "@mariozechner/pi-ai";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { PiWendaoThinkingLevel } from "../executor/agent-runtime-types.js";
 import { execute } from "../executor/executor.js";
 import { extractArtifactBundle, extractAssistantText } from "../compiler/artifacts.js";
+import { lintPiWendaoWorkflowContract } from "../compiler/contract-lint.js";
 import {
   formatPiSubagentsHostEventForLog,
   formatPiSubagentsHostToolEventForGraphDetail,
@@ -33,6 +34,7 @@ const parser = new XMLParser({
   attributeNamePrefix: "",
   removeNSPrefix: true,
 });
+const LINT_CACHE_VERSION = "pi-wendao-qianji-contract-lint-success-v2";
 const BPMN_NODE_ELEMENTS = [
   "startEvent",
   "endEvent",
@@ -309,18 +311,33 @@ export async function runWorkflowLintPreflight(
   let repaired = false;
 
   for (let attempt = 0; attempt <= maxRepairAttempts; attempt += 1) {
-    const result = await runQianjiLint({
+    const lintCache = buildLintPreflightCache({
       command,
-      args: ["lint", "--bpmn", workflowPath, "--llm"],
+      workflowPath,
+      dmnPaths: params.resolvedDmnPaths,
       cwd: params.cwd,
     });
-    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    if (result.exitCode === 0) {
+    if (lintCache && existsSync(lintCache.path)) {
+      params.renderer.appendLog(
+        repaired
+          ? `qianji lint preflight cache hit after repair: ${workflowPath}`
+          : "qianji lint preflight cache hit",
+      );
+      return { success: true, workflowPath, repaired };
+    }
+
+    const lint = await runBpmnPreflightLint({
+      command,
+      workflowPath,
+      cwd: params.cwd,
+    });
+    if (lint.success) {
       const dmnLint = await lintDmnPreflight(command, params.resolvedDmnPaths, params.cwd);
       if (!dmnLint.success) {
         params.renderer.appendLog(dmnLint.output);
         return { success: false };
       }
+      await writeLintPreflightCache(lintCache);
       params.renderer.appendLog(
         repaired
           ? `qianji lint preflight passed after repair: ${workflowPath}`
@@ -330,7 +347,7 @@ export async function runWorkflowLintPreflight(
     }
 
     if (attempt >= maxRepairAttempts || !params.resolveRepairModel) {
-      appendPreflightFailure(params.renderer, workflowPath, output);
+      appendPreflightFailure(params.renderer, workflowPath, lint.output);
       return { success: false };
     }
 
@@ -340,19 +357,19 @@ export async function runWorkflowLintPreflight(
     );
     const repairModel = await params.resolveRepairModel();
     if (!repairModel) {
-      appendPreflightFailure(params.renderer, workflowPath, output);
+      appendPreflightFailure(params.renderer, workflowPath, lint.output);
       return { success: false };
     }
     const repairedXml = await requestWorkflowRepair({
       repairModel,
       workflowPath,
-      diagnostic: output,
+      diagnostic: lint.output,
     });
     if (!repairedXml) {
       params.renderer.appendLog(
         [
           `qianji lint preflight repair ${repairAttempt}/${maxRepairAttempts} did not return BPMN XML.`,
-          output,
+          lint.output,
           "Workflow was not started.",
         ].join("\n"),
       );
@@ -364,6 +381,178 @@ export async function runWorkflowLintPreflight(
   }
 
   return { success: false };
+}
+
+interface LintPreflightCache {
+  path: string;
+  fingerprint: string;
+}
+
+function buildLintPreflightCache(options: {
+  command: string;
+  workflowPath: string;
+  dmnPaths: string[];
+  cwd: string;
+}): LintPreflightCache | undefined {
+  if (process.env.PI_WENDAO_DISABLE_LINT_CACHE === "1") return undefined;
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: LINT_CACHE_VERSION,
+        command: options.command,
+        commandFiles: commandFileIdentities(options.command, options.cwd),
+        files: [options.workflowPath, ...options.dmnPaths].map((path) =>
+          fileContentIdentity(path, options.cwd),
+        ),
+      }),
+    )
+    .digest("hex");
+  return {
+    fingerprint,
+    path: join(resolvePiWendaoCacheHome(options.cwd), "lint-cache", `${fingerprint}.json`),
+  };
+}
+
+async function writeLintPreflightCache(cache: LintPreflightCache | undefined): Promise<void> {
+  if (!cache) return;
+  try {
+    await mkdir(dirname(cache.path), { recursive: true });
+    await writeFile(
+      cache.path,
+      `${JSON.stringify(
+        {
+          version: LINT_CACHE_VERSION,
+          fingerprint: cache.fingerprint,
+          createdAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+  } catch {
+    // Lint cache is an optimization; preflight success must not depend on it.
+  }
+}
+
+function resolvePiWendaoCacheHome(cwd: string): string {
+  const root = process.env.PRJ_CACHE_HOME?.trim();
+  const cacheRoot = root ? resolvePath(cwd, root) : resolvePath(cwd, ".cache");
+  return join(cacheRoot, "pi-wendao");
+}
+
+function fileContentIdentity(path: string, cwd: string): Record<string, unknown> {
+  const resolved = resolvePath(cwd, path);
+  const content = readFileSync(resolved);
+  const stat = statSync(resolved);
+  return {
+    path: resolved,
+    size: stat.size,
+    hash: createHash("sha256").update(content).digest("hex"),
+  };
+}
+
+function commandFileIdentities(command: string, cwd: string): Array<Record<string, unknown>> {
+  const words = splitShellWords(command);
+  const identities: Array<Record<string, unknown>> = [];
+  for (const [index, word] of words.entries()) {
+    const resolved = resolveCommandWordPath(word, cwd, index === 0);
+    if (!resolved || !existsSync(resolved)) continue;
+    const stat = statSync(resolved);
+    if (!stat.isFile()) continue;
+    identities.push({
+      path: resolved,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    });
+  }
+  return identities;
+}
+
+function resolveCommandWordPath(
+  word: string,
+  cwd: string,
+  searchPath: boolean,
+): string | undefined {
+  if (!word) return undefined;
+  if (word.includes("/")) return resolvePath(cwd, word);
+  if (!searchPath) return undefined;
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    if (!dir) continue;
+    const candidate = resolvePath(dir, word);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function splitShellWords(input: string): string[] {
+  const words: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | undefined;
+  let escaping = false;
+  for (const char of input.trim()) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaping = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        words.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current) words.push(current);
+  return words;
+}
+
+async function runBpmnPreflightLint(options: {
+  command: string;
+  workflowPath: string;
+  cwd: string;
+}): Promise<{ success: true } | { success: false; output: string }> {
+  const qianji = await runQianjiLint({
+    command: options.command,
+    args: ["lint", "--bpmn", options.workflowPath, "--llm"],
+    cwd: options.cwd,
+  });
+  const qianjiOutput = [qianji.stdout, qianji.stderr].filter(Boolean).join("\n").trim();
+  if (qianji.exitCode !== 0) {
+    return { success: false, output: qianjiOutput };
+  }
+
+  const contract = lintPiWendaoWorkflowContract(readFileSync(options.workflowPath, "utf-8"), {
+    cwd: options.cwd,
+  });
+  if (contract.success) return { success: true };
+
+  const output = [
+    qianjiOutput ? `qianji lint --llm:\n${qianjiOutput}` : "qianji lint --llm passed.",
+    "pi-wendao BPMN contract:",
+    contract.output,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return { success: false, output };
 }
 
 async function lintDmnPreflight(

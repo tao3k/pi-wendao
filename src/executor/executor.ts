@@ -17,7 +17,6 @@ import type {
   PiWendaoThinkingLevel,
 } from "./agent-runtime-types.js";
 import {
-  buildDefaultHostFixture,
   buildPiWendaoConfigMap,
   extractFirstProcessId,
   hasHostCompletionResults,
@@ -27,7 +26,9 @@ import {
 } from "./bpmn-config.js";
 import { isObject } from "./data.js";
 import {
+  humanTaskReplyOutputNames,
   mapHumanTaskReplyToOutputs,
+  mergeQianjiHostWorkFormConfig,
   resolveHumanTaskConfig,
   validateOutputSchemas,
 } from "./human-task.js";
@@ -35,9 +36,11 @@ import { isWorkflowInterruptedError, throwIfWorkflowInterrupted } from "./interr
 import { createPiAiHost } from "./node-runner.js";
 import {
   buildQianjiArgs,
+  buildQianjiHostSessionArgs,
+  buildQianjiHostSessionTaskCompleteRequest,
   buildQianjiStatusArgs,
-  buildQianjiTaskCompleteArgs,
   defaultQianjiCommand,
+  QianjiHostSession,
   runQianjiCli,
 } from "./qianji-cli.js";
 import {
@@ -52,7 +55,10 @@ import {
 import type {
   QianjiCliResult,
   QianjiHostWork,
+  QianjiHostWorkClaim,
   QianjiHostWorkEvent,
+  QianjiHumanTaskAssignment,
+  QianjiHumanTaskResourceRole,
   QianjiTraceEvent,
 } from "./qianji-types.js";
 import { WorkflowStallGuard } from "./stall-guard.js";
@@ -89,7 +95,7 @@ export interface ExecuteOptions {
   thinkingLevel?: PiWendaoThinkingLevel;
   /** Optional service-task agent host override. Defaults to pi-ai when model is provided. */
   agentHost?: PiWendaoAgentHost;
-  /** Handles BPMN userTask host work as graph-local human input. */
+  /** Handles BPMN userTask/manualTask host work as graph-local human input. */
   humanTaskHandler?: (request: HumanTaskPromptRequest) => Promise<string>;
   /** Display name for the active real-host backend in graph node runtime details. */
   hostBackend?: string;
@@ -142,10 +148,21 @@ export interface HumanTaskPromptRequest {
   activityId: string;
   config: PiWendaoConfig;
   variables: Record<string, unknown>;
+  assignment?: QianjiHumanTaskAssignment;
+  claim?: QianjiHostWorkClaim;
   execution?: PiWendaoAgentExecutionMetadata;
 }
 
-const DEFAULT_GRAPH_TRACE_FRAME_DELAY_MS = 60;
+const DEFAULT_GRAPH_TRACE_FRAME_DELAY_MS = 0;
+
+interface HostCompletionResult {
+  kind: PiWendaoHostWorkKind;
+  processId: string;
+  nodeId: string;
+  tokenId: number;
+  claimant?: string;
+  data: Record<string, unknown>;
+}
 
 /**
  * Execute a BPMN workflow through the qianji CLI.
@@ -188,14 +205,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       useRealHost && options.hostFixturePath
         ? await readHostCompletionFixture(options.hostFixturePath, cwd)
         : undefined;
-    const hostFixturePath = useRealHost
-      ? undefined
-      : (options.hostFixturePath ??
-        (await writeDefaultHostFixture(options.source, variables).then((fixture) => {
-          if (!fixture) return undefined;
-          tempDirs.push(fixture.dir);
-          return fixture.path;
-        })));
+    const hostFixturePath = useRealHost ? undefined : options.hostFixturePath;
 
     const args = buildQianjiArgs({
       sourcePath,
@@ -250,7 +260,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       };
     }
 
-    const parsedVariables = parseQianjiVariables(cli.stdout);
+    const parsedVariables = resultVariables(cli);
     return {
       success: true,
       variables: { ...variables, ...parsedVariables },
@@ -325,19 +335,6 @@ async function writeTempBpmnSource(source: string): Promise<{ dir: string; path:
   return { dir, path };
 }
 
-async function writeDefaultHostFixture(
-  source: string,
-  context: Record<string, unknown>,
-): Promise<{ dir: string; path: string } | undefined> {
-  const fixture = buildDefaultHostFixture(source, context);
-  if (!fixture) return undefined;
-
-  const dir = await mkdtemp(join(tmpdir(), "pi-wendao-qianji-host-"));
-  const path = join(dir, "host-fixture.json");
-  await writeFile(path, `${JSON.stringify(fixture, null, 2)}\n`, "utf-8");
-  return { dir, path };
-}
-
 async function readHostCompletionFixture(
   path: string,
   cwd: string,
@@ -388,91 +385,107 @@ async function runQianjiExternalHostLoop(options: {
     streamedTrace: false,
     hostWork: [],
   };
+  const continuationFixture = buildNonHumanCompletionFixture(
+    options.completionFixture,
+    piWendaoConfigs,
+  );
+  const continuationFixturePath = continuationFixture
+    ? await writeHostCompletionFixture(continuationFixture).then((fixture) => {
+        options.tempDirs.push(fixture.dir);
+        return fixture.path;
+      })
+    : undefined;
   const stallGuard = new WorkflowStallGuard();
   const onTraceEvent = async (event: QianjiTraceEvent) => {
     updatePendingActivities(pendingActivities, event);
     await options.onTraceEvent(event);
   };
 
-  let latest = await runQianjiCli(
-    options.command,
-    buildQianjiArgs({
-      sourcePath: options.sourcePath,
-      processId: options.processId,
-      instanceId: options.instanceId,
-      context: options.context,
-      dmnPaths: options.dmnPaths,
-      eventFixturePath: options.eventFixturePath,
-      traceStream: true,
-      externalHost: true,
-      startAtNode: options.startAtNode,
-    }),
-    options.cwd,
-    onTraceEvent,
-    options.options.signal,
-  );
-  appendCliResult(aggregate, latest);
-
-  let guard = 0;
-  while (latest.exitCode === 0 && parseQianjiOutcome(latest.stdout) === "blocked_on_host") {
-    throwIfWorkflowInterrupted(options.options.signal);
-    guard += 1;
-    if (guard > 100) {
-      throw new Error("qianji external host loop exceeded 100 host-boundary iterations");
-    }
-    const checkpoint = parseQianjiCheckpointFeedback(latest.stdout, latest.hostWork.length);
-    stallGuard.inspectPendingHostWork({
-      hostWork: latest.hostWork,
-      piWendaoConfigs,
-      variables: options.context,
-    });
-    emitQianjiHostWorkEvents(latest.hostWork, options.options);
-    applyQianjiHostWorkGraph({
-      hostWork: latest.hostWork,
-      piWendaoConfigs,
-      checkpoint,
-      hostBackend: resolveHostBackendLabel(options.options),
-      options: options.options,
-    });
-    const hostData = await runPendingHostWork({
-      agentHost,
-      humanTaskHandler: options.options.humanTaskHandler,
-      piWendaoConfigs,
-      pendingHostWork: latest.hostWork,
-      pendingActivityIds: Array.from(pendingActivities),
-      variables: options.context,
-      processId: options.processId,
-      instanceId: options.instanceId,
-      checkpoint,
-      completionFixture: options.completionFixture,
-      signal: options.options.signal,
-    });
-    if (!hostData) {
-      throw new Error("qianji stopped on host work but did not stream an active BPMN activity");
-    }
-    const fixture = await writeHostCompletionFixture(hostData);
-    options.tempDirs.push(fixture.dir);
-    latest = await runQianjiCli(
+  let session: QianjiHostSession | undefined;
+  try {
+    session = new QianjiHostSession(
       options.command,
-      buildQianjiTaskCompleteArgs({
+      buildQianjiHostSessionArgs({
         sourcePath: options.sourcePath,
+        processId: options.processId,
         instanceId: options.instanceId,
+        context: options.context,
         dmnPaths: options.dmnPaths,
-        hostFixturePath: fixture.path,
+        hostFixturePath: continuationFixturePath,
+        eventFixturePath: options.eventFixturePath,
         traceStream: true,
-        externalHost: true,
+        startAtNode: options.startAtNode,
       }),
       options.cwd,
       onTraceEvent,
       options.options.signal,
     );
-    const variables = parseQianjiVariables(latest.stdout);
-    Object.assign(options.context, variables);
+    let latest = await session.initial;
     appendCliResult(aggregate, latest);
-  }
 
-  aggregate.exitCode = latest.exitCode;
-  return aggregate;
+    let guard = 0;
+    while (latest.exitCode === 0 && resultOutcome(latest) === "blocked_on_host") {
+      throwIfWorkflowInterrupted(options.options.signal);
+      guard += 1;
+      if (guard > 100) {
+        throw new Error("qianji external host loop exceeded 100 host-boundary iterations");
+      }
+      const checkpoint = resultCheckpointFeedback(latest, latest.hostWork.length);
+      stallGuard.inspectPendingHostWork({
+        hostWork: latest.hostWork,
+        piWendaoConfigs,
+        variables: options.context,
+      });
+      emitQianjiHostWorkEvents(latest.hostWork, options.options);
+      applyQianjiHostWorkGraph({
+        hostWork: latest.hostWork,
+        piWendaoConfigs,
+        checkpoint,
+        options: options.options,
+      });
+      const hostCompletions = await runPendingHostWork({
+        agentHost,
+        humanTaskHandler: options.options.humanTaskHandler,
+        piWendaoConfigs,
+        pendingHostWork: latest.hostWork,
+        variables: options.context,
+        processId: options.processId,
+        instanceId: options.instanceId,
+        checkpoint,
+        completionFixture: options.completionFixture,
+        signal: options.options.signal,
+      });
+      if (!hostCompletions || hostCompletions.length === 0) {
+        throw new Error("qianji stopped on host work but did not stream an active BPMN activity");
+      }
+      for (const [completionIndex, completion] of hostCompletions.entries()) {
+        const completionPayload = {
+          tokenId: completion.tokenId,
+          processId: completion.processId,
+          activityId: completion.nodeId,
+          kind: completion.kind,
+          data: completion.data,
+          ...(completion.claimant ? { claimant: completion.claimant } : {}),
+        };
+        const continueUntilHumanBoundary = completionIndex === hostCompletions.length - 1;
+        latest = await session.taskComplete(
+          buildQianjiHostSessionTaskCompleteRequest({
+            completion: completionPayload,
+            continueUntilHumanBoundary,
+          }),
+        );
+        const variables = resultVariables(latest);
+        Object.assign(options.context, variables);
+        appendCliResult(aggregate, latest);
+        if (latest.exitCode !== 0) break;
+      }
+    }
+
+    aggregate.exitCode = latest.exitCode;
+    return aggregate;
+  } finally {
+    session?.close();
+  }
 }
 
 async function runPendingHostWork(options: {
@@ -480,28 +493,30 @@ async function runPendingHostWork(options: {
   humanTaskHandler?: (request: HumanTaskPromptRequest) => Promise<string>;
   piWendaoConfigs: Map<string, PiWendaoConfig>;
   pendingHostWork: QianjiHostWork[];
-  pendingActivityIds: string[];
   variables: Record<string, unknown>;
   processId: string;
   instanceId: string;
   checkpoint?: PiWendaoQianjiCheckpointFeedback;
   completionFixture?: HostCompletionFixture;
   signal?: AbortSignal;
-}): Promise<HostCompletionFixture | undefined> {
+}): Promise<HostCompletionResult[] | undefined> {
   throwIfWorkflowInterrupted(options.signal);
   const tokenResults = await Promise.all(
     options.pendingHostWork.map(async (work) => {
       throwIfWorkflowInterrupted(options.signal);
       const tokenVariables = { ...options.variables, ...(work.variables ?? {}) };
+      const activityId = hostWorkActivityId(work);
+      const processId = hostWorkProcessId(work, options.processId);
       const data = await runPiWendaoActivity({
         agentHost: options.agentHost,
         humanTaskHandler: options.humanTaskHandler,
         piWendaoConfigs: options.piWendaoConfigs,
-        activityId: work.node_id,
+        activityId,
+        hostWork: work,
         hostKind: work.kind,
         variables: tokenVariables,
         execution: {
-          processId: options.processId,
+          processId,
           instanceId: options.instanceId,
           nodeIndex: work.node_index,
           tokenId: work.token_id,
@@ -511,48 +526,20 @@ async function runPendingHostWork(options: {
         completionFixture: options.completionFixture,
         signal: options.signal,
       });
-      return { kind: work.kind, nodeId: work.node_id, tokenId: String(work.token_id), data };
+      return {
+        kind: work.kind,
+        processId,
+        nodeId: activityId,
+        tokenId: work.token_id,
+        ...(work.claim?.claimant ? { claimant: work.claim.claimant } : {}),
+        data,
+      };
     }),
   );
-  const fixture: HostCompletionFixture = {};
   for (const result of tokenResults) {
     Object.assign(options.variables, result.data);
-    addHostCompletionResult(fixture, result);
   }
-  if (hasHostCompletionResults(fixture)) {
-    return fixture;
-  }
-
-  const activityResults = await Promise.all(
-    options.pendingActivityIds.map(async (activityId) => {
-      throwIfWorkflowInterrupted(options.signal);
-      const activityVariables = { ...options.variables };
-      const data = await runPiWendaoActivity({
-        agentHost: options.agentHost,
-        humanTaskHandler: options.humanTaskHandler,
-        piWendaoConfigs: options.piWendaoConfigs,
-        activityId,
-        variables: activityVariables,
-        execution: {
-          processId: options.processId,
-          instanceId: options.instanceId,
-          checkpoint: options.checkpoint,
-        },
-        completionFixture: options.completionFixture,
-        signal: options.signal,
-      });
-      return { activityId, data };
-    }),
-  );
-  const service_tasks: Record<string, { data: Record<string, unknown> }> = {};
-  for (const result of activityResults) {
-    Object.assign(options.variables, result.data);
-    service_tasks[result.activityId] = { data: result.data };
-  }
-  if (Object.keys(service_tasks).length > 0) {
-    return { service_tasks };
-  }
-  return undefined;
+  return tokenResults.length > 0 ? tokenResults : undefined;
 }
 
 async function writeHostCompletionFixture(
@@ -564,38 +551,40 @@ async function writeHostCompletionFixture(
   return { dir, path };
 }
 
-function addHostCompletionResult(
-  fixture: HostCompletionFixture,
-  result: {
-    kind: PiWendaoHostWorkKind;
-    nodeId: string;
-    tokenId: string;
-    data: Record<string, unknown>;
-  },
-): void {
-  switch (result.kind) {
-    case "service":
-      fixture.service_task_tokens ??= {};
-      fixture.service_task_tokens[result.tokenId] = { data: result.data };
-      return;
-    case "user":
-      fixture.user_tasks ??= {};
-      fixture.user_tasks[result.nodeId] = { data: result.data };
-      return;
-    case "manual":
-      fixture.manual_tasks ??= {};
-      fixture.manual_tasks[result.nodeId] = { data: result.data };
-      return;
-    case "send":
-      fixture.send_tasks ??= {};
-      fixture.send_tasks[result.nodeId] = { data: result.data };
-      return;
-    case "script":
-    case "business_rule":
-      fixture.service_task_tokens ??= {};
-      fixture.service_task_tokens[result.tokenId] = { data: result.data };
-      return;
+function buildNonHumanCompletionFixture(
+  fixture: HostCompletionFixture | undefined,
+  piWendaoConfigs: Map<string, PiWendaoConfig>,
+): HostCompletionFixture | undefined {
+  if (!fixture) return undefined;
+  const nonHumanFixture: HostCompletionFixture = {};
+  if (fixture.send_tasks) {
+    nonHumanFixture.send_tasks = validateStaticFixtureBucket(fixture.send_tasks, piWendaoConfigs);
   }
+  if (fixture.service_tasks) {
+    nonHumanFixture.service_tasks = validateStaticFixtureBucket(
+      fixture.service_tasks,
+      piWendaoConfigs,
+    );
+  }
+  if (fixture.service_task_tokens) nonHumanFixture.service_task_tokens = fixture.service_task_tokens;
+  if (fixture.business_rule_tasks) nonHumanFixture.business_rule_tasks = fixture.business_rule_tasks;
+  return hasHostCompletionResults(nonHumanFixture) ? nonHumanFixture : undefined;
+}
+
+function validateStaticFixtureBucket(
+  bucket: Record<string, { data: Record<string, unknown> }>,
+  piWendaoConfigs: Map<string, PiWendaoConfig>,
+): Record<string, { data: Record<string, unknown> }> {
+  const validated: Record<string, { data: Record<string, unknown> }> = {};
+  for (const [activityId, entry] of Object.entries(bucket)) {
+    const config = piWendaoConfigs.get(activityId);
+    validated[activityId] = {
+      data: config
+        ? validateOutputSchemas(config, entry.data, { activityId })
+        : entry.data,
+    };
+  }
+  return validated;
 }
 
 async function runPiWendaoActivity(options: {
@@ -603,6 +592,7 @@ async function runPiWendaoActivity(options: {
   humanTaskHandler?: (request: HumanTaskPromptRequest) => Promise<string>;
   piWendaoConfigs: Map<string, PiWendaoConfig>;
   activityId: string;
+  hostWork?: QianjiHostWork;
   hostKind?: PiWendaoHostWorkKind;
   variables: Record<string, unknown>;
   execution: PiWendaoAgentExecutionMetadata;
@@ -616,24 +606,34 @@ async function runPiWendaoActivity(options: {
     inputs: [],
     outputs: [],
   };
-  if ((options.hostKind ?? config.hostKind) === "user") {
+  const effectiveConfig = options.hostWork
+    ? mergeQianjiHostWorkFormConfig(config, options.hostWork)
+    : config;
+  const hostKind = options.hostKind ?? config.hostKind;
+  if (isHumanHostWorkKind(hostKind)) {
     if (!options.humanTaskHandler) {
-      throw new Error(`BPMN userTask '${options.activityId}' requires a human task handler`);
+      const element = hostKind === "manual" ? "manualTask" : "userTask";
+      throw new Error(`BPMN ${element} '${options.activityId}' requires a human task handler`);
     }
-    const resolvedConfig = resolveHumanTaskConfig(config, options.variables, {
+    const resolvedConfig = resolveHumanTaskConfig(effectiveConfig, options.variables, {
       activityId: options.activityId,
     });
     const reply = await options.humanTaskHandler({
       activityId: options.activityId,
       config: resolvedConfig,
       variables: options.variables,
+      ...(options.hostWork?.assignment ? { assignment: options.hostWork.assignment } : {}),
+      ...(options.hostWork?.claim ? { claim: options.hostWork.claim } : {}),
       execution: {
         ...options.execution,
         activityId: options.activityId,
       },
     });
     throwIfWorkflowInterrupted(options.signal);
-    const output = mapHumanTaskReplyToOutputs(reply, config.outputs);
+    const output = mapHumanTaskReplyToOutputs(
+      reply,
+      humanTaskReplyOutputNames(effectiveConfig, { activityId: options.activityId }),
+    );
     Object.assign(options.variables, output);
     return output;
   }
@@ -652,7 +652,7 @@ async function runPiWendaoActivity(options: {
   }
   const output = await options.agentHost.run({
     activityId: options.activityId,
-    config,
+    config: effectiveConfig,
     variables: options.variables,
     signal: options.signal,
     execution: {
@@ -661,7 +661,7 @@ async function runPiWendaoActivity(options: {
     },
   });
   throwIfWorkflowInterrupted(options.signal);
-  const validatedOutput = validateOutputSchemas(config, output, {
+  const validatedOutput = validateOutputSchemas(effectiveConfig, output, {
     activityId: options.activityId,
   });
   Object.assign(options.variables, validatedOutput);
@@ -674,7 +674,7 @@ function resolveFixtureCompletion(options: {
   activityId: string;
   tokenId?: number;
 }): Record<string, unknown> | undefined {
-  if (!options.fixture || options.hostKind === "user") return undefined;
+  if (!options.fixture || isHumanHostWorkKind(options.hostKind)) return undefined;
   const tokenData =
     options.tokenId !== undefined
       ? options.fixture.service_task_tokens?.[String(options.tokenId)]?.data
@@ -683,8 +683,6 @@ function resolveFixtureCompletion(options: {
   switch (options.hostKind) {
     case "send":
       return options.fixture.send_tasks?.[options.activityId]?.data;
-    case "manual":
-      return options.fixture.manual_tasks?.[options.activityId]?.data;
     case "script":
     case "business_rule":
     case "service":
@@ -707,26 +705,27 @@ function applyQianjiHostWorkGraph(options: {
   hostWork: QianjiHostWork[];
   piWendaoConfigs: Map<string, PiWendaoConfig>;
   checkpoint?: PiWendaoQianjiCheckpointFeedback;
-  hostBackend?: string;
   options: ExecuteOptions;
 }): void {
   if (!options.options.graphView || options.hostWork.length === 0) return;
   const byNode = new Map<string, QianjiHostWork[]>();
   for (const work of options.hostWork) {
-    const group = byNode.get(work.node_id) ?? [];
+    const activityId = hostWorkActivityId(work);
+    const group = byNode.get(activityId) ?? [];
     group.push(work);
-    byNode.set(work.node_id, group);
+    byNode.set(activityId, group);
   }
   for (const [nodeId, work] of byNode) {
+    const hostKinds = uniqueHostKinds(work.map((item) => item.kind));
     options.options.graphView.setNodeStatus(nodeId, "active");
     options.options.graphView.setNodeDetails(
       nodeId,
       buildGraphRuntimeDetails({
         hostWorkCount: work.length,
-        hostKinds: [...new Set(work.map((item) => item.kind))],
+        hostKinds,
         config: options.piWendaoConfigs.get(nodeId),
         checkpoint: options.checkpoint,
-        hostBackend: options.hostBackend,
+        hostBackend: resolveHostBackendLabel(options.options, hostKinds),
         hostWork: work,
         batchHostWorkCount: options.hostWork.length,
       }),
@@ -769,6 +768,14 @@ function buildGraphRuntimeDetails(options: {
   if (options.config?.subagent?.type) {
     details.push(`subagent:${options.config.subagent.type}`);
   }
+  const assignmentSummaries = uniqueStrings(
+    (options.hostWork ?? [])
+      .map((work) => summarizeHumanTaskAssignment(work.assignment))
+      .filter(isNonEmptyString),
+  );
+  if (assignmentSummaries.length > 0) {
+    details.push(`assignment:${assignmentSummaries.join(";")}`);
+  }
   return details;
 }
 
@@ -782,14 +789,18 @@ function emitQianjiHostWorkEvents(hostWork: QianjiHostWork[], options: ExecuteOp
 function buildQianjiHostWorkEvents(hostWork: QianjiHostWork[]): QianjiHostWorkEvent[] {
   const byNode = new Map<string, QianjiHostWork[]>();
   for (const work of hostWork) {
-    const group = byNode.get(work.node_id) ?? [];
+    const activityId = hostWorkActivityId(work);
+    const group = byNode.get(activityId) ?? [];
     group.push(work);
-    byNode.set(work.node_id, group);
+    byNode.set(activityId, group);
   }
   const batchParallel = hostWork.length > 1;
   return [...byNode.entries()].map(([activityId, work]) => {
     const repeatKinds = uniqueStrings(
       work.map((item) => readRepeatKind(item.repeat)).filter(isNonEmptyString),
+    );
+    const assignmentSummaries = uniqueStrings(
+      work.map((item) => summarizeHumanTaskAssignment(item.assignment)).filter(isNonEmptyString),
     );
     return {
       activityId,
@@ -800,8 +811,40 @@ function buildQianjiHostWorkEvents(hostWork: QianjiHostWork[]): QianjiHostWorkEv
       parallel: batchParallel || work.some((item) => isParallelRepeat(item.repeat)),
       repeatKinds,
       repeatSummaries: work.map((item) => summarizeRepeat(item.repeat)).filter(isNonEmptyString),
+      ...(assignmentSummaries.length > 0 ? { assignmentSummaries } : {}),
     };
   });
+}
+
+function summarizeHumanTaskAssignment(
+  assignment: QianjiHumanTaskAssignment | null | undefined,
+): string | undefined {
+  if (!assignment) return undefined;
+  const roles = [
+    ...(assignment.human_performers ?? []).map((role) =>
+      summarizeHumanTaskResourceRole("human_performer", role),
+    ),
+    ...(assignment.potential_owners ?? []).map((role) =>
+      summarizeHumanTaskResourceRole("potential_owner", role),
+    ),
+  ].filter(isNonEmptyString);
+  return roles.length > 0 ? roles.join(";") : undefined;
+}
+
+function summarizeHumanTaskResourceRole(
+  kind: string,
+  role: QianjiHumanTaskResourceRole,
+): string {
+  const label = [kind, role.name?.trim()].filter(isNonEmptyString).join(":");
+  const resourceRef = role.resource_ref?.trim();
+  const expression = role.assignment_expression?.trim();
+  return [
+    label,
+    resourceRef ? `ref=${resourceRef}` : undefined,
+    expression ? `expr=${expression}` : undefined,
+  ]
+    .filter(isNonEmptyString)
+    .join(":");
 }
 
 function buildParallelRuntimeDetail(
@@ -842,6 +885,20 @@ function uniqueHostKinds(values: PiWendaoHostWorkKind[]): PiWendaoHostWorkKind[]
   return [...new Set(values)];
 }
 
+function isHumanHostWorkKind(
+  hostKind: PiWendaoHostWorkKind | undefined,
+): hostKind is "user" | "manual" {
+  return hostKind === "user" || hostKind === "manual";
+}
+
+function hostWorkActivityId(work: QianjiHostWork): string {
+  return work.activity_id?.trim() || work.node_id;
+}
+
+function hostWorkProcessId(work: QianjiHostWork, fallback: string): string {
+  return work.process_id?.trim() || fallback;
+}
+
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -850,7 +907,13 @@ function isNonEmptyString(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function resolveHostBackendLabel(options: ExecuteOptions): string | undefined {
+function resolveHostBackendLabel(
+  options: ExecuteOptions,
+  hostKinds: PiWendaoHostWorkKind[] = [],
+): string | undefined {
+  if (hostKinds.length > 0 && hostKinds.every(isHumanHostWorkKind) && options.humanTaskHandler) {
+    return "human";
+  }
   if (options.hostBackend) return options.hostBackend;
   if (options.agentHost) return "custom-host";
   if (options.humanTaskHandler && !options.model) return "human";
@@ -872,6 +935,39 @@ function appendCliResult(aggregate: QianjiCliResult, result: QianjiCliResult): v
   aggregate.streamedTrace ||= result.streamedTrace;
   aggregate.hostWork.push(...result.hostWork);
   aggregate.exitCode = result.exitCode;
+  if (result.outcome) aggregate.outcome = result.outcome;
+  if (result.checkpoint) aggregate.checkpoint = result.checkpoint;
+  if (result.pendingHostWork !== undefined) aggregate.pendingHostWork = result.pendingHostWork;
+  if (result.variables) {
+    aggregate.variables = {
+      ...(aggregate.variables ?? {}),
+      ...result.variables,
+    };
+  }
+}
+
+function resultOutcome(result: QianjiCliResult): string | undefined {
+  return result.outcome ?? parseQianjiOutcome(result.stdout);
+}
+
+function resultVariables(result: QianjiCliResult): Record<string, unknown> {
+  return result.variables ?? parseQianjiVariables(result.stdout);
+}
+
+function resultCheckpointFeedback(
+  result: QianjiCliResult,
+  hostWorkCount = 0,
+): PiWendaoQianjiCheckpointFeedback | undefined {
+  if (result.checkpoint) {
+    return {
+      ...result.checkpoint,
+      ...(result.outcome ? { outcome: result.outcome } : {}),
+      ...(result.pendingHostWork !== undefined
+        ? { pendingHostWork: String(result.pendingHostWork) }
+        : {}),
+    };
+  }
+  return parseQianjiCheckpointFeedback(result.stdout, hostWorkCount);
 }
 
 function applyQianjiTrace(output: string, options: ExecuteOptions): void {
@@ -909,7 +1005,9 @@ function applyQianjiTraceEvents(trace: QianjiTraceEvent[], options: ExecuteOptio
   }
 }
 
-function resolveTraceFrameDelayMs(options: ExecuteOptions): number {
+export function resolveTraceFrameDelayMs(
+  options: Pick<ExecuteOptions, "graphView" | "traceFrameDelayMs">,
+): number {
   if (!options.graphView) return 0;
   if (typeof options.traceFrameDelayMs === "number") {
     return Math.max(0, options.traceFrameDelayMs);

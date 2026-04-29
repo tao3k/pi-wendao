@@ -18,8 +18,10 @@ type ContextWithUi = (ExtensionCommandContext | ExtensionContext) & {
 export default function registerPiWendaoPiSubagents(pi: ExtensionAPI): void {
   const overlayHandles = new Set<OverlayHandle>();
   let latestUi: ExtensionCommandContext["ui"] | undefined;
+  let surfaceGeneration = 0;
 
   const resetSurfaces = () => {
+    surfaceGeneration += 1;
     for (const handle of [...overlayHandles]) {
       handle.hide();
       overlayHandles.delete(handle);
@@ -30,9 +32,13 @@ export default function registerPiWendaoPiSubagents(pi: ExtensionAPI): void {
 
   pi.events.on(PI_WENDAO_RESET_NATIVE_SESSION_SURFACES_EVENT, resetSurfaces);
 
-  registerPiSubagents(wrapPi(pi, (ctx) => wrapContext(ctx, overlayHandles, (ui) => {
-    latestUi = ui;
-  })));
+  registerPiSubagents(
+    wrapPi(pi, (ctx) =>
+      wrapContext(ctx, overlayHandles, () => surfaceGeneration, (ui) => {
+        latestUi = ui;
+      }),
+    ),
+  );
 }
 
 function wrapPi(
@@ -87,11 +93,13 @@ function wrapUnknownContext<TContext extends ExtensionCommandContext | Extension
 function wrapContext<TContext extends ExtensionCommandContext | ExtensionContext>(
   ctx: TContext,
   overlayHandles: Set<OverlayHandle>,
+  getSurfaceGeneration: () => number,
   onUi: (ui: ExtensionCommandContext["ui"]) => void,
 ): TContext {
   if (!hasExtensionUi(ctx)) return ctx;
   const context = ctx as TContext & ContextWithUi;
   onUi(context.ui);
+  const contextGeneration = getSurfaceGeneration();
   return {
     ...context,
     ui: {
@@ -106,6 +114,10 @@ function wrapContext<TContext extends ExtensionCommandContext | ExtensionContext
             ? {
                 ...options,
                 onHandle: (handle: OverlayHandle) => {
+                  if (contextGeneration !== getSurfaceGeneration()) {
+                    handle.hide();
+                    return;
+                  }
                   overlayHandle = handle;
                   overlayHandles.add(handle);
                   options.onHandle?.(handle);

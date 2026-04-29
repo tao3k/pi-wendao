@@ -8,6 +8,7 @@ import { requestQianjiInteractionReply } from "../qianji-interaction-prompt.js";
 import {
   runNativeWorkflowPiAskFlow,
   type NativeAskFlow,
+  type NativeAskFreeText,
   type NativeAskOption,
   type NativeAskParams,
 } from "./ask.js";
@@ -25,7 +26,12 @@ export async function requestNativeWorkflowInputReply(
   signal?: AbortSignal,
   askFlow: NativeAskFlow = runNativeWorkflowPiAskFlow,
 ): Promise<string> {
-  if (!ctx.hasUI) return Promise.resolve(fallbackReply(request));
+  if (!ctx.hasUI) {
+    if (isWorkflowHumanInput(request)) {
+      throw new WorkflowInterruptedError("Workflow input requires native UI; checkpoint preserved.");
+    }
+    return Promise.resolve(fallbackReply(request));
+  }
   if (signal?.aborted) throw new WorkflowInterruptedError();
 
   const details: PiWendaoWorkflowAskContextDetails = {
@@ -108,7 +114,11 @@ function choicesForWorkflowInput(request: PlannerReplyRequest): QianjiInteractio
 
 function normalizeWorkflowInputAnswer(rawAnswer: string, request: PlannerReplyRequest): string {
   const trimmed = rawAnswer.trim();
-  return trimmed || fallbackReply(request);
+  if (trimmed) return trimmed;
+  if (isWorkflowHumanInput(request)) {
+    throw new WorkflowInterruptedError("Workflow input cancelled; checkpoint preserved.");
+  }
+  return fallbackReply(request);
 }
 
 async function requestPiAskWorkflowInput(
@@ -148,18 +158,31 @@ function workflowInputAskParams(
   details: PiWendaoWorkflowAskContextDetails,
   request: PlannerReplyRequest,
 ): NativeAskParams {
+  const options = workflowInputAskOptions(details, request);
+  const freeText = workflowInputFreeText(request);
   return {
     title: `${details.label} · ${basename(details.workflowPath ?? "workflow")}`,
     questions: [
       {
+        ...(freeText ? { freeText } : {}),
         id: PLANNER_REPLY_QUESTION_ID,
         label: details.label,
-        options: workflowInputAskOptions(details, request),
+        options,
         prompt: details.question,
         required: true,
         type: "single",
       },
     ],
+  };
+}
+
+function workflowInputFreeText(request: PlannerReplyRequest): NativeAskFreeText | undefined {
+  const freeText = request.interaction?.freeText;
+  if (!freeText) return undefined;
+  return {
+    ...(freeText.name ? { name: freeText.name } : {}),
+    ...(typeof freeText.optional === "boolean" ? { optional: freeText.optional } : {}),
+    ...(freeText.placeholder ? { placeholder: freeText.placeholder } : {}),
   };
 }
 
@@ -173,6 +196,9 @@ function workflowInputAskOptions(
       label: choice.label || choice.value,
       value: choice.value,
     }));
+  }
+  if (isWorkflowHumanInput(request)) {
+    throw new Error(formatMissingWorkflowHumanInputOptionsError(request));
   }
   const fallback = defaultReply(request);
   if (fallback) {
@@ -197,7 +223,26 @@ function answerFromAskResult(
 }
 
 function fallbackReply(request: PlannerReplyRequest): string {
+  if (isWorkflowHumanInput(request)) {
+    throw new WorkflowInterruptedError("Workflow input cancelled; checkpoint preserved.");
+  }
   return defaultReply(request) || "rejected";
+}
+
+function isWorkflowHumanInput(request: PlannerReplyRequest): boolean {
+  return request.action === "human_task" || request.to === "user";
+}
+
+function formatMissingWorkflowHumanInputOptionsError(request: PlannerReplyRequest): string {
+  const activity = request.context?.activityId ?? "<unknown>";
+  const type = request.interaction?.type ?? "<missing>";
+  return [
+    "[pi-wendao.runtime.missing_native_interaction_options]",
+    `BPMN human task '${activity}' has no renderable native interaction choices.`,
+    `Interaction type: ${type}`,
+    "Contract: native host-work form metadata must provide choices for choice/choice_input prompts, or use input/freeText for free-form prompts.",
+    "Run BPMN lint/compile so stale artifacts are repaired before pi-wendao renders native pi-ask UI.",
+  ].join("\n");
 }
 
 function allowsFreeText(request: PlannerReplyRequest): boolean {

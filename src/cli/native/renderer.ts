@@ -139,7 +139,9 @@ export class PiWendaoNativeWorkflowRenderer implements Renderer {
         return this.widget;
       });
     }
-    this.runMessage = startWorkflowRunMessage(this.pi, this.workflowPath);
+    this.runMessage = startWorkflowRunMessage(this.pi, this.workflowPath, Date.now(), {
+      streamDetails: this.graphInTopWindow ? "summary" : "visible",
+    });
     this.emit("status", [`running workflow: ${this.workflowPath}`]);
   }
 

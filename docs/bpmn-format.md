@@ -1,88 +1,106 @@
 # BPMN Format
 
-The compiled output is valid BPMN 2.0 XML. Extension elements use the `qianji`
-namespace and the namespace URI `https://qianji.dev/bpmn/extensions`.
+The compiled output is standard BPMN 2.0 XML. pi-wendao does not require a
+custom moddle descriptor: host-work metadata is carried through
+`documentation`, `ioSpecification`, `dataInputAssociation`, and
+`dataOutputAssociation`.
+
+## Service Tasks
+
+Service tasks use native IO to declare workflow variables. The prompt is the
+task `documentation`; inputs come from `dataInputAssociation/sourceRef`; outputs
+are mapped through `dataOutputAssociation/targetRef`.
 
 ```xml
-<serviceTask id="Task_1" name="Run tests"
+<serviceTask id="Task_RunTests" name="Run tests"
              implementation="${environment.services.runAgent}">
-  <extensionElements>
-    <qianji:config>
-      <qianji:prompt>Run the test suite and report results.</qianji:prompt>
-      <qianji:tools>bash</qianji:tools>
-      <qianji:inputs></qianji:inputs>
-      <qianji:outputs>testsPassed</qianji:outputs>
-      <qianji:agentType>pi-wendao-worker</qianji:agentType>
-      <qianji:runInBackground>true</qianji:runInBackground>
-      <qianji:maxTurns>8</qianji:maxTurns>
-    </qianji:config>
-  </extensionElements>
+  <documentation>Run the test suite and report whether tests pass.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_RunTests_output_testsPassed" name="testsPassed" />
+    <inputSet id="Task_RunTests_input_set" />
+    <outputSet id="Task_RunTests_output_set">
+      <dataOutputRefs>Task_RunTests_output_testsPassed</dataOutputRefs>
+    </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_RunTests_output_testsPassed</sourceRef>
+    <targetRef>testsPassed</targetRef>
+  </dataOutputAssociation>
 </serviceTask>
 ```
 
-Human feedback or approval checkpoints use `userTask` with the same
-`qianji:config` fields. `qianji:tools` must be empty because the host resolves
-the node through human input rather than an LLM tool runner.
+## Human Tasks
+
+Human checkpoints use `userTask` or `manualTask`. `documentation` is the prompt
+unless a `dataInput name="question"` is mapped from an upstream variable.
 
 ```xml
 <userTask id="Task_Approve" name="Approve proposal">
-  <extensionElements>
-    <qianji:config>
-      <qianji:prompt>Review the proposal and approve before continuing.</qianji:prompt>
-      <qianji:tools></qianji:tools>
-      <qianji:inputs>proposal</qianji:inputs>
-      <qianji:outputs>approved,approvedReply</qianji:outputs>
-      <qianji:interaction type="choice_input">
-        <qianji:question>How should the workflow proceed?</qianji:question>
-        <qianji:choice value="approved" label="Approve">Continue to the next BPMN checkpoint.</qianji:choice>
-        <qianji:choice value="rejected" label="Reject">Stop and revise before continuing.</qianji:choice>
-        <qianji:freeText name="approvedReply" optional="true"/>
-        <qianji:result output="approvedReply"/>
-      </qianji:interaction>
-    </qianji:config>
-  </extensionElements>
+  <documentation>How should the workflow proceed?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Approve_input_proposal" name="proposal" />
+    <dataInput id="Task_Approve_input_interactionType" name="interactionType" />
+    <dataInput id="Task_Approve_input_choices" name="choices" />
+    <dataOutput id="Task_Approve_output_answer" name="answer" />
+    <inputSet id="Task_Approve_input_set">
+      <dataInputRefs>Task_Approve_input_proposal</dataInputRefs>
+      <dataInputRefs>Task_Approve_input_interactionType</dataInputRefs>
+      <dataInputRefs>Task_Approve_input_choices</dataInputRefs>
+    </inputSet>
+    <outputSet id="Task_Approve_output_set">
+      <dataOutputRefs>Task_Approve_output_answer</dataOutputRefs>
+    </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>proposal</sourceRef>
+    <targetRef>Task_Approve_input_proposal</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment>
+      <from>choice_input</from>
+      <to>Task_Approve_input_interactionType</to>
+    </assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment>
+      <from>[{"value":"approved","label":"Approve"},{"value":"rejected","label":"Reject"}]</from>
+      <to>Task_Approve_input_choices</to>
+    </assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Approve_output_answer</sourceRef>
+    <targetRef>approved</targetRef>
+  </dataOutputAssociation>
 </userTask>
 ```
 
-`qianji:interaction` is optional and host-neutral. Supported v1 types are
-`input`, `confirm`, `choice`, and `choice_input`. The BPMN declares the
-interaction intent; each host maps it to its native UI or SDK request shape.
-For `choice` and `choice_input`, options may be static `qianji:choice` elements
-or a dynamic `<qianji:choices ref="currentChoices"/>` reference. Dynamic
-questions should keep the prompt text in `currentQuestion` and structured
-choices in `currentChoices`, not embed numbered option text in the question.
-When a producer declares `<qianji:outputSchema name="currentChoices"
-kind="choice_array" .../>`, pi-wendao validates the produced value before the
-next userTask renders. The value must be an array of objects with a non-empty
-`value`; string arrays are rejected. Missing producer schemas are a lint and
-compile-repair problem, not a runtime compatibility path.
+Supported `interactionType` literals are `input`, `confirm`, `choice`, and
+`choice_input`. Choice prompts must provide either a static JSON array literal
+for the `choices` input or a dynamic `sourceRef` to an upstream output such as
+`currentChoices`. A dynamic question uses a `question` input source; otherwise
+the task `documentation` is used as the visible question.
 
-Workflow execution also runs qianji lint as a preflight gate before starting
-qianji runtime checkpoints. When lint fails and a pi-wendao model is available,
-pi-wendao asks the model to repair the BPMN from the compact
-`qianji lint --llm` diagnostic, writes the repaired BPMN under the project
-cache, re-runs lint, and executes the repaired file only after lint passes.
-If repair cannot produce a lint-clean BPMN, the workflow does not start.
+Free-text metadata is optional and uses a JSON object assignment literal on
+`dataInput name="freeText"`, for example
+`{"name":"feedback","optional":true,"placeholder":"Feedback"}`. pi-wendao
+supports one free-text field per human task; model additional fields as later
+tasks or derive structure in a following service task.
 
-```json
-{
-  "currentChoices": [
-    {
-      "value": "graph_visualization",
-      "label": "Graph visualization",
-      "description": "Workflow display and node rendering"
-    }
-  ]
-}
-```
+## Runtime Ownership
+
+During execution, qianji owns scheduling, gateway evaluation, checkpoint writes,
+claim state, assignment state, and host-work tokens. pi-wendao renders native
+human prompts from qianji-streamed host-work metadata and returns typed
+task-completion payloads. It does not recover missing prompts or output names
+from local BPMN after qianji has emitted host work.
+
+Workflow execution runs qianji lint and the pi-wendao native IO contract before
+starting. Stale artifacts that still use custom interaction XML fail preflight
+instead of falling back to a compatibility parser.
+
+## Gateway Conditions
 
 Gateway `conditionExpression` values are type-strict. A bare path such as
 `approved` must resolve to a JSON boolean. Counts and counters must use numeric
-comparisons such as `questionsRemaining > 0`; do not route on a bare
-count-like variable name.
-
-The `agentType`, `runInBackground`, `maxTurns`, `agentModel`, `thinking`,
-`isolated`, `isolation`, and `inheritContext` fields are optional execution
-metadata for subagent-capable host backends. They do not alter BPMN graph
-progression; qianji still decides the next node from BPMN state and returned
-variables.
+comparisons such as `questionsRemaining > 0`; do not route on a bare count-like
+variable name.

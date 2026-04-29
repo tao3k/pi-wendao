@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, resolve as resolvePath } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { isWorkflowInterruptedError } from "../../executor/interrupt.js";
 import { ensureNamedWorkflow } from "../named-workflows.js";
 import {
   appendActiveBpmnNodeLabels,
@@ -115,7 +116,7 @@ export async function runNativeWorkflow(
       preflightLint: false,
     });
   } catch (error) {
-    renderer.finish(false);
+    renderer.finish(isWorkflowInterruptedError(error) || signal?.aborted ? "interrupted" : false);
     throw error;
   }
   renderer.finish(result.interrupted ? "interrupted" : result.success);

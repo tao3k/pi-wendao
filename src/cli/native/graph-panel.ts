@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import type { ExtensionCommandContext, Theme as PiTheme } from "@mariozechner/pi-coding-agent";
 import {
   type Component,
+  type OverlayHandle,
   type TUI,
   truncateToWidth,
 } from "@mariozechner/pi-tui";
@@ -31,9 +32,10 @@ export function setNativeWorkflowGraphPanel(
   factory: (tui: TUI, theme: PiTheme) => NativeWorkflowGraphComponent,
 ): NativeWorkflowGraphPanelHandle {
   let component: NativeWorkflowGraphComponent | undefined;
+  let overlayHandle: OverlayHandle | undefined;
   let closed = false;
 
-  ctx.ui.setHeader(
+  void ctx.ui.custom<void>(
     (tui, theme) => {
       component = factory(tui, theme);
       if (closed) {
@@ -41,14 +43,31 @@ export function setNativeWorkflowGraphPanel(
       }
       return component;
     },
-  );
+    {
+      overlay: true,
+      overlayOptions: () => ({
+        anchor: "top-center",
+        width: "100%",
+        maxHeight: "42%",
+        row: 0,
+        col: 0,
+        margin: { top: 0, right: 0, left: 0 },
+        nonCapturing: true,
+        visible: (termWidth, termHeight) => termWidth >= 20 && termHeight >= 10,
+      }),
+      onHandle: (handle) => {
+        overlayHandle = handle;
+        if (closed) handle.hide();
+      },
+    },
+  ).catch(() => undefined);
 
   const panel: NativeWorkflowGraphPanelHandle = {
     close: () => {
       if (closed) return;
       closed = true;
       activeGraphPanels.delete(panel);
-      ctx.ui.setHeader(undefined);
+      overlayHandle?.hide();
       component?.dispose?.();
     },
     requestRender: () => {

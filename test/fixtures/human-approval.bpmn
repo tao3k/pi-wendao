@@ -1,59 +1,117 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
              targetNamespace="https://qianji.dev">
   <process id="Process_1" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_Draft" name="Draft proposal" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Draft a concise proposal from the user's initial idea. Output proposal.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>idea</qianji:inputs>
-          <qianji:outputs>proposal</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Draft a concise proposal from the user's initial idea. Output proposal.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Draft_input_idea" name="idea" />
+    <dataOutput id="Task_Draft_output_proposal" name="proposal" />
+    <inputSet id="Task_Draft_input_set">
+    <dataInputRefs>Task_Draft_input_idea</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Draft_output_set">
+    <dataOutputRefs>Task_Draft_output_proposal</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>idea</sourceRef>
+    <targetRef>Task_Draft_input_idea</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Draft_output_proposal</sourceRef>
+    <targetRef>proposal</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <userTask id="Task_Approve" name="Approve proposal">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Review the proposal and approve before the workflow continues.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>proposal</qianji:inputs>
-          <qianji:outputs>approved,approvedReply</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question>How should the workflow proceed?</qianji:question>
-            <qianji:choice value="approved" label="Approve">Continue to the next BPMN checkpoint.</qianji:choice>
-            <qianji:choice value="rejected" label="Reject">Stop and revise before continuing.</qianji:choice>
-            <qianji:freeText name="approvedReply" optional="true"/>
-            <qianji:result output="approvedReply"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>How should the workflow proceed?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Approve_input_proposal" name="proposal" />
+    <dataInput id="Task_Approve_input_interactionType" name="interactionType" />
+    <dataInput id="Task_Approve_input_choices" name="choices" />
+    <dataOutput id="Task_Approve_output_answer" name="answer" />
+    <inputSet id="Task_Approve_input_set">
+    <dataInputRefs>Task_Approve_input_proposal</dataInputRefs>
+    <dataInputRefs>Task_Approve_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_Approve_input_choices</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Approve_output_set">
+    <dataOutputRefs>Task_Approve_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>proposal</sourceRef>
+    <targetRef>Task_Approve_input_proposal</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>choice_input</from><to>Task_Approve_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>[{"value":"approved","label":"Approve","description":"Continue to the next BPMN checkpoint."},{"value":"rejected","label":"Reject","description":"Stop and revise before continuing."}]</from><to>Task_Approve_input_choices</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Approve_output_answer</sourceRef>
+    <targetRef>approved</targetRef>
+  </dataOutputAssociation>
+</userTask>
     <exclusiveGateway id="Gateway_Approved" name="Approved?" default="Flow_Rejected"/>
     <serviceTask id="Task_Finalize" name="Finalize proposal" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Finalize the approved proposal and output finalSummary.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>proposal,approvedReply</qianji:inputs>
-          <qianji:outputs>finalSummary</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Finalize the approved proposal and output finalSummary.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Finalize_input_proposal" name="proposal" />
+    <dataInput id="Task_Finalize_input_approved" name="approved" />
+    <dataOutput id="Task_Finalize_output_finalSummary" name="finalSummary" />
+    <inputSet id="Task_Finalize_input_set">
+    <dataInputRefs>Task_Finalize_input_proposal</dataInputRefs>
+    <dataInputRefs>Task_Finalize_input_approved</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Finalize_output_set">
+    <dataOutputRefs>Task_Finalize_output_finalSummary</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>proposal</sourceRef>
+    <targetRef>Task_Finalize_input_proposal</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>approved</sourceRef>
+    <targetRef>Task_Finalize_input_approved</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Finalize_output_finalSummary</sourceRef>
+    <targetRef>finalSummary</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <serviceTask id="Task_Revise" name="Record revision request" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Summarize why the proposal was not approved and output revisionRequest.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>proposal,approvedReply</qianji:inputs>
-          <qianji:outputs>revisionRequest</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Summarize why the proposal was not approved and output revisionRequest.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Revise_input_proposal" name="proposal" />
+    <dataInput id="Task_Revise_input_approved" name="approved" />
+    <dataOutput id="Task_Revise_output_revisionRequest" name="revisionRequest" />
+    <inputSet id="Task_Revise_input_set">
+    <dataInputRefs>Task_Revise_input_proposal</dataInputRefs>
+    <dataInputRefs>Task_Revise_input_approved</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Revise_output_set">
+    <dataOutputRefs>Task_Revise_output_revisionRequest</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>proposal</sourceRef>
+    <targetRef>Task_Revise_input_proposal</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>approved</sourceRef>
+    <targetRef>Task_Revise_input_approved</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Revise_output_revisionRequest</sourceRef>
+    <targetRef>revisionRequest</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <endEvent id="End_Approved"/>
     <endEvent id="End_Rejected"/>
     <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Draft"/>

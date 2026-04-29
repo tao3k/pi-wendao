@@ -185,4 +185,62 @@ describe("createRunAgentService", () => {
     ).resolves.toEqual({ result: "intercom_available" });
     expect(toolCalls).toEqual([{ action: "status" }]);
   });
+
+  it("rejects local tool calls outside qianji toolScope", async () => {
+    let executed = false;
+    faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("bash", { command: "npm install", timeout: 120 }, { id: "tool-bash-1" }),
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    const bashTool: PiWendaoAgentTool<any> = {
+      name: "bash",
+      label: "Bash",
+      description: "Fixture bash tool",
+      parameters: {
+        type: "object",
+        required: ["command"],
+        properties: {
+          command: { type: "string" },
+          timeout: { type: "number" },
+        },
+      } as any,
+      async execute() {
+        executed = true;
+        return {
+          content: [{ type: "text", text: "ran" }],
+        };
+      },
+    };
+    const host = createPiAiHost({
+      model: faux.getModel(),
+      apiKey: "test-key",
+      cwd: process.cwd(),
+      extraTools: [bashTool],
+    });
+
+    await expect(
+      host.run({
+        activityId: "Task_RunTests",
+        variables: {},
+        config: {
+          prompt: "Run npm test.",
+          tools: ["bash"],
+          toolScopes: [
+            {
+              tool: "bash",
+              command: "npm test",
+              timeoutSeconds: 120,
+              writes: false,
+              network: false,
+            },
+          ],
+          inputs: [],
+          outputs: ["ok"],
+        },
+      }),
+    ).rejects.toThrow("violates the native tool scope");
+    expect(executed).toBe(false);
+  });
 });

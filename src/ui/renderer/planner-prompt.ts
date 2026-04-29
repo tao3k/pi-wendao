@@ -1,4 +1,5 @@
 import { cyan, dim, yellow } from "yoctocolors";
+import { WorkflowInterruptedError } from "../../executor/interrupt.js";
 import type { QianjiInteraction, QianjiInteractionChoice } from "../../executor/agent-host.js";
 import type { LogView } from "../graph-view.js";
 import type { PlannerReplyRequest } from "./types.js";
@@ -43,15 +44,41 @@ export function replyPromptForRequest(request: PlannerReplyRequest): {
 export function defaultReplyForRequest(request: PlannerReplyRequest): string {
   if (request.action === "workflow_path") return "";
   if (request.action === "human_task" || request.to === "user") {
-    return choicesForRequest(request)[0]?.value ?? "";
+    return "";
   }
   return "approved";
 }
 
 export function resolveReplyForRequest(request: PlannerReplyRequest, answer: string): string {
   const trimmed = answer.trim();
-  if (!trimmed) return defaultReplyForRequest(request);
-  return choiceReplyForAnswer(request, trimmed)?.value ?? trimmed;
+  if (!trimmed) {
+    if (isWorkflowHumanInput(request)) {
+      throw new WorkflowInterruptedError("Workflow input cancelled; checkpoint preserved.");
+    }
+    return defaultReplyForRequest(request);
+  }
+  const choice = choiceReplyForAnswer(request, trimmed);
+  if (choice) return choice.value;
+  if (isWorkflowHumanInput(request) && !allowsFreeText(request.interaction)) {
+    throw new Error(formatInvalidChoiceReplyError(request, trimmed));
+  }
+  return trimmed;
+}
+
+function isWorkflowHumanInput(request: PlannerReplyRequest): boolean {
+  return request.action === "human_task" || request.to === "user";
+}
+
+function formatInvalidChoiceReplyError(request: PlannerReplyRequest, answer: string): string {
+  const activity = request.context?.activityId ?? "<unknown>";
+  const choices = choicesForRequest(request).map((choice) => choice.value);
+  return [
+    "[pi-wendao.runtime.invalid_native_choice_reply]",
+    `BPMN human task '${activity}' received an answer that does not match a native choice.`,
+    `Answer: ${JSON.stringify(answer)}`,
+    `Allowed values: ${JSON.stringify(choices)}`,
+    "Contract: native choice/confirm prompts require number, value, or label selection. Use choice_input or input for free-form answers.",
+  ].join("\n");
 }
 
 function choiceReplyForAnswer(

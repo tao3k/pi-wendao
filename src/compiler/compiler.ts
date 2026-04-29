@@ -103,7 +103,7 @@ export async function compileSkill(options: CompileOptions): Promise<CompileResu
         cwd: options.cwd,
         domain: "bpmn",
       }),
-    { cwd: options.cwd ?? process.cwd() },
+    { cwd: options.cwd ?? process.cwd(), targetDecision },
   );
   const dmnLintRunner =
     targetDecision.target === "bpmn-dmn"

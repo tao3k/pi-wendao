@@ -23,6 +23,7 @@ export interface PiWendaoWorkflowMessageDetails {
   lines: string[];
   success?: boolean;
   status?: "running" | "completed" | "failed" | "interrupted";
+  streamDetails?: "visible" | "summary";
   eventCount?: number;
   agentCount?: number;
   errorCount?: number;

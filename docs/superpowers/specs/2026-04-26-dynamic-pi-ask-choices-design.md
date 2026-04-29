@@ -9,16 +9,17 @@
 ## 1  Problem Statement
 
 pi-wendao compiles SKILL.md into qianji BPMN and executes workflows through the
-qianji external host.  A `userTask` can declare **static** choices inline or
-**dynamic** choices via `qianji:choices ref="currentChoices"` and
-`qianji:question ref="currentQuestion"`.
+qianji external host. A `userTask` can declare **static** choices as a JSON
+literal on `dataInput name="choices"` or **dynamic** choices through a
+`dataInputAssociation/sourceRef` such as `currentChoices`. A dynamic question
+uses the same native sourceRef pattern for `dataInput name="question"`.
 
 The current test suite (`test/executor/interaction-contract.test.ts`) covers:
 
 - Parsing every interaction shape from a BPMN fixture.
 - Resolving `choicesRef` / `questionRef` when given valid variables.
 - Rejecting malformed `questionRef` (non-string) and `choicesRef` (items without `value`).
-- Rejecting producer `outputSchema` violations (string items where objects are required).
+- Rejecting malformed dynamic choices before pi-ask rendering.
 
 What is **not yet covered**:
 
@@ -67,7 +68,7 @@ No new production code is required; the test exercises existing contracts.
 
 ## 3  Contract Validation Tests (Unit Layer)
 
-### 3.1  Producer outputSchema -- choice_array shapes
+### 3.1  Producer dynamic choices -- array shapes
 
 Test matrix for `validateOutputSchemas`:
 
@@ -108,19 +109,18 @@ it("validates producer choice_array: <case description>", () => {
 | Input variables | Expected result |
 |-----------------|----------------|
 | `currentQuestion: ""` | Throws -- empty string fails `value.trim()` check |
-| `currentChoices: "serialized json array"` | Passes -- `parseChoiceSource` deserializes |
-| `currentChoices: "[not json"` | Throws -- JSON.parse failure falls through to array check |
+| `currentChoices: "serialized json array"` | Throws -- dynamic choices must be a native array, not a string |
+| `currentChoices: "[not json"` | Throws -- dynamic choices must be a native array, not a string |
 | `currentChoices: [{ value: "x" }, { value: "x" }]` | Passes -- duplicates are allowed |
 | `currentQuestion: "  spaced  "` | Resolves to `"spaced"` (trimmed) |
 | `currentChoices: [42, "hello"]` | Throws -- non-object items |
+| `currentChoices: [{ value: 1 }]` | Throws -- `value` must be a string |
 
 ### 3.3  Prompt integration -- outputSchema in agent prompt
 
-Verify that `buildPiWendaoAgentPrompt` translates `kind: "choice_array"` into
-JSON Schema form (`type: "array"`, `items`, `required`, `example`) and omits
-the raw `kind` / `value` fields.  This test already exists for a single-output
-case; extend it to cover a config with **both** `currentQuestion` and
-`currentChoices` outputs where only `currentChoices` has an `outputSchema`.
+Verify that `buildPiWendaoAgentPrompt` describes `currentChoices` as a native
+JSON array of objects with a string `value` field when the task documentation
+asks for dynamic choices.
 
 ---
 
@@ -135,10 +135,10 @@ containing:
 Start -> Task_ProduceChoices (serviceTask) -> Task_AskChoice (userTask) -> End
 ```
 
-- `Task_ProduceChoices` declares `outputs=currentQuestion,currentChoices` and
-  `qianji:outputSchema name="currentChoices" kind="choice_array" value="required" label="optional" description="optional"`.
-- `Task_AskChoice` declares `qianji:choices ref="currentChoices"` and
-  `qianji:question ref="currentQuestion"`.
+- `Task_ProduceChoices` declares native data outputs `currentQuestion` and
+  `currentChoices`.
+- `Task_AskChoice` maps `dataInput name="choices"` from `currentChoices` and
+  `dataInput name="question"` from `currentQuestion`.
 
 ### 4.2  Test: start-at-node at producer, host fixture resolves choices
 

@@ -7,6 +7,7 @@ import type {
   PiLoadedExtensionsLike,
   PiRegisteredToolDefinition,
 } from "../../src/executor/pi-subagents-runtime.js";
+import { nativeDefinitions, nativeServiceTask } from "../support/native-bpmn.js";
 
 const tempDirs: string[] = [];
 
@@ -168,6 +169,46 @@ const fence = String.fromCharCode(96, 96, 96);
 const printVariables = (title, outcome, variables) => {
   console.log("# " + title + "\\n\\nOutcome: " + outcome + "\\n\\n## Variables\\n" + fence + "json\\n" + JSON.stringify(variables, null, 2) + "\\n" + fence + "\\n");
 };
+const printSessionResult = (commandLabel, outcome, variables, pendingHostWork) => {
+  const stdout = commandLabel + ": " + outcome + " (checkpoint=duckdb, source=resumed, saved=yes, deleted=no, pending_host=" + pendingHostWork + ")";
+  console.log("@@QIANJI_SESSION_RESULT " + JSON.stringify({
+    exitCode: 0,
+    stdout,
+    stderr: "",
+    outcome,
+    checkpoint: {
+      backend: "duckdb",
+      source: "resumed",
+      saved: "yes",
+      deleted: "no",
+      status: "saved",
+    },
+    pendingHostWork,
+    variables,
+  }));
+};
+const printSessionHostWork = () => {
+  const processId = get("--process") || "Process_1";
+  const context = JSON.parse(get("--context-json") || "{}");
+  console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", process_id: processId, node_id: "Task_Review", node_kind: "service_task", status: "executing" }));
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+    kind: "service",
+    node_id: "Task_Review",
+    node_index: 2,
+    token_id: 11,
+    variables: { item: "alpha" },
+    repeat: { item: "alpha", index: 0 }
+  }));
+  console.log("@@QIANJI_HOST_WORK " + JSON.stringify({
+    kind: "service",
+    node_id: "Task_Review",
+    node_index: 2,
+    token_id: 12,
+    variables: { item: "beta" },
+    repeat: { item: "beta", index: 1 }
+  }));
+  return context;
+};
 
 if (args[0] !== "bpmn") {
   console.error("unexpected qianji command: " + args.join(" "));
@@ -198,6 +239,36 @@ if (args[1] === "run") {
   process.exit(0);
 }
 
+if (args[1] === "host-session") {
+  const readline = require("node:readline");
+  const context = printSessionHostWork();
+  printSessionResult("qianji run", "blocked_on_host", { items: context.items || [] }, 2);
+  const completed = {};
+  const rl = readline.createInterface({ input: process.stdin });
+  rl.on("line", (line) => {
+    const request = JSON.parse(line);
+    if (request.type === "stop") {
+      process.exit(0);
+    }
+    if (request.type !== "task_complete") {
+      printSessionResult("qianji task complete", "failed", { error: "unexpected request" }, 0);
+      return;
+    }
+    completed[String(request.token_id)] = request.data.result;
+    const tokenIds = Object.keys(completed).sort((a, b) => Number(a) - Number(b));
+    if (tokenIds.length < 2) {
+      printSessionResult("qianji task complete", "blocked_on_host", { partialResults: tokenIds.map((id) => completed[id]) }, 2 - tokenIds.length);
+      return;
+    }
+    console.log("@@QIANJI_TRACE " + JSON.stringify({ kind: "node_status", node_id: "Task_Review", node_kind: "service_task", status: "completed" }));
+    printSessionResult("qianji task complete", "completed", {
+      results: tokenIds.map((id) => completed[id]),
+      fixtureServiceTaskTokens: tokenIds
+    }, 0);
+  });
+  return;
+}
+
 if (args[1] === "tasks" && args[2] === "complete") {
   const hostFixture = JSON.parse(readFileSync(get("--host-fixture"), "utf-8"));
   const tokens = hostFixture.service_task_tokens || {};
@@ -218,37 +289,22 @@ process.exit(64);
 }
 
 function tokenScopedServiceTaskWorkflow(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
-             targetNamespace="https://qianji.dev/test">
-  <process id="Process_1" isExecutable="true">
-    <startEvent id="Start_1" name="Start">
-      <outgoing>Flow_1</outgoing>
-    </startEvent>
-    <serviceTask id="Task_Review" name="Review item" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Review \${environment.variables.item}.</qianji:prompt>
-          <qianji:tools>bash, read</qianji:tools>
-          <qianji:inputs>item</qianji:inputs>
-          <qianji:outputs>result</qianji:outputs>
-          <qianji:agentType>pi-wendao-worker</qianji:agentType>
-          <qianji:agentDescription>Review one parallel item</qianji:agentDescription>
-          <qianji:runInBackground>true</qianji:runInBackground>
-          <qianji:maxTurns>4</qianji:maxTurns>
-        </qianji:config>
-      </extensionElements>
-      <incoming>Flow_1</incoming>
-      <outgoing>Flow_2</outgoing>
-    </serviceTask>
-    <endEvent id="End_1" name="Done">
-      <incoming>Flow_2</incoming>
-    </endEvent>
-    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Review" />
-    <sequenceFlow id="Flow_2" sourceRef="Task_Review" targetRef="End_1" />
-  </process>
-</definitions>`;
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1" name="Start"/>',
+      nativeServiceTask({
+        id: "Task_Review",
+        name: "Review item",
+        documentation: "Review ${environment.variables.item}.",
+        inputs: ["item"],
+        outputs: ["result"],
+      }),
+      '    <endEvent id="End_1" name="Done"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Review" />',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_Review" targetRef="End_1" />',
+    ].join("\n"),
+  );
 }
 
 function shellQuote(value: string): string {
