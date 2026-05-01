@@ -6,7 +6,7 @@ import {
 } from "../../src/ui/renderer/planner-prompt.js";
 
 describe("planner prompt text", () => {
-  it("prefers resolved qianji interaction questions over host prompts", () => {
+  it("prefers resolved native interaction questions over host prompts", () => {
     expect(
       questionTextForRequest({
         action: "human_task",
@@ -25,7 +25,7 @@ describe("planner prompt text", () => {
     ).toBe("Which direction should BPMN integration take?");
   });
 
-  it("renders qianji interaction choices for plain user prompts", () => {
+  it("renders native interaction choices for plain user prompts", () => {
     expect(
       questionTextForRequest({
         action: "human_task",
@@ -51,7 +51,7 @@ describe("planner prompt text", () => {
     );
   });
 
-  it("resolves plain choice answers by default, index, value, or label", () => {
+  it("resolves plain choice answers by index, value, or label", () => {
     const request = {
       action: "human_task",
       interaction: {
@@ -67,14 +67,18 @@ describe("planner prompt text", () => {
       toolCallId: "human:3",
     };
 
-    expect(defaultReplyForRequest(request)).toBe("false");
-    expect(resolveReplyForRequest(request, "")).toBe("false");
+    expect(defaultReplyForRequest(request)).toBe("");
+    expect(() => resolveReplyForRequest(request, "")).toThrow(
+      "Workflow input cancelled; checkpoint preserved.",
+    );
     expect(resolveReplyForRequest(request, "2")).toBe("true");
     expect(resolveReplyForRequest(request, "No red flags")).toBe("false");
-    expect(resolveReplyForRequest(request, "manual override")).toBe("manual override");
+    expect(() => resolveReplyForRequest(request, "manual override")).toThrow(
+      "[pi-wendao.runtime.invalid_native_choice_reply]",
+    );
   });
 
-  it("keeps confirm defaults aligned with native interaction prompts", () => {
+  it("keeps confirm prompts explicit for human tasks", () => {
     const request = {
       action: "human_task",
       interaction: {
@@ -86,7 +90,45 @@ describe("planner prompt text", () => {
       toolCallId: "human:4",
     };
 
-    expect(defaultReplyForRequest(request)).toBe("approved");
+    expect(defaultReplyForRequest(request)).toBe("");
+    expect(() => resolveReplyForRequest(request, "")).toThrow(
+      "Workflow input cancelled; checkpoint preserved.",
+    );
     expect(resolveReplyForRequest(request, "2")).toBe("rejected");
+    expect(() => resolveReplyForRequest(request, "maybe")).toThrow(
+      "[pi-wendao.runtime.invalid_native_choice_reply]",
+    );
+  });
+
+  it("allows free-form answers only for explicit human free-text interactions", () => {
+    const request = {
+      action: "human_task",
+      interaction: {
+        choices: [
+          { value: "expand", label: "Explore more" },
+          { value: "narrow", label: "Narrow scope" },
+        ],
+        question: "How should the plan branch?",
+        type: "choice_input" as const,
+      },
+      message: "Choose scope",
+      to: "user",
+      toolCallId: "human:5",
+    };
+
+    expect(resolveReplyForRequest(request, "2")).toBe("narrow");
+    expect(resolveReplyForRequest(request, "custom direction")).toBe("custom direction");
+  });
+
+  it("keeps planner approval defaults outside BPMN human tasks", () => {
+    const request = {
+      action: "ask",
+      message: "Approve generated plan?",
+      to: "planner",
+      toolCallId: "planner:1",
+    };
+
+    expect(defaultReplyForRequest(request)).toBe("approved");
+    expect(resolveReplyForRequest(request, "")).toBe("approved");
   });
 });

@@ -68,31 +68,40 @@ option-plus-free-text behavior, and output mapping. Do not restate or
 invent host-specific pi-ask rules in task prompt prose; use the selected
 construct card and then let qianji lint diagnose contract drift.
 
-## Extension Elements
+## Native BPMN Task Metadata
 
-Each serviceTask and userTask MUST include pi-wendao extension elements describing
-what the runtime should do:
+Each serviceTask and userTask/manualTask MUST describe host work with standard
+BPMN elements only. Do not use custom XML namespaces for interaction metadata.
+The runtime reads `documentation`, `ioSpecification`, `dataInputAssociation`,
+and `dataOutputAssociation`.
 
 ```xml
 <serviceTask id="Task_1" name="Run tests" implementation="${environment.services.runAgent}">
-  <extensionElements>
-    <qianji:config>
-      <qianji:prompt>Run the test suite using the project's test command and report whether tests pass or fail.</qianji:prompt>
-      <qianji:tools>bash</qianji:tools>
-      <qianji:inputs></qianji:inputs>
-      <qianji:outputs>testsPassed</qianji:outputs>
-    </qianji:config>
-  </extensionElements>
+  <documentation>Run the test suite using the project's test command and report whether tests pass or fail.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_1_output_testsPassed" name="testsPassed" />
+    <inputSet id="Task_1_input_set" />
+    <outputSet id="Task_1_output_set">
+      <dataOutputRefs>Task_1_output_testsPassed</dataOutputRefs>
+    </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_1_output_testsPassed</sourceRef>
+    <targetRef>testsPassed</targetRef>
+  </dataOutputAssociation>
 </serviceTask>
 ```
 
-Extension element fields:
+Native metadata fields:
 
-- `qianji:prompt` - Clear, focused instruction. For serviceTask this is for the small model; for userTask this is the graph prompt shown to the user.
-- `qianji:tools` - Comma-separated list of runtime tool names the task needs. Empty for userTask. The compile-loop lint reports unsupported names with the registered runtime tool list.
-- `qianji:inputs` - Comma-separated variable names this task reads from the workflow state.
-- `qianji:outputs` - Comma-separated variable names this task writes to the workflow state. The small model will be asked to output these as a JSON block.
-- `qianji:interaction` - Optional userTask interaction metadata. Exact schema belongs to the selected construct card.
+- `documentation` - Clear, focused instruction. For serviceTask this is for the small model; for userTask/manualTask this is the graph prompt shown to the user.
+- `dataInput name="..."` plus `dataInputAssociation/sourceRef` - Variable names this task reads from workflow state.
+- `dataOutput name="..."` plus `dataOutputAssociation/targetRef` - Variable names this task writes to workflow state. The small model returns these as JSON fields.
+- `dataInput name="interactionType"` - Human interaction mode literal: `input`, `confirm`, `choice`, or `choice_input`.
+- `dataInput name="choices"` - Static choices as a JSON array assignment literal, or dynamic choices through `sourceRef`.
+- `dataInput name="question"` - Optional dynamic question source. When omitted, `documentation` is the question.
+- `dataInput name="freeText"` - Optional JSON object assignment for one free-text field.
+- `dataOutput name="answer"` - Human answer output, mapped with `dataOutputAssociation/targetRef`.
 
 ## Namespace Declaration
 
@@ -101,7 +110,6 @@ The root `definitions` element MUST declare these namespaces:
 ```xml
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
              targetNamespace="https://qianji.dev">
 ```
@@ -134,7 +142,7 @@ the exact repair if the generated graph is not executable.
    and follow the selected interaction card for exact schema.
 4. **Clear prompts**: Keep task prompts focused on local intent; move reusable
    workflow-shape rules into cards and diagnostics.
-5. **Tool minimization**: Only give each task the tools it actually needs. userTask tools must stay empty.
+5. **Tool minimization**: Only imply tools in the local task prompt when the task truly needs them. A serviceTask that reads declared inputs such as `specContent` still needs no workspace tool; declared inputs are injected as read-only workflow variables and are not files.
 6. **Fallback paths**: Use explicit outputs plus gateway routing; let the gateway card and qianji lint own exact branch legality.
 7. **Qianji-native bounded repeat**: Use serviceTask repeat metadata only when it directly matches the skill, and follow qianji lint for exact repair guidance.
 8. **DMN only for tables**: Use DMN only for stable deterministic table logic. Do not move LLM judgment, tool execution, subagent work, retries, checkpoints, or orchestration into DMN.

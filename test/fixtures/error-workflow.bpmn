@@ -1,32 +1,45 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
              targetNamespace="https://qianji.dev">
   <process id="Process_1" name="Error Handling Workflow" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_Risky" name="Risky operation" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Perform a risky operation. If it succeeds, output success as true and result. If it cannot complete, output success as false.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>result,success</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Perform a risky operation. If it succeeds, output success as true and result. If it cannot complete, output success as false.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_Risky_output_result" name="result" />
+    <dataOutput id="Task_Risky_output_success" name="success" />
+    <inputSet id="Task_Risky_input_set"></inputSet>
+    <outputSet id="Task_Risky_output_set">
+    <dataOutputRefs>Task_Risky_output_result</dataOutputRefs>
+    <dataOutputRefs>Task_Risky_output_success</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_Risky_output_result</sourceRef>
+    <targetRef>result</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Risky_output_success</sourceRef>
+    <targetRef>success</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <exclusiveGateway id="Gateway_RiskySuccess" default="Flow_Fallback"/>
     <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Run the fallback procedure after the risky operation failed.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>fallbackResult</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Run the fallback procedure after the risky operation failed.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_Fallback_output_fallbackResult" name="fallbackResult" />
+    <inputSet id="Task_Fallback_input_set"></inputSet>
+    <outputSet id="Task_Fallback_output_set">
+    <dataOutputRefs>Task_Fallback_output_fallbackResult</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_Fallback_output_fallbackResult</sourceRef>
+    <targetRef>fallbackResult</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <endEvent id="End_1"/>
     <endEvent id="End_2"/>
     <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Risky"/>

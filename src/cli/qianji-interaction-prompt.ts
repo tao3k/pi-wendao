@@ -21,7 +21,6 @@ export function resolveQianjiInteractionReply(
     return trimmed;
   }
   if (choice) return choice.value;
-  if (interaction.type === "confirm") return "approved";
   return undefined;
 }
 
@@ -181,10 +180,10 @@ function questionForRequest(request: PlannerReplyRequest): string {
 }
 
 function helpText(interaction: QianjiInteraction, editing: boolean): string {
-  if (editing) return "Enter submits. Escape rejects or returns to choices.";
+  if (editing) return "Enter submits. Escape cancels or returns to choices.";
   return allowsFreeText(interaction)
-    ? "Up/Down navigate. Enter selects. Tab writes a custom answer. Escape rejects."
-    : "Up/Down navigate. Enter selects. Escape rejects.";
+    ? "Up/Down navigate. Enter selects. Tab writes a custom answer. Escape cancels."
+    : "Up/Down navigate. Enter selects. Escape cancels.";
 }
 
 function createEditorTheme(theme: PiTheme): EditorTheme {

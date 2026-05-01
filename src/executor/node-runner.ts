@@ -1,4 +1,5 @@
 import type { Model } from "@mariozechner/pi-ai";
+import { resolve, sep } from "node:path";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -13,6 +14,7 @@ import {
   type PiWendaoAgentHost,
   type PiWendaoAgentRequest,
   type PiWendaoConfig,
+  type PiWendaoToolScope,
 } from "./agent-host.js";
 import type {
   PiWendaoAgentMessage,
@@ -96,9 +98,17 @@ async function runPiAiTask(
   throwIfWorkflowInterrupted(options.signal);
   const cwd = options.cwd ?? process.cwd();
   const toolRegistry = createPiWendaoToolRegistry(cwd, options.extraTools);
+  let toolScopeViolation: Error | undefined;
 
   const tools: PiWendaoAgentTool<any>[] = request.config.tools
     .map((name) => toolRegistry.get(name))
+    .map((tool) =>
+      tool
+        ? applyToolScope(tool, request.config.toolScopes ?? [], cwd, request.activityId, (error) => {
+            toolScopeViolation = error;
+          })
+        : tool,
+    )
     .filter((t): t is PiWendaoAgentTool<any> => t !== undefined);
 
   const systemPrompt = buildPiWendaoAgentPrompt(request.config, request.variables, {
@@ -115,9 +125,103 @@ async function runPiAiTask(
     cwd,
     onEvent: options.onEvent,
     signal: options.signal,
+    getToolScopeViolation: () => toolScopeViolation,
   });
 
   return extractOutputVariables(messages, request.config.outputs);
+}
+
+function applyToolScope<T extends PiWendaoAgentTool<any>>(
+  tool: T,
+  scopes: PiWendaoToolScope[],
+  cwd: string,
+  activityId: string,
+  onViolation: (error: Error) => void,
+): T {
+  const toolScopes = scopes.filter((scope) => scope.tool === tool.name);
+  if (toolScopes.length === 0) return tool;
+  return {
+    ...tool,
+    execute: async (toolCallId, params, signal, onUpdate) => {
+      const violation = getToolParamsScopeViolation(tool.name, params, toolScopes, cwd, activityId);
+      if (violation) {
+        onViolation(violation);
+        throw violation;
+      }
+      return tool.execute(toolCallId, params, signal, onUpdate);
+    },
+  };
+}
+
+function getToolParamsScopeViolation(
+  toolName: string,
+  params: unknown,
+  scopes: PiWendaoToolScope[],
+  cwd: string,
+  activityId: string,
+): Error | undefined {
+  const record = isRecord(params) ? params : {};
+  const accepted = scopes.some((scope) => toolParamsMatchScope(toolName, record, scope, cwd));
+  if (accepted) return undefined;
+  return new Error(
+    `Tool call for ${activityId} violates the native tool scope for '${toolName}'. Params: ${JSON.stringify(record)}`,
+  );
+}
+
+function toolParamsMatchScope(
+  toolName: string,
+  params: Record<string, unknown>,
+  scope: PiWendaoToolScope,
+  cwd: string,
+): boolean {
+  if (toolName === "bash") return bashParamsMatchScope(params, scope);
+  if (["read", "ls", "grep", "find", "write", "edit"].includes(toolName)) {
+    return pathParamsMatchScope(toolName, params, scope, cwd);
+  }
+  return true;
+}
+
+function bashParamsMatchScope(params: Record<string, unknown>, scope: PiWendaoToolScope): boolean {
+  if (!scope.command || params.command !== scope.command) return false;
+  if (scope.timeoutSeconds !== undefined) {
+    return typeof params.timeout === "number" && params.timeout <= scope.timeoutSeconds;
+  }
+  return true;
+}
+
+function pathParamsMatchScope(
+  toolName: string,
+  params: Record<string, unknown>,
+  scope: PiWendaoToolScope,
+  cwd: string,
+): boolean {
+  if (!scope.path) return false;
+  const rawPath =
+    typeof params.path === "string" && params.path.trim()
+      ? params.path
+      : toolName === "ls" || toolName === "grep" || toolName === "find"
+        ? "."
+        : "";
+  if (!rawPath) return false;
+  return pathWithinScope(rawPath, scope.path, cwd);
+}
+
+function pathWithinScope(rawPath: string, rawScope: string, cwd: string): boolean {
+  const target = resolve(cwd, rawPath);
+  const scopePrefix = resolve(cwd, prefixBeforeWildcard(rawScope));
+  return target === scopePrefix || target.startsWith(`${scopePrefix}${sep}`);
+}
+
+function prefixBeforeWildcard(value: string): string {
+  const wildcardIndex = value.search(/[*?\[]/);
+  if (wildcardIndex === -1) return value;
+  const prefix = value.slice(0, wildcardIndex);
+  const slash = Math.max(prefix.lastIndexOf("/"), prefix.lastIndexOf("\\"));
+  return slash === -1 ? "." : prefix.slice(0, slash) || ".";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function runPiAiToolLoop(options: {
@@ -129,6 +233,7 @@ async function runPiAiToolLoop(options: {
   cwd: string;
   onEvent?: (event: PiWendaoAgentEvent) => void;
   signal?: AbortSignal;
+  getToolScopeViolation?: () => Error | undefined;
 }): Promise<PiWendaoAgentMessage[]> {
   throwIfWorkflowInterrupted(options.signal);
   const customTools = options.tools.map(toPiCodingAgentTool);
@@ -157,16 +262,27 @@ async function runPiAiToolLoop(options: {
   const unsubscribe = session.subscribe((event) => {
     const piWendaoEvent = toPiWendaoAgentEvent(event);
     if (piWendaoEvent) options.onEvent?.(piWendaoEvent);
+    if (options.getToolScopeViolation?.() && event.type === "tool_execution_end") {
+      void session.abort();
+    }
   });
   const abort = () => {
     void session.abort();
   };
   options.signal?.addEventListener("abort", abort, { once: true });
   try {
-    await session.prompt("Execute the task described in your instructions.", {
-      expandPromptTemplates: false,
-      source: "extension",
-    });
+    try {
+      await session.prompt("Execute the task described in your instructions.", {
+        expandPromptTemplates: false,
+        source: "extension",
+      });
+    } catch (error) {
+      const violation = options.getToolScopeViolation?.();
+      if (violation) throw violation;
+      throw error;
+    }
+    const violation = options.getToolScopeViolation?.();
+    if (violation) throw violation;
     throwIfWorkflowInterrupted(options.signal);
     const messages = session.messages.filter(isPiWendaoAgentMessage);
     const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");

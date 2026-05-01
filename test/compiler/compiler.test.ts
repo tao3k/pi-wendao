@@ -13,6 +13,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fauxAssistantMessage, registerFauxProvider } from "@mariozechner/pi-ai";
 import type { FauxProviderRegistration } from "@mariozechner/pi-ai";
 import { compileSkill } from "../../src/compiler/compiler.js";
+import {
+  nativeDefinitions,
+  nativeHumanTask,
+  nativeServiceTask,
+} from "../support/native-bpmn.js";
 
 const fixturesDir = join(import.meta.dirname, "../fixtures");
 
@@ -41,6 +46,18 @@ function bpmnTarget() {
       target: "bpmn" as const,
       reason: "test default",
       dmnDecisions: [],
+    }),
+  };
+}
+
+function interactiveBpmnTarget() {
+  return {
+    runner: async () => ({
+      target: "bpmn" as const,
+      reason: "interactive test target",
+      dmnDecisions: [],
+      scenario: "interactive" as const,
+      selectedConstructs: ["service-task.agent", "user-task.interaction"],
     }),
   };
 }
@@ -410,45 +427,37 @@ if (process.argv.includes("--json")) {
   }, 15_000);
 
   it("uses qianji json analysis from failed lint runs for pi-wendao contract checks", async () => {
-    const xml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <userTask id="Task_1">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask for a command.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>verificationCommand</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <serviceTask id="Task_2" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Run the command and return output.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>verificationCommand</qianji:inputs>
-          <qianji:outputs>verificationOutput,exitCode,failureCount</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <exclusiveGateway id="Gateway_1" default="Flow_4"/>
-    <endEvent id="Task_3"/>
-    <endEvent id="Task_4"/>
-    <sequenceFlow id="Flow_1" sourceRef="S1" targetRef="Task_1"/>
-    <sequenceFlow id="Flow_2" sourceRef="Task_1" targetRef="Task_2"/>
-    <sequenceFlow id="Flow_3" sourceRef="Task_2" targetRef="Gateway_1"/>
-    <sequenceFlow id="Flow_4" sourceRef="Gateway_1" targetRef="Task_3">
-      <conditionExpression>not verificationPassed</conditionExpression>
-    </sequenceFlow>
-    <sequenceFlow id="Flow_5" sourceRef="Gateway_1" targetRef="Task_4">
-      <conditionExpression>verificationPassed</conditionExpression>
-    </sequenceFlow>
-  </process>
-</definitions>`;
+    const xml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeHumanTask({
+          id: "Task_1",
+          documentation: "Ask for a command.",
+          resultOutput: "verificationCommand",
+          interactionType: "input",
+          freeText: { name: "verificationCommand" },
+        }),
+        nativeServiceTask({
+          id: "Task_2",
+          documentation: "Run the command and return output.",
+          inputs: ["verificationCommand"],
+          outputs: ["verificationOutput", "exitCode", "failureCount"],
+        }),
+        '    <exclusiveGateway id="Gateway_1" default="Flow_4"/>',
+        '    <endEvent id="Task_3"/>',
+        '    <endEvent id="Task_4"/>',
+        '    <sequenceFlow id="Flow_1" sourceRef="S1" targetRef="Task_1"/>',
+        '    <sequenceFlow id="Flow_2" sourceRef="Task_1" targetRef="Task_2"/>',
+        '    <sequenceFlow id="Flow_3" sourceRef="Task_2" targetRef="Gateway_1"/>',
+        '    <sequenceFlow id="Flow_4" sourceRef="Gateway_1" targetRef="Task_3">',
+        "      <conditionExpression>not verificationPassed</conditionExpression>",
+        "    </sequenceFlow>",
+        '    <sequenceFlow id="Flow_5" sourceRef="Gateway_1" targetRef="Task_4">',
+        "      <conditionExpression>verificationPassed</conditionExpression>",
+        "    </sequenceFlow>",
+      ].join("\n"),
+    );
     const tempDir = mkdtempSync(join(tmpdir(), "pi-wendao-qianji-failed-json-test-"));
     const commandPath = join(tempDir, "qianji-lint-failed-json-stub.mjs");
     const argsRecordPath = join(tempDir, "args.jsonl");
@@ -503,8 +512,8 @@ process.exit(2);
       expect(result.errors?.[0]).toContain("PI_WENDAO_CONDITION_VARIABLE_UNDECLARED");
       expect(result.errors?.[0]).toContain("verificationPassed");
       expect(result.errors?.[0]).toContain("Gateway_1 -> Task_4");
-      expect(result.errors?.[0]).not.toContain("Gateway_1 -> Task_3");
-      expect(result.errors?.[0]?.match(/PI_WENDAO_CONDITION_VARIABLE_UNDECLARED/g)).toHaveLength(1);
+      expect(result.errors?.[0]).toContain("Gateway_1 -> Task_3");
+      expect(result.errors?.[0]?.match(/PI_WENDAO_CONDITION_VARIABLE_UNDECLARED/g)).toHaveLength(2);
       const calls = readFileSync(argsRecordPath, "utf-8")
         .trim()
         .split("\n")
@@ -614,26 +623,21 @@ process.exit(2);
   });
 
   it("reports unsupported pi-wendao runtime fields as lint feedback", async () => {
-    const unsupportedRuntimeFieldsXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <serviceTask id="Task_1" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Fetch a remote page and summarize it.</qianji:prompt>
-          <qianji:tools>bash,curl</qianji:tools>
-          <qianji:inputs>source url</qianji:inputs>
-          <qianji:outputs>report summary</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_1"/>
-    <sequenceFlow id="F2" sourceRef="Task_1" targetRef="E1"/>
-  </process>
-</definitions>`;
+    const unsupportedRuntimeFieldsXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeServiceTask({
+          id: "Task_1",
+          documentation: "Fetch a remote page and summarize it.",
+          inputs: ["source url"],
+          outputs: ["report summary"],
+        }),
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_1"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_1" targetRef="E1"/>',
+      ].join("\n"),
+    );
 
     faux.setResponses([fauxAssistantMessage("```xml\n" + unsupportedRuntimeFieldsXml + "\n```")]);
 
@@ -649,83 +653,28 @@ process.exit(2);
     });
 
     expect(result.success).toBe(false);
-    expect(result.errors?.[0]).toContain("PI_WENDAO_TOOL_UNSUPPORTED");
-    expect(result.errors?.[0]).toContain("curl");
     expect(result.errors?.[0]).toContain("PI_WENDAO_VARIABLE_IDENTIFIER");
     expect(result.errors?.[0]).toContain("source url");
     expect(result.errors?.[0]).toContain("report summary");
-    expect(result.errors?.[0]).toContain("### Related Construct Cards");
-    expect(result.errors?.[0]).toContain("- service-task.agent");
     expect(result.errors?.[0]).not.toContain("LLM Fix Prompt");
   });
 
-  it("reports task-level error boundaries as lint feedback", async () => {
-    const taskBoundaryXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <serviceTask id="Task_Risky" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Run risky work and output success.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>success</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <boundaryEvent id="BoundaryError_Risky" attachedToRef="Task_Risky">
-      <errorEventDefinition/>
-    </boundaryEvent>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Risky"/>
-    <sequenceFlow id="F2" sourceRef="Task_Risky" targetRef="E1"/>
-  </process>
-</definitions>`;
-
-    faux.setResponses([fauxAssistantMessage("```xml\n" + taskBoundaryXml + "\n```")]);
-
-    const result = await compileSkill({
-      skillContent: "# Skill\nRun risky work with fallback.",
-      model: faux.getModel(),
-      template: qianjiTemplate(),
-      target: bpmnTarget(),
-      lint: {
-        maxRepairAttempts: 0,
-        runner: async () => ({ success: true, output: "# Lint Passed" }),
-      },
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errors?.[0]).toContain("PI_WENDAO_TASK_ERROR_BOUNDARY_UNSUPPORTED");
-    expect(result.errors?.[0]).toContain("BoundaryError_Risky");
-    expect(result.errors?.[0]).toContain("exclusiveGateway");
-    expect(result.errors?.[0]).toContain("- gateway.exclusive.bounded");
-  });
-
-  it("reports invalid qianji user interaction contracts as lint feedback", async () => {
-    const invalidInteractionXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <userTask id="Task_Ask">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask the user to choose.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>answer</qianji:outputs>
-          <qianji:interaction type="choice"/>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Ask"/>
-    <sequenceFlow id="F2" sourceRef="Task_Ask" targetRef="E1"/>
-  </process>
-</definitions>`;
+  it("reports invalid native user interaction contracts as lint feedback", async () => {
+    const invalidInteractionXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeHumanTask({
+          id: "Task_Ask",
+          documentation: "Ask the user to choose.",
+          resultOutput: "answer",
+          interactionType: "choice",
+        }),
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Ask"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_Ask" targetRef="E1"/>',
+      ].join("\n"),
+    );
 
     faux.setResponses([fauxAssistantMessage("```xml\n" + invalidInteractionXml + "\n```")]);
 
@@ -742,41 +691,40 @@ process.exit(2);
 
     expect(result.success).toBe(false);
     expect(result.errors?.[0]).toContain("PI_WENDAO_INTERACTION_CHOICES");
-    expect(result.errors?.[0]).toContain("- user-task.interaction");
   });
 
-  it("guides invalid qianji choices wrappers without duplicate missing prompt noise", async () => {
-    const invalidChoicesWrapperXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <userTask id="Task_Review">
-      <extensionElements>
-        <qianji:config>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>designSection</qianji:inputs>
-          <qianji:outputs>sectionApproved</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question ref="designSection"/>
-            <qianji:choices>
-              <qianji:choice value="approve">Approve</qianji:choice>
-            </qianji:choices>
-            <qianji:result output="sectionApproved"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Review"/>
-    <sequenceFlow id="F2" sourceRef="Task_Review" targetRef="E1"/>
-  </process>
-</definitions>`;
+  it("rejects userTask interactions without a native answer output mapping", async () => {
+    const missingAnswerXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        `    <userTask id="Task_Ask">
+      <documentation>Ask the user to choose.</documentation>
+      <ioSpecification>
+        <dataInput id="Task_Ask_input_interactionType" name="interactionType" />
+        <dataInput id="Task_Ask_input_choices" name="choices" />
+        <inputSet id="Task_Ask_input_set">
+          <dataInputRefs>Task_Ask_input_interactionType</dataInputRefs>
+          <dataInputRefs>Task_Ask_input_choices</dataInputRefs>
+        </inputSet>
+      </ioSpecification>
+      <dataInputAssociation>
+        <assignment><from>choice</from><to>Task_Ask_input_interactionType</to></assignment>
+      </dataInputAssociation>
+      <dataInputAssociation>
+        <assignment><from>[{"value":"approve","label":"Approve"}]</from><to>Task_Ask_input_choices</to></assignment>
+      </dataInputAssociation>
+    </userTask>`,
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Ask"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_Ask" targetRef="E1"/>',
+      ].join("\n"),
+    );
 
-    faux.setResponses([fauxAssistantMessage("```xml\n" + invalidChoicesWrapperXml + "\n```")]);
+    faux.setResponses([fauxAssistantMessage("```xml\n" + missingAnswerXml + "\n```")]);
 
     const result = await compileSkill({
-      skillContent: "# Skill\nReview a section.",
+      skillContent: "# Skill\nAsk the user.",
       model: faux.getModel(),
       template: qianjiTemplate(),
       target: bpmnTarget(),
@@ -787,49 +735,127 @@ process.exit(2);
     });
 
     expect(result.success).toBe(false);
-    expect(result.errors?.[0]).toContain("PI_WENDAO_CONFIG_FIELD");
-    expect(result.errors?.[0]).not.toContain("PI_WENDAO_PROMPT_EMPTY");
-    expect(result.errors?.[0]).toContain("The current qianji:choices element has no ref");
-    expect(result.errors?.[0]).toContain("Do not use an empty <qianji:choices> wrapper");
+    expect(result.errors?.[0]).toContain("PI_WENDAO_USER_TASK_RESULT_OUTPUT");
+    expect(result.errors?.[0]).toContain("no answer dataOutputAssociation targetRef");
+  });
+
+  it("rejects interactive target output that asks users from service tasks only", async () => {
+    const serviceOnlyXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeServiceTask({
+          id: "Task_AskPatient",
+          documentation:
+            "Ask the patient which appointment type they need and return selectedChoice.",
+          outputs: ["selectedChoice"],
+        }),
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_AskPatient"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_AskPatient" targetRef="E1"/>',
+      ].join("\n"),
+    );
+
+    faux.setResponses([fauxAssistantMessage("```xml\n" + serviceOnlyXml + "\n```")]);
+
+    const result = await compileSkill({
+      skillContent: "# Skill\nAsk one question at a time and prefer multiple choice.",
+      model: faux.getModel(),
+      template: qianjiTemplate(),
+      target: interactiveBpmnTarget(),
+      lint: {
+        maxRepairAttempts: 0,
+        runner: async () => ({ success: true, output: "# Lint Passed" }),
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errors?.[0]).toContain("PI_WENDAO_INTERACTIVE_USER_TASK_REQUIRED");
+    expect(result.errors?.[0]).toContain("PI_WENDAO_SERVICE_TASK_HUMAN_INPUT");
+    expect(result.errors?.[0]).toContain("userTask with native interaction IO");
+    expect(result.errors?.[0]).toContain('dataInput name="interactionType"');
+  });
+
+  it("rejects service tasks that collect human answers even when another userTask exists", async () => {
+    const mixedXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeServiceTask({
+          id: "Task_PrepareQuestion",
+          documentation: "Prepare one appointment question.",
+          outputs: ["currentQuestion", "currentChoices"],
+        }),
+        nativeHumanTask({
+          id: "Task_Answer",
+          documentation: "Collect the user's answer.",
+          inputs: ["currentQuestion", "currentChoices"],
+          resultOutput: "answer",
+          interactionType: "choice_input",
+          questionRef: "currentQuestion",
+          choicesRef: "currentChoices",
+        }),
+        nativeServiceTask({
+          id: "Task_VisitDetails",
+          documentation:
+            "Ask the user the following one question at a time and collect all answers as structured data.",
+          inputs: ["answer"],
+          outputs: ["visitReasonCategory", "preferredTimeWindow"],
+        }),
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_PrepareQuestion"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_PrepareQuestion" targetRef="Task_Answer"/>',
+        '    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="Task_VisitDetails"/>',
+        '    <sequenceFlow id="F4" sourceRef="Task_VisitDetails" targetRef="E1"/>',
+      ].join("\n"),
+    );
+
+    faux.setResponses([fauxAssistantMessage("```xml\n" + mixedXml + "\n```")]);
+
+    const result = await compileSkill({
+      skillContent: "# Skill\nAsk one question at a time and prefer multiple choice.",
+      model: faux.getModel(),
+      template: qianjiTemplate(),
+      target: interactiveBpmnTarget(),
+      lint: {
+        maxRepairAttempts: 0,
+        runner: async () => ({ success: true, output: "# Lint Passed" }),
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errors?.[0]).toContain("PI_WENDAO_SERVICE_TASK_HUMAN_INPUT");
+    expect(result.errors?.[0]).toContain("Task_VisitDetails");
+    expect(result.errors?.[0]).not.toContain("PI_WENDAO_INTERACTIVE_USER_TASK_REQUIRED");
   });
 
   it("accepts dynamic choice refs for a real brainstorming multiple-choice fragment", async () => {
-    const dynamicChoicesXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <serviceTask id="Task_PrepareQuestion" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask one clarifying question and prefer multiple choice when possible. Output currentQuestion and currentChoices.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>idea</qianji:inputs>
-          <qianji:outputs>currentQuestion,currentChoices</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <userTask id="Task_Answer">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Collect the user's answer to the generated brainstorming question.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>currentQuestion,currentChoices</qianji:inputs>
-          <qianji:outputs>userAnswer</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question ref="currentQuestion"/>
-            <qianji:choices ref="currentChoices"/>
-            <qianji:result output="userAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_PrepareQuestion"/>
-    <sequenceFlow id="F2" sourceRef="Task_PrepareQuestion" targetRef="Task_Answer"/>
-    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="E1"/>
-  </process>
-</definitions>`;
+    const dynamicChoicesXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeServiceTask({
+          id: "Task_PrepareQuestion",
+          documentation:
+            "Ask one clarifying question and prefer multiple choice when possible. Output currentQuestion and currentChoices.",
+          inputs: ["idea"],
+          outputs: ["currentQuestion", "currentChoices"],
+        }),
+        nativeHumanTask({
+          id: "Task_Answer",
+          documentation: "Collect the user's answer to the generated brainstorming question.",
+          inputs: ["currentQuestion", "currentChoices"],
+          resultOutput: "userAnswer",
+          interactionType: "choice_input",
+          questionRef: "currentQuestion",
+          choicesRef: "currentChoices",
+        }),
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_PrepareQuestion"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_PrepareQuestion" targetRef="Task_Answer"/>',
+        '    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="E1"/>',
+      ].join("\n"),
+    );
 
     faux.setResponses([fauxAssistantMessage("```xml\n" + dynamicChoicesXml + "\n```")]);
 
@@ -849,35 +875,79 @@ process.exit(2);
     });
 
     expect(result.success).toBe(true);
-    expect(result.bpmnXml).toContain('<qianji:choices ref="currentChoices"/>');
-    expect(result.bpmnXml).not.toContain("<qianji:choice ");
+    expect(result.bpmnXml).toContain("<sourceRef>currentChoices</sourceRef>");
+    expect(result.bpmnXml).toContain('dataInput id="Task_Answer_input_choices" name="choices"');
+    expect(result.bpmnXml).not.toContain("qianji:");
+  });
+
+  it("reports dynamic choice refs whose producer omits the native choices output", async () => {
+    const missingDynamicChoicesProducerXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeServiceTask({
+          id: "Task_PrepareQuestion",
+          documentation:
+            "Ask one clarifying question and prefer multiple choice when possible. Output currentQuestion.",
+          inputs: ["idea"],
+          outputs: ["currentQuestion"],
+        }),
+        nativeHumanTask({
+          id: "Task_Answer",
+          documentation: "Collect the user's answer to the generated brainstorming question.",
+          inputs: ["currentQuestion", "currentChoices"],
+          resultOutput: "userAnswer",
+          interactionType: "choice_input",
+          questionRef: "currentQuestion",
+          choicesRef: "currentChoices",
+        }),
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_PrepareQuestion"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_PrepareQuestion" targetRef="Task_Answer"/>',
+        '    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="E1"/>',
+      ].join("\n"),
+    );
+
+    faux.setResponses([fauxAssistantMessage("```xml\n" + missingDynamicChoicesProducerXml + "\n```")]);
+
+    const result = await compileSkill({
+      skillContent: "# Skill\nAsk the user a structured question.",
+      model: faux.getModel(),
+      template: qianjiTemplate(),
+      target: bpmnTarget(),
+      lint: {
+        maxRepairAttempts: 0,
+        runner: async () => ({ success: true, output: "# Lint Passed" }),
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errors?.[0]).toMatchSnapshot();
+    expect(result.errors?.[0]).toContain("PI_WENDAO_DYNAMIC_CHOICES_PRODUCER");
+    expect(result.errors?.[0]).toContain("currentChoices");
+    expect(result.errors?.[0]).toContain("native BPMN task declares that output");
   });
 
   it("reports gateway conditions that reference undeclared variables", async () => {
-    const undeclaredConditionXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <userTask id="Task_Approve">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask for approval.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>designApproved</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <exclusiveGateway id="Gateway_1" default="F3"/>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Approve"/>
-    <sequenceFlow id="F2" sourceRef="Task_Approve" targetRef="Gateway_1"/>
-    <sequenceFlow id="F3" sourceRef="Gateway_1" targetRef="E1">
-      <conditionExpression>designRejected</conditionExpression>
-    </sequenceFlow>
-  </process>
-</definitions>`;
+    const undeclaredConditionXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeHumanTask({
+          id: "Task_Approve",
+          documentation: "Ask for approval.",
+          resultOutput: "designApproved",
+          interactionType: "confirm",
+        }),
+        '    <exclusiveGateway id="Gateway_1" default="F3"/>',
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Approve"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_Approve" targetRef="Gateway_1"/>',
+        '    <sequenceFlow id="F3" sourceRef="Gateway_1" targetRef="E1">',
+        "      <conditionExpression>designRejected</conditionExpression>",
+        "    </sequenceFlow>",
+      ].join("\n"),
+    );
 
     faux.setResponses([fauxAssistantMessage("```xml\n" + undeclaredConditionXml + "\n```")]);
 
@@ -911,54 +981,41 @@ process.exit(2);
     expect(result.errors?.[0]).toContain("PI_WENDAO_CONDITION_VARIABLE_UNDECLARED");
     expect(result.errors?.[0]).toContain("designRejected");
     expect(result.errors?.[0]).toContain("Task_Approve");
-    expect(result.errors?.[0]).toContain("qianji:outputs");
-    expect(result.errors?.[0]).toContain("JSON boolean 'designRejected'");
-    expect(result.errors?.[0]).toContain("- gateway.exclusive.bounded");
-    expect(result.errors?.[0]).toContain("- service-task.agent");
+    expect(result.errors?.[0]).toContain("native BPMN data output");
+    expect(result.errors?.[0]).toContain("already declared variable");
   });
 
-  it("reports user feedback loops alongside parseable qianji semantic lint failures", async () => {
-    const unreadFeedbackLoopXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <serviceTask id="Task_Ask" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Produce the next question and whether more clarification is needed.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>projectScope</qianji:inputs>
-          <qianji:outputs>clarificationsNeeded,currentQuestion</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <userTask id="Task_Answer">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Answer the current question.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>currentQuestion</qianji:inputs>
-          <qianji:outputs>userAnswer</qianji:outputs>
-          <qianji:interaction type="input">
-            <qianji:question>currentQuestion</qianji:question>
-            <qianji:result output="userAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <exclusiveGateway id="Gateway_More" default="Flow_Done"/>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Ask"/>
-    <sequenceFlow id="F2" sourceRef="Task_Ask" targetRef="Task_Answer"/>
-    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="Gateway_More"/>
-    <sequenceFlow id="F4" sourceRef="Gateway_More" targetRef="Task_Ask">
-      <conditionExpression xsi:type="tFormalExpression">clarificationsNeeded</conditionExpression>
-    </sequenceFlow>
-    <sequenceFlow id="Flow_Done" sourceRef="Gateway_More" targetRef="E1"/>
-  </process>
-</definitions>`;
+  it("reports user feedback loops alongside parseable semantic lint failures", async () => {
+    const unreadFeedbackLoopXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeServiceTask({
+          id: "Task_Ask",
+          documentation: "Produce the next question and whether more clarification is needed.",
+          inputs: ["projectScope"],
+          outputs: ["clarificationsNeeded", "currentQuestion"],
+        }),
+        nativeHumanTask({
+          id: "Task_Answer",
+          documentation: "Answer the current question.",
+          inputs: ["currentQuestion"],
+          resultOutput: "userAnswer",
+          interactionType: "input",
+          questionRef: "currentQuestion",
+          freeText: { name: "userAnswer" },
+        }),
+        '    <exclusiveGateway id="Gateway_More" default="Flow_Done"/>',
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Ask"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_Ask" targetRef="Task_Answer"/>',
+        '    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="Gateway_More"/>',
+        '    <sequenceFlow id="F4" sourceRef="Gateway_More" targetRef="Task_Ask">',
+        '      <conditionExpression xsi:type="tFormalExpression">clarificationsNeeded</conditionExpression>',
+        "    </sequenceFlow>",
+        '    <sequenceFlow id="Flow_Done" sourceRef="Gateway_More" targetRef="E1"/>',
+      ].join("\n"),
+    );
 
     faux.setResponses([fauxAssistantMessage("```xml\n" + unreadFeedbackLoopXml + "\n```")]);
 
@@ -980,55 +1037,41 @@ process.exit(2);
     expect(result.errors?.[0]).toContain("compact qianji gateway diagnostic");
     expect(result.errors?.[0]).toContain("PI_WENDAO_USER_FEEDBACK_LOOP_UNREAD");
     expect(result.errors?.[0]).toContain("userAnswer");
-    expect(result.errors?.[0]).toContain("Set qianji:inputs to include: projectScope, userAnswer");
-    expect(result.errors?.[0]).toContain("- user-task.interaction");
-    expect(result.errors?.[0]).toContain("- gateway.exclusive.bounded");
+    expect(result.errors?.[0]).toContain("Add dataInputAssociation sourceRef values userAnswer");
   });
 
   it("reports partial user feedback loop inputs with exact missing variables", async () => {
-    const partialFeedbackLoopXml = `<?xml version="1.0"?>
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions">
-  <process id="P1" isExecutable="true">
-    <startEvent id="S1"/>
-    <serviceTask id="Task_Ask" implementation="\${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Produce the next question using the prior answer and feedback.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>projectScope,userAnswer</qianji:inputs>
-          <qianji:outputs>needsMore,currentQuestion,currentChoices</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
-    <userTask id="Task_Answer">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Answer the current question.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>currentQuestion,currentChoices</qianji:inputs>
-          <qianji:outputs>userAnswer,feedback</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question ref="currentQuestion"/>
-            <qianji:choices ref="currentChoices"/>
-            <qianji:freeText name="feedback" optional="true"/>
-            <qianji:result output="userAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
-    <exclusiveGateway id="Gateway_More" default="Flow_Done"/>
-    <endEvent id="E1"/>
-    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Ask"/>
-    <sequenceFlow id="F2" sourceRef="Task_Ask" targetRef="Task_Answer"/>
-    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="Gateway_More"/>
-    <sequenceFlow id="F4" sourceRef="Gateway_More" targetRef="Task_Ask">
-      <conditionExpression xsi:type="tFormalExpression">needsMore</conditionExpression>
-    </sequenceFlow>
-    <sequenceFlow id="Flow_Done" sourceRef="Gateway_More" targetRef="E1"/>
-  </process>
-</definitions>`;
+    const partialFeedbackLoopXml = nativeDefinitions(
+      "P1",
+      [
+        '    <startEvent id="S1"/>',
+        nativeServiceTask({
+          id: "Task_Ask",
+          documentation: "Produce the next question using the prior feedback.",
+          inputs: ["projectScope"],
+          outputs: ["needsMore", "currentQuestion", "currentChoices"],
+        }),
+        nativeHumanTask({
+          id: "Task_Answer",
+          documentation: "Answer the current question.",
+          inputs: ["currentQuestion", "currentChoices"],
+          resultOutput: "feedback",
+          interactionType: "choice_input",
+          questionRef: "currentQuestion",
+          choicesRef: "currentChoices",
+          freeText: { name: "feedback", optional: true },
+        }),
+        '    <exclusiveGateway id="Gateway_More" default="Flow_Done"/>',
+        '    <endEvent id="E1"/>',
+        '    <sequenceFlow id="F1" sourceRef="S1" targetRef="Task_Ask"/>',
+        '    <sequenceFlow id="F2" sourceRef="Task_Ask" targetRef="Task_Answer"/>',
+        '    <sequenceFlow id="F3" sourceRef="Task_Answer" targetRef="Gateway_More"/>',
+        '    <sequenceFlow id="F4" sourceRef="Gateway_More" targetRef="Task_Ask">',
+        '      <conditionExpression xsi:type="tFormalExpression">needsMore</conditionExpression>',
+        "    </sequenceFlow>",
+        '    <sequenceFlow id="Flow_Done" sourceRef="Gateway_More" targetRef="E1"/>',
+      ].join("\n"),
+    );
 
     faux.setResponses([fauxAssistantMessage("```xml\n" + partialFeedbackLoopXml + "\n```")]);
 
@@ -1045,11 +1088,7 @@ process.exit(2);
 
     expect(result.success).toBe(false);
     expect(result.errors?.[0]).toContain("PI_WENDAO_USER_FEEDBACK_LOOP_UNREAD");
-    expect(result.errors?.[0]).toContain("missing user output(s) in qianji:inputs: feedback");
-    expect(result.errors?.[0]).toContain("User outputs: userAnswer, feedback");
-    expect(result.errors?.[0]).toContain("Current service inputs: projectScope, userAnswer");
-    expect(result.errors?.[0]).toContain(
-      "Set qianji:inputs to include: projectScope, userAnswer, feedback",
-    );
+    expect(result.errors?.[0]).toContain("does not consume user output(s): feedback");
+    expect(result.errors?.[0]).toContain("Add dataInputAssociation sourceRef values feedback");
   });
 });

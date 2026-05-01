@@ -161,6 +161,26 @@ describe("renderer event formatting", () => {
     ]);
   });
 
+  it("formats qianji human-task assignment metadata as routing evidence", () => {
+    const lines = formatQianjiHostWorkEventForLog({
+      activityId: "Task_RustApprove",
+      hostWorkCount: 1,
+      batchHostWorkCount: 1,
+      tokenIds: [91],
+      hostKinds: ["user"],
+      parallel: false,
+      repeatKinds: [],
+      repeatSummaries: [],
+      assignmentSummaries: [
+        "human_performer:reviewer:expr=users.alice;potential_owner:review_team:ref=reviewers",
+      ],
+    }).map(stripAnsi);
+
+    expect(lines).toEqual([
+      "host job Task_RustApprove: 1 job token=91 kind=user assignment=human_performer:reviewer:expr=users.alice;potential_owner:review_team:ref=reviewers",
+    ]);
+  });
+
   it("formats verbose pi-subagents conversations for the native chat stream", () => {
     const lines = formatPiSubagentsHostEventForLog({
       type: "result",

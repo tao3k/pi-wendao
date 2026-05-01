@@ -2,13 +2,41 @@ export interface PiWendaoConfig {
   hostKind?: PiWendaoHostWorkKind;
   prompt: string;
   tools: string[];
+  toolScopes?: PiWendaoToolScope[];
   inputs: string[];
   outputs: string[];
+  outputSchemas?: Record<string, QianjiOutputSchema>;
   interaction?: QianjiInteraction;
   subagent?: PiWendaoSubagentConfig;
 }
 
 export type QianjiInteractionType = "input" | "confirm" | "choice" | "choice_input";
+export type QianjiOutputSchemaRequirement = "required" | "optional";
+
+export interface QianjiOutputSchema {
+  kind: string;
+  value?: QianjiOutputSchemaRequirement;
+  label?: QianjiOutputSchemaRequirement;
+  description?: QianjiOutputSchemaRequirement;
+}
+
+export interface PiWendaoToolScope {
+  tool: string;
+  command?: string;
+  path?: string;
+  cwd?: string;
+  timeoutSeconds?: number;
+  writes?: boolean;
+  network?: boolean;
+}
+
+type QianjiPromptOutputSchema =
+  | QianjiOutputSchema
+  | {
+      type: "array";
+      items: unknown;
+      example: unknown;
+    };
 
 export interface QianjiInteraction {
   type: QianjiInteractionType;
@@ -81,6 +109,7 @@ export interface PiWendaoAgentRequest {
   config: PiWendaoConfig;
   variables: Record<string, unknown>;
   execution?: PiWendaoAgentExecutionMetadata;
+  signal?: AbortSignal;
 }
 
 export interface PiWendaoAgentHost {
@@ -118,42 +147,90 @@ export function buildPiWendaoAgentPrompt(
   );
 
   const promptParts = [resolvedPrompt];
-  const executionContext = formatExecutionContext(execution);
-  if (executionContext) {
-    promptParts.push(
-      `\n\nQianji BPMN execution context (scheduler-owned, read-only):\n${executionContext}`,
-    );
-  }
   if (variableContext) {
     promptParts.push(`\n\nCurrent qianji task inputs (read-only):\n${variableContext}`);
+  }
+  const taskIdentityContext = formatTaskIdentityContext(execution);
+  if (taskIdentityContext) {
+    promptParts.push(
+      `\n\nQianji BPMN task identity (not task input; do not use as business output):\n${taskIdentityContext}`,
+    );
   }
   if (config.outputs.length > 0) {
     promptParts.push(
       `\nAfter completing the task, output the following variables in a JSON code block with exactly these keys:\n${config.outputs.map((o) => `- ${o}`).join("\n")}`,
     );
   }
+  const outputSchemaContext = formatOutputSchemas(config);
+  if (outputSchemaContext) {
+    promptParts.push(`\n\nqianji_output_schema:\n\`\`\`json\n${outputSchemaContext}\n\`\`\``);
+  }
   promptParts.push(
     "\nQianji owns BPMN scheduling, gateway routing, retries, joins, checkpoint persistence, and resume state. Do not advance the workflow or decide the next BPMN node; only complete this service task and return its declared outputs.",
   );
+  const toolScopeContext = formatToolScopes(config);
+  if (toolScopeContext) {
+    promptParts.push(`\n\nqianji_tool_scope:\n\`\`\`json\n${toolScopeContext}\n\`\`\``);
+  }
   return promptParts.join("");
 }
 
-function formatExecutionContext(execution: PiWendaoAgentExecutionMetadata | undefined): string {
+function formatToolScopes(config: PiWendaoConfig): string {
+  const scopes = (config.toolScopes ?? []).filter((scope) =>
+    config.tools.includes(scope.tool),
+  );
+  return scopes.length > 0 ? JSON.stringify(scopes, null, 2) : "";
+}
+
+function formatOutputSchemas(config: PiWendaoConfig): string {
+  const schemas = config.outputSchemas ?? {};
+  const declaredSchemas = Object.fromEntries(
+    config.outputs
+      .map((name) => {
+        const schema = schemas[name];
+        return [name, schema ? formatOutputSchema(schema) : undefined] as const;
+      })
+      .filter((entry): entry is readonly [string, QianjiPromptOutputSchema] =>
+        Boolean(entry[1]),
+      ),
+  );
+  return Object.keys(declaredSchemas).length > 0
+    ? JSON.stringify(declaredSchemas, null, 2)
+    : "";
+}
+
+function formatOutputSchema(schema: QianjiOutputSchema): QianjiPromptOutputSchema {
+  if (schema.kind !== "choice_array") return schema;
+  const items = {
+    type: "object",
+    required: ["value"],
+    properties: {
+      value: { type: "string", minLength: 1 },
+      label: { type: "string" },
+      description: { type: "string" },
+    },
+    additionalProperties: false,
+  };
+  return {
+    type: "array",
+    items,
+    example: [
+      {
+        value: "minimal",
+        label: "Minimal repair",
+        description: "Repair only the failing contract.",
+      },
+    ],
+  };
+}
+
+function formatTaskIdentityContext(execution: PiWendaoAgentExecutionMetadata | undefined): string {
   if (!execution) return "";
   const lines: string[] = [];
   appendField(lines, "processId", execution.processId);
-  appendField(lines, "instanceId", execution.instanceId);
   appendField(lines, "activityId", execution.activityId);
   appendField(lines, "nodeIndex", execution.nodeIndex);
   appendField(lines, "tokenId", execution.tokenId);
-  appendField(lines, "repeat", execution.repeat);
-  appendField(lines, "checkpoint.outcome", execution.checkpoint?.outcome);
-  appendField(lines, "checkpoint.backend", execution.checkpoint?.backend);
-  appendField(lines, "checkpoint.source", execution.checkpoint?.source);
-  appendField(lines, "checkpoint.saved", execution.checkpoint?.saved);
-  appendField(lines, "checkpoint.deleted", execution.checkpoint?.deleted);
-  appendField(lines, "checkpoint.status", execution.checkpoint?.status);
-  appendField(lines, "checkpoint.pendingHostWork", execution.checkpoint?.pendingHostWork);
   return lines.map((line) => `- ${line}`).join("\n");
 }
 
@@ -175,7 +252,10 @@ export function extractOutputVariablesFromText(
   }
 
   const parsed = pickOutputVariables(textContent, outputNames);
-  return parsed ?? {};
+  if (parsed) return parsed;
+
+  const embedded = pickEmbeddedOutputVariables(textContent, outputNames);
+  return embedded ?? {};
 }
 
 function pickOutputVariables(
@@ -198,4 +278,71 @@ function pickOutputVariables(
   } catch {
     return undefined;
   }
+}
+
+function pickEmbeddedOutputVariables(
+  textContent: string,
+  outputNames: string[],
+): Record<string, unknown> | undefined {
+  let best: Record<string, unknown> | undefined;
+  let bestCount = 0;
+  for (const candidate of extractJsonObjectCandidates(textContent)) {
+    const extracted = pickOutputVariables(candidate, outputNames);
+    if (!extracted) continue;
+    const count = Object.keys(extracted).length;
+    if (count > bestCount) {
+      best = extracted;
+      bestCount = count;
+      if (count === outputNames.length) return best;
+    }
+  }
+  return best;
+}
+
+function extractJsonObjectCandidates(textContent: string): string[] {
+  const candidates: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < textContent.length; index += 1) {
+    const char = textContent[index];
+    if (start === -1) {
+      if (char === "{") {
+        start = index;
+        depth = 1;
+      }
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = inString;
+      continue;
+    }
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        candidates.push(textContent.slice(start, index + 1));
+        start = -1;
+        inString = false;
+      }
+    }
+  }
+
+  return candidates;
 }

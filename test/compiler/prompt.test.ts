@@ -16,7 +16,8 @@ describe("buildCompilePrompt", () => {
 
     expect(systemPrompt).toContain("BPMN");
     expect(systemPrompt).toContain("serviceTask");
-    expect(systemPrompt).toContain("qianji:config");
+    expect(systemPrompt).toContain("Native BPMN Task Metadata");
+    expect(systemPrompt).toContain("ioSpecification");
     expect(systemPrompt).toContain("environment.services.runAgent");
     expect(userMessage).toContain("Qianji BPMN template");
     expect(userMessage).toContain("Selected qianji construct cards");
@@ -25,14 +26,22 @@ describe("buildCompilePrompt", () => {
     expect(userMessage).toContain("Do stuff");
   });
 
-  it("system prompt describes the extension element format", () => {
+  it("system prompt describes the native BPMN task metadata format", () => {
     const { systemPrompt } = buildCompilePrompt();
 
-    expect(systemPrompt).toContain("qianji:prompt");
-    expect(systemPrompt).toContain("qianji:tools");
-    expect(systemPrompt).toContain("qianji:inputs");
-    expect(systemPrompt).toContain("qianji:outputs");
-    expect(systemPrompt).toContain("qianji:interaction");
+    expect(systemPrompt).toContain("documentation");
+    expect(systemPrompt).toContain("dataInputAssociation/sourceRef");
+    expect(systemPrompt).toContain("dataOutputAssociation/targetRef");
+    expect(systemPrompt).toContain('dataInput name="interactionType"');
+    expect(systemPrompt).toContain('dataOutput name="answer"');
+  });
+
+  it("system prompt keeps serviceTask tools implicit and local to task intent", () => {
+    const { systemPrompt } = buildCompilePrompt();
+
+    expect(systemPrompt).toContain("Only imply tools in the local task prompt");
+    expect(systemPrompt).toContain("A serviceTask that reads declared inputs");
+    expect(systemPrompt).toContain("declared inputs are injected as read-only workflow variables");
   });
 
   it("system prompt models graph-local human gates as BPMN userTask", () => {
@@ -49,8 +58,7 @@ describe("buildCompilePrompt", () => {
 
     expect(systemPrompt).toContain("user-task.interaction");
     expect(systemPrompt).toContain("qianji lint diagnose contract drift");
-    expect(systemPrompt).not.toContain('<qianji:choices ref="currentChoices"/>');
-    expect(systemPrompt).not.toContain('<qianji:choice value="approved"');
+    expect(systemPrompt).not.toContain("qianji:");
     expect(systemPrompt).not.toContain("approvedReply");
   });
 

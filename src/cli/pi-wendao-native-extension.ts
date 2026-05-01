@@ -1,5 +1,6 @@
 export { parseNativeRunCommand, parseNativeShowCommand } from "./native/args.js";
 export {
+  clearAllNativeWorkflowGraphPanels,
   clearNativeWorkflowGraphPanel,
   renderTopGraphWidgetLines,
   setNativeWorkflowGraphPanel,

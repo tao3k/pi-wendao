@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -84,11 +85,15 @@ describe("createPiSubagentsHost", () => {
       thinking: "medium",
     });
     expect(spawns[0]?.prompt).toContain('"alpha"');
-    expect(spawns[0]?.prompt).toContain("Qianji BPMN execution context");
+    expect(spawns[0]?.prompt).toContain("Current qianji task inputs");
+    expect(spawns[0]?.prompt).toContain("Qianji BPMN task identity");
     expect(spawns[0]?.prompt).toContain("processId: Process_1");
     expect(spawns[0]?.prompt).toContain("activityId: Task_BranchA");
-    expect(spawns[0]?.prompt).toContain("checkpoint.backend: duckdb");
-    expect(spawns[0]?.prompt).toContain("checkpoint.source: resumed");
+    expect(spawns[0]?.prompt).not.toContain("checkpoint.backend");
+    expect(spawns[0]?.prompt).not.toContain("checkpoint.source");
+    expect(spawns[0]?.prompt).not.toContain("pendingHostWork");
+    expect(spawns[0]?.prompt).not.toContain("duckdb");
+    expect(spawns[0]?.prompt).not.toContain("resumed");
     expect(spawns[0]?.prompt).not.toContain("not visible");
   });
 
@@ -166,7 +171,7 @@ describe("createPiSubagentsHost", () => {
     ]);
   });
 
-  it("uses a background general-purpose subagent by default", async () => {
+  it("uses an output-only subagent when qianji declares no tools", async () => {
     let spawn: PiSubagentsSpawnRequest | undefined;
     const host = createPiSubagentsHost({
       client: {
@@ -193,9 +198,175 @@ describe("createPiSubagentsHost", () => {
 
     expect(spawn).toMatchObject({
       description: "Run BPMN service task Task_Default",
+      subagent_type: "pi-wendao-output-only",
+      run_in_background: true,
+    });
+  });
+
+  it("uses a write-only subagent when qianji declares only write", async () => {
+    let spawn: PiSubagentsSpawnRequest | undefined;
+    const host = createPiSubagentsHost({
+      client: {
+        async spawn(request) {
+          spawn = request;
+          return "agent-write";
+        },
+        async getResult() {
+          return '```json\n{"path":"artifact.md"}\n```';
+        },
+      },
+    });
+
+    await host.run({
+      activityId: "Task_WriteArtifact",
+      variables: {},
+      config: {
+        prompt: "Write an artifact.",
+        tools: ["write"],
+        inputs: [],
+        outputs: ["path"],
+      },
+    });
+
+    expect(spawn).toMatchObject({
+      description: "Run BPMN service task Task_WriteArtifact",
+      subagent_type: "pi-wendao-output-writer",
+      run_in_background: true,
+    });
+  });
+
+  it("lets empty qianji tools choose output-only even when a broad subagent type is present", async () => {
+    let spawn: PiSubagentsSpawnRequest | undefined;
+    const host = createPiSubagentsHost({
+      client: {
+        async spawn(request) {
+          spawn = request;
+          return "agent-broad-empty";
+        },
+        async getResult() {
+          return '```json\n{"ok":true}\n```';
+        },
+      },
+    });
+
+    await host.run({
+      activityId: "Task_BroadEmpty",
+      variables: {},
+      config: {
+        prompt: "Return output only.",
+        tools: [],
+        inputs: [],
+        outputs: ["ok"],
+        subagent: {
+          type: "pi-wendao-worker",
+          description: "Broad worker",
+        },
+      },
+    });
+
+    expect(spawn).toMatchObject({
+      description: "Broad worker",
+      subagent_type: "pi-wendao-output-only",
+      run_in_background: true,
+    });
+  });
+
+  it("uses a readonly subagent when qianji declares only read tools", async () => {
+    let spawn: PiSubagentsSpawnRequest | undefined;
+    const host = createPiSubagentsHost({
+      client: {
+        async spawn(request) {
+          spawn = request;
+          return "agent-broad";
+        },
+        async getResult() {
+          return '```json\n{"ok":true}\n```';
+        },
+      },
+    });
+
+    await host.run({
+      activityId: "Task_Read",
+      variables: {},
+      config: {
+        prompt: "Read context.",
+        tools: ["read"],
+        inputs: [],
+        outputs: ["ok"],
+      },
+    });
+
+    expect(spawn).toMatchObject({
+      description: "Run BPMN service task Task_Read",
+      subagent_type: "pi-wendao-readonly",
+      run_in_background: true,
+    });
+  });
+
+  it("keeps broad subagents for shell qianji tool scopes", async () => {
+    let spawn: PiSubagentsSpawnRequest | undefined;
+    const host = createPiSubagentsHost({
+      client: {
+        async spawn(request) {
+          spawn = request;
+          return "agent-broad";
+        },
+        async getResult() {
+          return '```json\n{"ok":true}\n```';
+        },
+      },
+    });
+
+    await host.run({
+      activityId: "Task_Shell",
+      variables: {},
+      config: {
+        prompt: "Run command.",
+        tools: ["bash"],
+        inputs: [],
+        outputs: ["ok"],
+      },
+    });
+
+    expect(spawn).toMatchObject({
+      description: "Run BPMN service task Task_Shell",
       subagent_type: "general-purpose",
       run_in_background: true,
     });
+  });
+
+  it("defines pi-wendao output profiles with explicit tool denylists", () => {
+    const outputOnlyProfile = readFileSync(
+      join(process.cwd(), ".pi", "agents", "pi-wendao-output-only.md"),
+      "utf-8",
+    );
+    const outputWriterProfile = readFileSync(
+      join(process.cwd(), ".pi", "agents", "pi-wendao-output-writer.md"),
+      "utf-8",
+    );
+    const readOnlyProfile = readFileSync(
+      join(process.cwd(), ".pi", "agents", "pi-wendao-readonly.md"),
+      "utf-8",
+    );
+
+    expect(outputOnlyProfile).toContain("tools: none");
+    expect(outputOnlyProfile).toContain(
+      "disallowed_tools: read, bash, edit, write, grep, find, ls",
+    );
+    expect(outputOnlyProfile).toContain("extensions: false");
+    expect(outputOnlyProfile).toContain("skills: false");
+
+    expect(outputWriterProfile).toContain("tools: write");
+    expect(outputWriterProfile).toContain(
+      "disallowed_tools: read, bash, edit, grep, find, ls",
+    );
+    expect(outputWriterProfile).toContain("extensions: false");
+    expect(outputWriterProfile).toContain("skills: false");
+
+    expect(readOnlyProfile).toContain("tools: read, grep, find, ls");
+    expect(readOnlyProfile).toContain("disallowed_tools: bash, edit, write");
+    expect(readOnlyProfile).toContain("extensions: false");
+    expect(readOnlyProfile).toContain("skills: false");
   });
 
   it("wraps pi-subagents tool functions as a client", async () => {
@@ -298,6 +469,73 @@ describe("createPiSubagentsHost", () => {
 
     await expect(secondHost.run(request)).resolves.toEqual({ result: "resumed" });
     expect(spawnCount).toBe(1);
+  });
+
+  it("interrupts an in-flight subagent result wait immediately", async () => {
+    const runStore = createInMemoryPiSubagentsRunStore();
+    const controller = new AbortController();
+    let spawnCount = 0;
+    let releaseResult: (() => void) | undefined;
+    let getResultStarted: (() => void) | undefined;
+    const resultPending = new Promise<void>((resolve) => {
+      releaseResult = resolve;
+    });
+    const getResultStartedPromise = new Promise<void>((resolve) => {
+      getResultStarted = resolve;
+    });
+    const request = {
+      activityId: "Task_Interrupt",
+      variables: {},
+      signal: controller.signal,
+      config: {
+        prompt: "Run interruptible task.",
+        tools: [],
+        inputs: [],
+        outputs: ["result"],
+      },
+      execution: {
+        instanceId: "instance-interrupt",
+        tokenId: 42,
+      },
+    };
+    const host = createPiSubagentsHost({
+      runStore,
+      client: {
+        async spawn() {
+          spawnCount += 1;
+          return "agent-interrupt";
+        },
+        async getResult() {
+          getResultStarted?.();
+          await resultPending;
+          return '```json\n{"result":"late"}\n```';
+        },
+      },
+    });
+
+    const run = host.run(request);
+    await getResultStartedPromise;
+    expect(spawnCount).toBe(1);
+    controller.abort();
+
+    await expect(run).rejects.toMatchObject({ name: "WorkflowInterruptedError" });
+    releaseResult?.();
+
+    const resumedHost = createPiSubagentsHost({
+      runStore,
+      client: {
+        async spawn() {
+          throw new Error("interrupted run should have preserved the spawned agent");
+        },
+        async getResult(resultRequest) {
+          expect(resultRequest.agent_id).toBe("agent-interrupt");
+          return '```json\n{"result":"resumed"}\n```';
+        },
+      },
+    });
+    await expect(resumedHost.run({ ...request, signal: undefined })).resolves.toEqual({
+      result: "resumed",
+    });
   });
 
   it("persists completed subagent output in a JSON file store", async () => {
@@ -434,14 +672,7 @@ describe("createPiSubagentsHost", () => {
 
     await expect(host.run(request)).rejects.toThrow("No API key found for anthropic");
     await expect(
-      runStore.get(
-        JSON.stringify({
-          instanceId: "instance-error",
-          activityId: "Task_Check",
-          tokenId: 51,
-          inputs: [],
-        }),
-      ),
+      runStore.get(runKeyFor(request)),
     ).resolves.toMatchObject({
       status: "failed",
       error: expect.stringContaining("No API key found for anthropic"),
@@ -481,13 +712,78 @@ describe("createPiSubagentsHost", () => {
     );
   });
 
-  it("ignores stale completed cache records missing required outputs", async () => {
-    const key = JSON.stringify({
-      instanceId: "instance-stale",
-      activityId: "Task_Stale",
-      tokenId: 53,
-      inputs: [],
+  it("extracts declared outputs from raw JSON embedded in verbose agent results", async () => {
+    const host = createPiSubagentsHost({
+      client: {
+        async spawn() {
+          return { agent_id: "agent-raw-json" };
+        },
+        async getResult() {
+          return [
+            "Agent: agent-raw-json",
+            "Type: Pi Wendao Output Only | Status: completed | Tool uses: 0",
+            "Description: Run BPMN service task Task_Review",
+            JSON.stringify(
+              {
+                appointmentRequest: "Morning appointment requested.",
+                routingUrgency: "urgent",
+                requiresClinicianReview: true,
+                patientPreparationChecklist: ["bring records"],
+                staffTriageSummary: "Route to urgent review.",
+                finalAdministrativeSummary: "Administrative intake complete.",
+              },
+              null,
+              2,
+            ),
+          ].join("\n");
+        },
+      },
     });
+
+    await expect(
+      host.run({
+        activityId: "Task_Review",
+        variables: {},
+        config: {
+          prompt: "Review intake.",
+          tools: [],
+          inputs: [],
+          outputs: [
+            "appointmentRequest",
+            "routingUrgency",
+            "requiresClinicianReview",
+            "patientPreparationChecklist",
+            "staffTriageSummary",
+            "finalAdministrativeSummary",
+          ],
+        },
+      }),
+    ).resolves.toEqual({
+      appointmentRequest: "Morning appointment requested.",
+      routingUrgency: "urgent",
+      requiresClinicianReview: true,
+      patientPreparationChecklist: ["bring records"],
+      staffTriageSummary: "Route to urgent review.",
+      finalAdministrativeSummary: "Administrative intake complete.",
+    });
+  });
+
+  it("ignores stale completed cache records missing required outputs", async () => {
+    const cachedRequest = {
+      activityId: "Task_Stale",
+      variables: {},
+      config: {
+        prompt: "Run fresh.",
+        tools: [],
+        inputs: [],
+        outputs: ["result"],
+      },
+      execution: {
+        instanceId: "instance-stale",
+        tokenId: 53,
+      },
+    };
+    const key = runKeyFor(cachedRequest);
     const runStore = createInMemoryPiSubagentsRunStore([
       {
         key,
@@ -524,21 +820,217 @@ describe("createPiSubagentsHost", () => {
     });
 
     await expect(
-      host.run({
-        activityId: "Task_Stale",
-        variables: {},
-        config: {
-          prompt: "Run fresh.",
-          tools: [],
-          inputs: [],
-          outputs: ["result"],
-        },
-        execution: {
-          instanceId: "instance-stale",
-          tokenId: 53,
-        },
-      }),
+      host.run(cachedRequest),
     ).resolves.toEqual({ result: "fresh" });
     expect(spawnCount).toBe(1);
   });
+
+  it("does not cache completed output that violates qianji output schemas", async () => {
+    const runStore = createInMemoryPiSubagentsRunStore();
+    const request = {
+      activityId: "Task_PrepareNextQuestion",
+      variables: {},
+      config: {
+        prompt: "Prepare choices.",
+        tools: [],
+        inputs: [],
+        outputs: ["currentChoices"],
+        outputSchemas: {
+          currentChoices: {
+            kind: "choice_array",
+            value: "required" as const,
+            label: "optional" as const,
+            description: "optional" as const,
+          },
+        },
+      },
+      execution: {
+        instanceId: "instance-invalid-schema",
+        tokenId: 61,
+      },
+    };
+    const host = createPiSubagentsHost({
+      runStore,
+      client: {
+        async spawn() {
+          return { agent_id: "agent-invalid-schema" };
+        },
+        async getResult() {
+          return [
+            "Done.",
+            "```json",
+            JSON.stringify({
+              currentChoices: {
+                kind: "choice_array",
+                value: [
+                  {
+                    value: "test_fixtures",
+                    label: "BPMN fixture-based integration tests",
+                  },
+                ],
+              },
+            }),
+            "```",
+          ].join("\n");
+        },
+      },
+    });
+
+    await expect(host.run(request)).rejects.toThrow(
+      "[pi-wendao.runtime.invalid_dynamic_choices]",
+    );
+    await expect(runStore.get(runKeyFor(request))).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("[pi-wendao.runtime.invalid_dynamic_choices]"),
+    });
+  });
+
+  it("does not reuse completed cache records that violate qianji output schemas", async () => {
+    const request = {
+      activityId: "Task_PrepareNextQuestion",
+      variables: {},
+      config: {
+        prompt: "Prepare choices.",
+        tools: [],
+        inputs: [],
+        outputs: ["currentChoices"],
+        outputSchemas: {
+          currentChoices: {
+            kind: "choice_array",
+            value: "required" as const,
+            label: "optional" as const,
+            description: "optional" as const,
+          },
+        },
+      },
+      execution: {
+        instanceId: "instance-invalid-cache",
+        tokenId: 62,
+      },
+    };
+    const runStore = createInMemoryPiSubagentsRunStore([
+      {
+        key: runKeyFor(request),
+        agentId: "agent-stale-invalid",
+        activityId: "Task_PrepareNextQuestion",
+        instanceId: "instance-invalid-cache",
+        tokenId: 62,
+        status: "completed",
+        spawnRequest: {
+          prompt: "Old prompt",
+          description: "Old task",
+          subagent_type: "general-purpose",
+          run_in_background: true,
+        },
+        output: {
+          currentChoices: {
+            kind: "choice_array",
+            value: [
+              {
+                value: "test_fixtures",
+                label: "BPMN fixture-based integration tests",
+              },
+            ],
+          },
+        },
+        createdAt: "2026-04-24T00:00:00.000Z",
+        updatedAt: "2026-04-24T00:00:00.000Z",
+      },
+    ]);
+    let spawnCount = 0;
+    const host = createPiSubagentsHost({
+      runStore,
+      client: {
+        async spawn() {
+          spawnCount += 1;
+          return { agent_id: "agent-fresh-schema" };
+        },
+        async getResult() {
+          return '```json\n{"currentChoices":[{"value":"test_fixtures","label":"BPMN fixture-based integration tests"}]}\n```';
+        },
+      },
+    });
+
+    await expect(host.run(request)).resolves.toEqual({
+      currentChoices: [
+        {
+          value: "test_fixtures",
+          label: "BPMN fixture-based integration tests",
+        },
+      ],
+    });
+    expect(spawnCount).toBe(1);
+  });
 });
+
+function runKeyFor(request: {
+  activityId: string;
+  variables: Record<string, unknown>;
+  config: {
+    prompt: string;
+    tools: string[];
+    toolScopes?: unknown;
+    inputs: string[];
+    outputs: string[];
+    outputSchemas?: unknown;
+    subagent?: unknown;
+  };
+  execution?: {
+    instanceId?: string;
+    tokenId?: number;
+  };
+}): string {
+  return JSON.stringify({
+    instanceId: request.execution?.instanceId,
+    activityId: request.activityId,
+    tokenId: request.execution?.tokenId ?? null,
+    contract: createHash("sha256")
+      .update(
+        stableJson({
+          prompt: request.config.prompt,
+          tools: request.config.tools,
+          toolScopes: request.config.toolScopes ?? [],
+          outputs: request.config.outputs,
+          outputSchemas: request.config.outputSchemas ?? {},
+          subagent: request.config.subagent ?? {},
+        }),
+      )
+      .digest("hex")
+      .slice(0, 16),
+    inputs: buildRunInputSnapshot(request),
+  });
+}
+
+function buildRunInputSnapshot(request: {
+  variables: Record<string, unknown>;
+  config: { inputs: string[] };
+}): Array<[string, unknown]> {
+  const inputNames =
+    request.config.inputs.length > 0
+      ? request.config.inputs
+      : Object.keys(request.variables).sort();
+  const seen = new Set<string>();
+  const snapshot: Array<[string, unknown]> = [];
+  for (const name of inputNames) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (Object.prototype.hasOwnProperty.call(request.variables, name)) {
+      snapshot.push([name, request.variables[name]]);
+    }
+  }
+  return snapshot;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}

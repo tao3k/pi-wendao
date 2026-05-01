@@ -58,7 +58,7 @@ Options:
 - `--host-fixture <path>` — qianji host fixture JSON
 - `--event-fixture <path>` — qianji event fixture JSON
 - `--context-json <json>` — merge a JSON object after `--var` pairs
-- `--trace-frame-ms <ms>` — delay between streamed graph trace frames
+- `--trace-frame-ms <ms>` — optional delay between streamed graph trace frames
 - `--model <model>` — accepted compatibility option for real host execution (defaults through `PI_WENDAO_MODEL` or Anthropic model environment variables when set)
 - `--provider <provider>` — accepted compatibility option for model resolution
 - `--api-key <key>` — accepted compatibility option for model resolution
@@ -117,8 +117,7 @@ Compile sends the raw `SKILL.md` to the large model for target selection: BPMN f
 Each step becomes a `serviceTask` with:
 
 - A focused prompt for the small model
-- A list of tools the task needs (bash, read, edit, write, etc.)
-- Input/output variable declarations for passing data between tasks
+- Native BPMN input/output variable declarations for passing data between tasks
 - Gateways for conditional logic, plus `businessRuleTask` for generated DMN decisions when needed
 - Explicit fallback tasks and gateway paths for error handling
 
@@ -131,9 +130,9 @@ including checkpoint backend selection; its local no-server default is DuckDB.
 Qianji returns the final workflow variables.
 
 When graph visualization is enabled, `pi-wendao` requests qianji trace streaming
-and applies trace events in BPMN runtime order. A small default frame delay keeps
-fast fixture-backed workflows visually progressive; set `--trace-frame-ms 0` or
-`PI_WENDAO_TRACE_FRAME_MS=0` to disable pacing.
+and applies trace events in BPMN runtime order. Trace pacing is opt-in; set
+`--trace-frame-ms <ms>` or `PI_WENDAO_TRACE_FRAME_MS=<ms>` only when animated
+replay is needed.
 When execution stops at qianji host work, the active task node also shows
 runtime details such as host token count, host backend, checkpoint backend and
 source, and declared subagent type. These details are graph annotations only;
@@ -166,10 +165,9 @@ backend when available.
 Planner and user prompts inside the native TUI use the `pi-ask` package as an
 internal UI dependency; `pi-ask` is not loaded as a pi extension and does not
 register an `ask_user` tool into the workflow session.
-By default, these host calls use the packaged `pi-wendao-worker` pi-subagent type,
-which allows the built-in `intercom` extension tool alongside the usual
-read/write/search tools. Otherwise it falls back to the default
-`pi-ai` service-task host.
+The pi-subagents backend resolves worker capability from the host profile and
+task prompt. Native BPMN IO declares workflow data only; it does not grant
+workspace tools by itself.
 The graph-local intercom bridge is exposed as the `intercom` tool in the active
 pi extension context; graph mode logs `Extension tool: pi-intercom` at startup
 and shows actual calls as compact details such as `tool:intercom action=status`
@@ -202,9 +200,9 @@ deterministic host data.
 ## BPMN format
 
 The compiled output is valid BPMN 2.0 XML, loadable in [bpmn.io](https://bpmn.io/)
-or any BPMN editor. Extension elements use the `qianji` namespace. See
-[docs/bpmn-format.md](docs/bpmn-format.md) for the maintained XML contract,
-including `qianji:interaction` for host-neutral user-task prompts.
+or any BPMN editor without a custom moddle descriptor. See
+[docs/bpmn-format.md](docs/bpmn-format.md) for the maintained native XML
+contract, including human-task interaction metadata based on standard BPMN IO.
 
 The `agentType`, `runInBackground`, `maxTurns`, `agentModel`, `thinking`,
 `isolated`, `isolation`, and `inheritContext` fields are optional execution
@@ -234,10 +232,9 @@ callers can use `createPiIntercomClientFromLoadedExtensions(...)` or
 state into `PiWendaoIntercomCorrelationState`. `pi-wendao` exposes project
 `.pi/extensions` and `.pi/agents/pi-wendao-worker.md` wrappers so pi-subagents
 child sessions can load the graph-local `intercom` tool surface without also
-loading a second `intercom` provider. Under the default pi-ai host,
-service tasks can declare `intercom` in `qianji:tools`; under pi-subagents, the
-child agent sees `intercom` through the `pi-wendao-worker` allowed tool set and
-the native chat stream shows the call when the child agent uses it.
+loading a second `intercom` provider. Under pi-subagents, the child agent sees
+`intercom` through the `pi-wendao-worker` allowed tool set and the native chat
+stream shows the call when the child agent uses it.
 Graph-local `ask` calls target the inline planner inbox; `send` calls are
 fire-and-forget chat messages.
 CLI execution resolves workflow, fixture, DMN, and explicit extension paths

@@ -1,14 +1,4 @@
 {
-  "taskId": "Task_2",
-  "processId": "Process_1",
-  "resumeStatus": "acknowledged",
-  "checkpointState": {
-    "outcome": "blocked_on_host",
-    "backend": "duckdb",
-    "source": "resumed",
-    "pendingHostWork": 1
-  },
-  "taskCompleted": false,
-  "reason": "missing_bpmn_definition_for_process_1",
-  "message": "Task was resumed from blocked_on_host state but BPMN definition not found. Task cannot proceed without workflow definition specifying inputs, outputs, and required work."
+  "currentSection": "## Real Compile Smoke Test\n\n**Goal:** Guarantee that pi-wendao compiles, builds, and all tests pass before merging any change. Currently, the `verify-local` just recipe covers this (check + build + test + fixtures), but there is no single dedicated smoke command and no CI gate.\n\n**Recommendation: Option 1 — Full CI smoke (check + build + test).**\n\nThis runs the three core verification steps in sequence:\n\n1. `npm run check` — `tsc --noEmit` catches type errors (~1s)\n2. `npm run build` — full TypeScript compile to `dist/`, confirms output is runnable (~1s)\n3. `npm test` — Vitest runs all 193 tests across 25 suites (~6s)\n\nTotal runtime is under 8 seconds on a clean checkout. This is fast enough to be a pre-commit hook or a CI job.\n\n**Implementation plan:**\n- Add a new just recipe `smoke` that runs `check build test` in order, failing fast on the first error.\n- Optionally wire this into CI (GitHub Actions or equivalent) as a required status check.\n- The existing `verify-local` recipe remains for full local verification including fixtures and lint.\n\n**Why not the other options:**\n- Type-check only (Option 2) is too thin — it misses runtime errors and test regressions.\n- Incremental watch mode (Option 3) is useful for dev ergonomics but is not a gate — it runs continuously and can be silently ignored.\n\nDoes this section look right before we move on?",
+  "moreSections": false
 }

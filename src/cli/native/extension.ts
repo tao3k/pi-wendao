@@ -1,11 +1,18 @@
-import type { ExtensionAPI, ExtensionFactory } from "@mariozechner/pi-coding-agent";
-import { Text, type Component } from "@mariozechner/pi-tui";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionFactory,
+  TerminalInputHandler,
+} from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, Text, type Component } from "@mariozechner/pi-tui";
 import { isWorkflowInterruptedError } from "../../executor/interrupt.js";
 import { parseNativeRunCommand, parseNativeShowCommand } from "./args.js";
 import { WORKFLOW_MESSAGE_TYPE } from "./constants.js";
 import { renderWorkflowMessage, sendWorkflowMessage } from "./messages.js";
 import { registerAnthropicEnvProvider } from "./model.js";
 import { runNativeWorkflow, showNativeWorkflowStatus } from "./runner.js";
+import { isNativeWorkflowUiEscScopeActive } from "./esc-scope.js";
+import { resetNativeSessionSurfaces } from "./session-surfaces.js";
 import type {
   NativeRunCommand,
   PiWendaoNativeExtensionOptions,
@@ -15,7 +22,7 @@ import type {
 export function createPiWendaoNativeExtension(
   options: PiWendaoNativeExtensionOptions,
 ): ExtensionFactory {
-  let activeRun: { controller: AbortController; workflowPath?: string } | undefined;
+  let activeRun: ActiveWorkflowRun | undefined;
 
   return (pi: ExtensionAPI) => {
     registerAnthropicEnvProvider(pi);
@@ -31,9 +38,13 @@ export function createPiWendaoNativeExtension(
         }
         let command: NativeRunCommand | undefined;
         const controller = new AbortController();
+        let unsubscribeInterruptInput: (() => void) | undefined;
         try {
           command = parseNativeRunCommand(args);
           activeRun = { controller, workflowPath: command.workflowPath };
+          unsubscribeInterruptInput = ctx.ui.onTerminalInput(
+            createWorkflowInterruptInputHandler(pi, ctx, () => activeRun),
+          );
           await ctx.waitForIdle();
           await runNativeWorkflow(pi, ctx, options, command, controller.signal);
         } catch (error) {
@@ -53,6 +64,7 @@ export function createPiWendaoNativeExtension(
             success: false,
           });
         } finally {
+          unsubscribeInterruptInput?.();
           activeRun = undefined;
           ctx.ui.setStatus("pi-wendao", undefined);
         }
@@ -67,14 +79,7 @@ export function createPiWendaoNativeExtension(
           ctx.ui.notify("No pi-wendao workflow is running.", "warning");
           return;
         }
-        const workflowPath = activeRun.workflowPath;
-        activeRun.controller.abort();
-        ctx.ui.notify("Stopping pi-wendao workflow...", "warning");
-        sendWorkflowMessage(pi, {
-          kind: "status",
-          workflowPath,
-          lines: ["Workflow interrupt requested. Qianji checkpoint state will be preserved."],
-        });
+        requestWorkflowStop(pi, ctx, activeRun);
       },
     });
 
@@ -94,6 +99,47 @@ export function createPiWendaoNativeExtension(
   };
 }
 
+type ActiveWorkflowRun = {
+  controller: AbortController;
+  workflowPath?: string;
+  stopRequested?: boolean;
+};
+
+function createWorkflowInterruptInputHandler(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  getActiveRun: () => ActiveWorkflowRun | undefined,
+): TerminalInputHandler {
+  return (data) => {
+    if (!isWorkflowInterruptKey(data)) return undefined;
+    if (isNativeWorkflowUiEscScopeActive()) return undefined;
+    const run = getActiveRun();
+    if (!run) return undefined;
+    requestWorkflowStop(pi, ctx, run);
+    return { consume: true };
+  };
+}
+
+function requestWorkflowStop(
+  pi: ExtensionAPI,
+  ctx: Pick<ExtensionCommandContext, "ui">,
+  activeRun: ActiveWorkflowRun,
+): void {
+  if (activeRun.stopRequested) return;
+  activeRun.stopRequested = true;
+  activeRun.controller.abort();
+  ctx.ui.notify("Stopping pi-wendao workflow...", "warning");
+  sendWorkflowMessage(pi, {
+    kind: "status",
+    workflowPath: activeRun.workflowPath,
+    lines: ["Workflow interrupt requested. Qianji checkpoint state will be preserved."],
+  });
+}
+
+function isWorkflowInterruptKey(data: string): boolean {
+  return matchesKey(data, Key.escape);
+}
+
 function registerSessionLifecycleAliases(pi: ExtensionAPI): void {
   pi.registerCommand("exit", {
     description: "Exit pi-wendao cleanly; alias for pi /quit",
@@ -106,8 +152,10 @@ function registerSessionLifecycleAliases(pi: ExtensionAPI): void {
     description: "Start a fresh pi session; alias for pi /new",
     handler: async (_args, ctx) => {
       await ctx.waitForIdle();
+      resetNativeSessionSurfaces(pi, ctx);
       const result = await ctx.newSession({
         withSession: async (newCtx) => {
+          resetNativeSessionSurfaces(pi, newCtx);
           newCtx.ui.notify("New session started.", "info");
         },
       });

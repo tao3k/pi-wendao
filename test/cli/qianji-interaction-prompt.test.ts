@@ -32,7 +32,7 @@ describe("qianji interaction prompt replies", () => {
     ).toBe("custom direction");
   });
 
-  it("defaults confirm interactions to approved when no explicit choice is provided", () => {
-    expect(resolveQianjiInteractionReply({ type: "confirm" })).toBe("approved");
+  it("does not infer confirm approval without an explicit selected choice", () => {
+    expect(resolveQianjiInteractionReply({ type: "confirm" })).toBeUndefined();
   });
 });

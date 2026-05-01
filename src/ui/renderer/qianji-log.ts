@@ -35,9 +35,13 @@ export function formatQianjiHostWorkEventForLog(event: QianjiHostWorkLogEvent): 
   const kinds = event.hostKinds.length > 0 ? ` kind=${event.hostKinds.join("+")}` : "";
   const repeats =
     event.repeatSummaries.length > 0 ? ` repeat=${event.repeatSummaries.join(";")}` : "";
+  const assignments =
+    event.assignmentSummaries && event.assignmentSummaries.length > 0
+      ? ` assignment=${event.assignmentSummaries.join(";")}`
+      : "";
   return [
     dim(
-      `${prefix} ${event.activityId}: ${event.hostWorkCount} ${plural(event.hostWorkCount, "job")}${batch}${tokens}${kinds}${repeats}`,
+      `${prefix} ${event.activityId}: ${event.hostWorkCount} ${plural(event.hostWorkCount, "job")}${batch}${tokens}${kinds}${repeats}${assignments}`,
     ),
   ];
 }

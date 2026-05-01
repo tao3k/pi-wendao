@@ -3,7 +3,6 @@ import type { GraphNode, GraphView } from "../ui/graph-view.js";
 import type {
   PiWendaoConfig,
   PiWendaoHostWorkKind,
-  PiWendaoSubagentConfig,
   QianjiInteraction,
   QianjiInteractionChoice,
   QianjiInteractionFreeText,
@@ -18,6 +17,10 @@ export interface HostCompletionFixture {
   service_task_tokens?: Record<string, { data: Record<string, unknown> }>;
   user_tasks?: Record<string, { data: Record<string, unknown> }>;
   manual_tasks?: Record<string, { data: Record<string, unknown> }>;
+  business_rule_tasks?: Record<
+    string,
+    { output: Record<string, unknown>; matched_rule_ids?: string[] }
+  >;
 }
 
 type PiWendaoHostTaskElement = Record<string, unknown> & { hostKind: PiWendaoHostWorkKind };
@@ -27,8 +30,22 @@ const parser = new XMLParser({
   attributeNamePrefix: "",
   removeNSPrefix: false,
 });
-const QIANJI_CONFIG_ELEMENT = "qianji:config";
-const QIANJI_INTERACTION_ELEMENT = "qianji:interaction";
+
+const LEGACY_CUSTOM_LOCAL_NAMES = new Set([
+  "config",
+  "interaction",
+  "choice",
+  "choices",
+  "freeText",
+  "inputs",
+  "outputSchema",
+  "outputs",
+  "prompt",
+  "question",
+  "result",
+  "tools",
+  "toolScope",
+]);
 
 const GRAPH_NODE_SPECS: Array<{ element: string; type: GraphNode["type"] }> = [
   { element: "startEvent", type: "start" },
@@ -60,32 +77,6 @@ const PI_WENDAO_HOST_TASK_ELEMENTS: Array<{ element: string; hostKind: PiWendaoH
   { element: "sendTask", hostKind: "send" },
 ];
 
-export function buildDefaultHostFixture(
-  source: string,
-  context: Record<string, unknown>,
-): HostCompletionFixture | undefined {
-  const document = parser.parse(source) as { definitions?: { process?: unknown } };
-  const tasks = collectPiWendaoHostTasks(document.definitions?.process).filter(
-    (task) => task.hostKind === "service" || task.hostKind === "user" || task.hostKind === "manual",
-  );
-  if (tasks.length === 0) return undefined;
-
-  const fixture: HostCompletionFixture = {};
-  for (const task of tasks) {
-    const taskId = typeof task.id === "string" ? task.id.trim() : "";
-    if (!taskId) continue;
-    const data: Record<string, unknown> = {};
-    for (const outputName of extractPiWendaoOutputs(task)) {
-      data[outputName] = Object.prototype.hasOwnProperty.call(context, outputName)
-        ? context[outputName]
-        : defaultFixtureValue(outputName);
-    }
-    addStaticHostFixtureEntry(fixture, task.hostKind, taskId, data);
-  }
-
-  return hasHostCompletionResults(fixture) ? fixture : undefined;
-}
-
 export function buildPiWendaoConfigMap(
   source: string,
   processId: string,
@@ -98,19 +89,8 @@ export function buildPiWendaoConfigMap(
   for (const task of collectPiWendaoHostTasks(process)) {
     const id = readString(task.id);
     if (!id) continue;
-    const extensionElements = task.extensionElements;
-    if (!isObject(extensionElements)) continue;
-    const config = readQianjiConfig(extensionElements);
-    if (!config) continue;
-    configs.set(id, {
-      hostKind: task.hostKind,
-      prompt: readQianjiText(config, "prompt"),
-      tools: csv(readQianjiText(config, "tools")),
-      inputs: csv(readQianjiText(config, "inputs")),
-      outputs: csv(readQianjiText(config, "outputs")),
-      interaction: readQianjiInteraction(config),
-      subagent: readPiWendaoSubagentConfig(config),
-    });
+    assertNoLegacyCustomInteractionXml(task, id);
+    configs.set(id, readNativeTaskConfig(task));
   }
 
   return configs;
@@ -181,56 +161,6 @@ export function hasHostCompletionResults(fixture: HostCompletionFixture): boolea
   return Object.values(fixture).some((bucket) => bucket && Object.keys(bucket).length > 0);
 }
 
-function addStaticHostFixtureEntry(
-  fixture: HostCompletionFixture,
-  hostKind: PiWendaoHostWorkKind,
-  taskId: string,
-  data: Record<string, unknown>,
-): void {
-  switch (hostKind) {
-    case "user":
-      fixture.user_tasks ??= {};
-      fixture.user_tasks[taskId] = { data };
-      return;
-    case "manual":
-      fixture.manual_tasks ??= {};
-      fixture.manual_tasks[taskId] = { data };
-      return;
-    case "service":
-    default:
-      fixture.service_tasks ??= {};
-      fixture.service_tasks[taskId] = { data };
-      return;
-  }
-}
-
-function readPiWendaoSubagentConfig(
-  config: Record<string, unknown>,
-): PiWendaoSubagentConfig | undefined {
-  const subagent: PiWendaoSubagentConfig = {};
-  const type = readQianjiText(config, "agentType").trim();
-  const description = readQianjiText(config, "agentDescription").trim();
-  const runInBackground = readOptionalBoolean(config["qianji:runInBackground"]);
-  const maxTurns = readOptionalNumber(config["qianji:maxTurns"]);
-  const isolated = readOptionalBoolean(config["qianji:isolated"]);
-  const inheritContext = readOptionalBoolean(config["qianji:inheritContext"]);
-  const model = readQianjiText(config, "agentModel").trim();
-  const thinking = readQianjiText(config, "thinking").trim();
-  const isolation = readQianjiText(config, "isolation").trim();
-
-  if (type) subagent.type = type;
-  if (description) subagent.description = description;
-  if (runInBackground !== undefined) subagent.runInBackground = runInBackground;
-  if (model) subagent.model = model;
-  if (thinking) subagent.thinking = thinking;
-  if (maxTurns !== undefined) subagent.maxTurns = maxTurns;
-  if (isolated !== undefined) subagent.isolated = isolated;
-  if (isolation) subagent.isolation = isolation;
-  if (inheritContext !== undefined) subagent.inheritContext = inheritContext;
-
-  return Object.keys(subagent).length > 0 ? subagent : undefined;
-}
-
 function readOptionalBoolean(value: unknown): boolean | undefined {
   const text = readText(value).trim().toLowerCase();
   if (!text) return undefined;
@@ -246,29 +176,6 @@ function readOptionalNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function defaultFixtureValue(outputName: string): unknown {
-  const normalized = outputName.toLowerCase();
-  if (normalized === "retrycount") return 3;
-  if (normalized === "status") return "ready";
-  if (normalized === "resulta") return "alpha";
-  if (normalized === "resultb") return "beta";
-  if (normalized === "merged") return "alpha beta";
-  if (normalized === "reason") return "validation failed";
-  if (normalized === "filecount" || normalized.endsWith("count")) return 0;
-  if (normalized.endsWith("list") || normalized.endsWith("items")) return [];
-  if (
-    normalized.startsWith("is") ||
-    normalized.startsWith("has") ||
-    normalized.startsWith("can") ||
-    normalized.startsWith("should")
-  ) {
-    return !normalized.includes("rejected") && !normalized.includes("failed");
-  }
-  if (normalized === "valid" || normalized === "published" || normalized === "ready") return true;
-  if (normalized === "rejected" || normalized === "failed") return false;
-  return null;
-}
-
 function collectPiWendaoHostTasks(processes: unknown): PiWendaoHostTaskElement[] {
   const tasks: PiWendaoHostTaskElement[] = [];
   for (const process of asArray(processes)) {
@@ -282,57 +189,30 @@ function collectPiWendaoHostTasks(processes: unknown): PiWendaoHostTaskElement[]
   return tasks;
 }
 
-function extractPiWendaoOutputs(task: Record<string, unknown>): string[] {
-  const extensionElements = task.extensionElements;
-  if (!isObject(extensionElements)) return [];
-  const config = readQianjiConfig(extensionElements);
-  if (!config) return [];
-  return csv(readQianjiText(config, "outputs"));
-}
-
-function readQianjiConfig(
-  extensionElements: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  return firstObject(extensionElements[QIANJI_CONFIG_ELEMENT]);
-}
-
-function readQianjiText(config: Record<string, unknown>, field: string): string {
-  return readText(config[`qianji:${field}`]);
-}
-
-function readQianjiInteraction(config: Record<string, unknown>): QianjiInteraction | undefined {
-  const interaction = firstObject(config[QIANJI_INTERACTION_ELEMENT]);
-  if (!interaction) return undefined;
-  const type = readInteractionType(readString(interaction.type) || "input");
-  if (!type) return undefined;
-  const question = readQianjiQuestion(interaction, csv(readQianjiText(config, "inputs")));
-  const choices = readQianjiChoices(interaction);
-  const choicesRef = readQianjiChoicesRef(interaction);
-  const freeText = readQianjiFreeText(interaction);
-  const result = readQianjiResult(interaction);
+function readNativeTaskConfig(task: PiWendaoHostTaskElement): PiWendaoConfig {
+  const nativeIo = readNativeIo(task);
+  const prompt = readNativeDocumentation(task);
+  const outputs = nativeIo.outputAssociations
+    .map((association) => association.targetRef)
+    .filter((value): value is string => Boolean(value));
+  const inputs = nativeIo.inputAssociations
+    .map((association) => association.sourceRef)
+    .filter((value): value is string => Boolean(value));
+  const interaction = isHumanHostTask(task.hostKind)
+    ? readNativeInteraction(task, nativeIo, prompt)
+    : undefined;
   return {
-    type,
-    ...(question.text ? { question: question.text } : {}),
-    ...(question.ref ? { questionRef: question.ref } : {}),
-    ...(choices.length > 0 ? { choices } : {}),
-    ...(choicesRef ? { choicesRef } : {}),
-    ...(freeText ? { freeText } : {}),
-    ...(result ? { result } : {}),
+    hostKind: task.hostKind,
+    prompt,
+    tools: [],
+    inputs: [...new Set(inputs)],
+    outputs: [...new Set(outputs.length > 0 ? outputs : nativeIo.dataOutputNames)],
+    ...(interaction ? { interaction } : {}),
   };
 }
 
-function readQianjiQuestion(
-  interaction: Record<string, unknown>,
-  inputs: string[],
-): { text?: string; ref?: string } {
-  const questionElement = interaction["qianji:question"];
-  const questionObject = firstObject(questionElement);
-  const explicitRef = questionObject ? readString(questionObject.ref) : "";
-  if (explicitRef) return { ref: explicitRef };
-
-  const text = readText(questionElement).trim();
-  if (inputs.includes(text)) return { ref: text };
-  return text ? { text } : {};
+function isHumanHostTask(kind: PiWendaoHostWorkKind): boolean {
+  return kind === "user" || kind === "manual";
 }
 
 function readInteractionType(value: string): QianjiInteractionType | undefined {
@@ -341,45 +221,192 @@ function readInteractionType(value: string): QianjiInteractionType | undefined {
     : undefined;
 }
 
-function readQianjiChoices(interaction: Record<string, unknown>): QianjiInteractionChoice[] {
-  return asArray(interaction["qianji:choice"])
-    .filter(isObject)
-    .map((choice) => ({
-      value: readString(choice.value),
-      ...(readString(choice.label) ? { label: readString(choice.label) } : {}),
-      ...(readText(choice).trim() ? { description: readText(choice).trim() } : {}),
-    }))
-    .filter((choice) => choice.value.length > 0);
+interface NativeIoModel {
+  dataInputById: Map<string, string>;
+  dataOutputById: Map<string, string>;
+  dataOutputNames: string[];
+  inputAssociations: NativeInputAssociation[];
+  outputAssociations: NativeOutputAssociation[];
 }
 
-function readQianjiChoicesRef(interaction: Record<string, unknown>): string | undefined {
-  const choices = firstObject(interaction["qianji:choices"]);
-  const ref = choices ? readString(choices.ref) : "";
-  return ref || undefined;
+interface NativeInputAssociation {
+  sourceRef?: string;
+  targetRef?: string;
+  assignmentFrom?: string;
+  assignmentTo?: string;
 }
 
-function readQianjiFreeText(
-  interaction: Record<string, unknown>,
-): QianjiInteractionFreeText | undefined {
-  const freeText = firstObject(interaction["qianji:freeText"]);
-  if (!freeText) return undefined;
+interface NativeOutputAssociation {
+  sourceRef?: string;
+  targetRef?: string;
+}
+
+function readNativeIo(task: Record<string, unknown>): NativeIoModel {
+  const io = firstElement(task, "ioSpecification");
+  const dataInputById = new Map<string, string>();
+  const dataOutputById = new Map<string, string>();
+  const dataOutputNames: string[] = [];
+  if (io) {
+    for (const input of readElements(io, "dataInput")) {
+      const id = readString(input.id);
+      const name = readString(input.name);
+      if (id && name) dataInputById.set(id, name);
+    }
+    for (const output of readElements(io, "dataOutput")) {
+      const id = readString(output.id);
+      const name = readString(output.name);
+      if (id && name) {
+        dataOutputById.set(id, name);
+        dataOutputNames.push(name);
+      }
+    }
+  }
+  return {
+    dataInputById,
+    dataOutputById,
+    dataOutputNames,
+    inputAssociations: readElements(task, "dataInputAssociation").map(readNativeInputAssociation),
+    outputAssociations: readElements(task, "dataOutputAssociation").map(readNativeOutputAssociation),
+  };
+}
+
+function readNativeInputAssociation(association: Record<string, unknown>): NativeInputAssociation {
+  const assignment = firstElement(association, "assignment");
+  return {
+    sourceRef: readText(firstElementValue(association, "sourceRef")).trim() || undefined,
+    targetRef: readText(firstElementValue(association, "targetRef")).trim() || undefined,
+    assignmentFrom: assignment
+      ? readText(firstElementValue(assignment, "from")).trim() || undefined
+      : undefined,
+    assignmentTo: assignment
+      ? readText(firstElementValue(assignment, "to")).trim() || undefined
+      : undefined,
+  };
+}
+
+function readNativeOutputAssociation(
+  association: Record<string, unknown>,
+): NativeOutputAssociation {
+  return {
+    sourceRef: readText(firstElementValue(association, "sourceRef")).trim() || undefined,
+    targetRef: readText(firstElementValue(association, "targetRef")).trim() || undefined,
+  };
+}
+
+function readNativeInteraction(
+  task: PiWendaoHostTaskElement,
+  nativeIo: NativeIoModel,
+  documentation: string,
+): QianjiInteraction | undefined {
+  const type = readInteractionType(readNativeInputLiteral(nativeIo, "interactionType") || "input");
+  if (!type) return undefined;
+  const questionRef = readNativeInputSource(nativeIo, "question");
+  const choicesRef = readNativeInputSource(nativeIo, "choices");
+  const choices = readNativeChoicesLiteral(readNativeInputLiteral(nativeIo, "choices"));
+  const freeText = readNativeFreeTextLiteral(readNativeInputLiteral(nativeIo, "freeText"));
+  const result = readNativeAnswerResult(nativeIo);
+  return {
+    type,
+    ...(documentation ? { question: documentation } : {}),
+    ...(questionRef ? { questionRef } : {}),
+    ...(choices.length > 0 ? { choices } : {}),
+    ...(choicesRef ? { choicesRef } : {}),
+    ...(freeText ? { freeText } : {}),
+    ...(result ? { result } : {}),
+  };
+}
+
+function readNativeInputLiteral(nativeIo: NativeIoModel, inputName: string): string {
+  return (
+    nativeIo.inputAssociations
+      .find((association) => nativeInputName(nativeIo, association) === inputName)
+      ?.assignmentFrom?.trim() ?? ""
+  );
+}
+
+function readNativeInputSource(nativeIo: NativeIoModel, inputName: string): string | undefined {
+  return nativeIo.inputAssociations
+    .find((association) => nativeInputName(nativeIo, association) === inputName)
+    ?.sourceRef?.trim();
+}
+
+function nativeInputName(
+  nativeIo: NativeIoModel,
+  association: NativeInputAssociation,
+): string | undefined {
+  const target = association.targetRef ?? association.assignmentTo;
+  return target ? nativeIo.dataInputById.get(target.trim()) : undefined;
+}
+
+function readNativeAnswerResult(nativeIo: NativeIoModel): QianjiInteractionResult | undefined {
+  const association = nativeIo.outputAssociations.find((candidate) => {
+    const source = candidate.sourceRef?.trim();
+    return source ? nativeIo.dataOutputById.get(source) === "answer" : false;
+  });
+  const output = association?.targetRef?.trim();
+  return output ? { output } : undefined;
+}
+
+function readNativeChoicesLiteral(value: string): QianjiInteractionChoice[] {
+  if (!value) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+  return asArray(parsed)
+    .map((choice) => {
+      if (typeof choice === "string") return { value: choice };
+      if (!isObject(choice)) return undefined;
+      const result = {
+        value: readString(choice.value),
+        ...(readString(choice.label) ? { label: readString(choice.label) } : {}),
+        ...(readString(choice.description) ? { description: readString(choice.description) } : {}),
+      };
+      return result.value ? result : undefined;
+    })
+    .filter((choice): choice is QianjiInteractionChoice => Boolean(choice));
+}
+
+function readNativeFreeTextLiteral(value: string): QianjiInteractionFreeText | undefined {
+  if (!value) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    parsed = value;
+  }
+  if (typeof parsed === "string") return parsed ? { name: parsed } : undefined;
+  if (!isObject(parsed)) return undefined;
   const result: QianjiInteractionFreeText = {};
-  const name = readString(freeText.name);
-  const placeholder = readString(freeText.placeholder);
-  const optional = readOptionalBoolean(freeText.optional);
+  const name = readString(parsed.name);
+  const placeholder = readString(parsed.placeholder);
+  const optional = readOptionalBoolean(parsed.optional);
   if (name) result.name = name;
   if (placeholder) result.placeholder = placeholder;
   if (optional !== undefined) result.optional = optional;
-  return Object.keys(result).length > 0 ? result : {};
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
-function readQianjiResult(
-  interaction: Record<string, unknown>,
-): QianjiInteractionResult | undefined {
-  const resultConfig = firstObject(interaction["qianji:result"]);
-  if (!resultConfig) return undefined;
-  const output = readString(resultConfig.output);
-  return output ? { output } : {};
+function readNativeDocumentation(task: Record<string, unknown>): string {
+  return readText(firstElementValue(task, "documentation")).trim();
+}
+
+function assertNoLegacyCustomInteractionXml(task: Record<string, unknown>, taskId: string): void {
+  const extensionElements = firstObject(task.extensionElements);
+  if (!extensionElements) return;
+  for (const key of Object.keys(extensionElements)) {
+    if (key.includes(":") && LEGACY_CUSTOM_LOCAL_NAMES.has(key.split(":").at(-1) ?? "")) {
+      throw new Error(
+        [
+          "[pi-wendao.runtime.legacy_custom_interaction_xml]",
+          `BPMN task '${taskId}' uses legacy custom QName interaction XML.`,
+          "Use native BPMN documentation, ioSpecification, dataInputAssociation, and dataOutputAssociation metadata.",
+        ].join("\n"),
+      );
+    }
+  }
 }
 
 function findProcess(processes: unknown, processId: string): Record<string, unknown> | undefined {
@@ -402,6 +429,18 @@ function csv(value: string): string[] {
 function firstObject(value: unknown): Record<string, unknown> | undefined {
   const first = asArray(value).find(isObject);
   return first;
+}
+
+function readElements(parent: Record<string, unknown>, localName: string): Record<string, unknown>[] {
+  return asArray(firstElementValue(parent, localName)).filter(isObject);
+}
+
+function firstElement(parent: Record<string, unknown>, localName: string): Record<string, unknown> | undefined {
+  return firstObject(firstElementValue(parent, localName));
+}
+
+function firstElementValue(parent: Record<string, unknown>, localName: string): unknown {
+  return parent[localName] ?? parent[`bpmn:${localName}`];
 }
 
 function readText(value: unknown): string {

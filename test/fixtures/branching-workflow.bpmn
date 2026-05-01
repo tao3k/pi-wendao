@@ -1,42 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
              targetNamespace="https://qianji.dev">
   <process id="Process_1" name="Branching Workflow" isExecutable="true">
     <startEvent id="Start_1"/>
     <serviceTask id="Task_RunTests" name="Run tests" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Run the test suite and determine if tests pass or fail.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>testsPassed</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Run the test suite and determine if tests pass or fail.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_RunTests_output_testsPassed" name="testsPassed" />
+    <inputSet id="Task_RunTests_input_set"></inputSet>
+    <outputSet id="Task_RunTests_output_set">
+    <dataOutputRefs>Task_RunTests_output_testsPassed</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_RunTests_output_testsPassed</sourceRef>
+    <targetRef>testsPassed</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
     <exclusiveGateway id="Gateway_1" name="Tests passed?" default="Flow_Fail"/>
     <serviceTask id="Task_ReportSuccess" name="Report success" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Report that all tests passed successfully.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>testsPassed</qianji:inputs>
-          <qianji:outputs></qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Report that all tests passed successfully.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_ReportSuccess_input_testsPassed" name="testsPassed" />
+    <inputSet id="Task_ReportSuccess_input_set">
+    <dataInputRefs>Task_ReportSuccess_input_testsPassed</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_ReportSuccess_output_set"></outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>testsPassed</sourceRef>
+    <targetRef>Task_ReportSuccess_input_testsPassed</targetRef>
+  </dataInputAssociation>
+</serviceTask>
     <serviceTask id="Task_FixTests" name="Fix tests" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Analyze and fix the failing tests.</qianji:prompt>
-          <qianji:tools>bash,read,edit</qianji:tools>
-          <qianji:inputs>testsPassed</qianji:inputs>
-          <qianji:outputs></qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Analyze and fix the failing tests.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_FixTests_input_testsPassed" name="testsPassed" />
+    <inputSet id="Task_FixTests_input_set">
+    <dataInputRefs>Task_FixTests_input_testsPassed</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_FixTests_output_set"></outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>testsPassed</sourceRef>
+    <targetRef>Task_FixTests_input_testsPassed</targetRef>
+  </dataInputAssociation>
+</serviceTask>
     <endEvent id="End_1"/>
     <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_RunTests"/>
     <sequenceFlow id="Flow_2" sourceRef="Task_RunTests" targetRef="Gateway_1"/>

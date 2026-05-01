@@ -1,94 +1,170 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_PiAskInteractions"
              targetNamespace="https://qianji.dev/examples/pi-ask-interactions">
   <process id="Process_PiAskInteractions" isExecutable="true">
     <startEvent id="Start"/>
 
     <userTask id="Task_Input" name="Free-form input">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Collect a plain free-form answer.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>topic</qianji:inputs>
-          <qianji:outputs>freeformAnswer</qianji:outputs>
-          <qianji:interaction type="input">
-            <qianji:question>Describe the next investigation step.</qianji:question>
-            <qianji:freeText name="freeformAnswer" placeholder="Write a short answer"/>
-            <qianji:result output="freeformAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>Describe the next investigation step.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Input_input_topic" name="topic" />
+    <dataInput id="Task_Input_input_interactionType" name="interactionType" />
+    <dataInput id="Task_Input_input_freeText" name="freeText" />
+    <dataOutput id="Task_Input_output_answer" name="answer" />
+    <inputSet id="Task_Input_input_set">
+    <dataInputRefs>Task_Input_input_topic</dataInputRefs>
+    <dataInputRefs>Task_Input_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_Input_input_freeText</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Input_output_set">
+    <dataOutputRefs>Task_Input_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>topic</sourceRef>
+    <targetRef>Task_Input_input_topic</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>input</from><to>Task_Input_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>{"name":"freeformAnswer","placeholder":"Write a short answer"}</from><to>Task_Input_input_freeText</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Input_output_answer</sourceRef>
+    <targetRef>freeformAnswer</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <userTask id="Task_Confirm" name="Confirm continuation">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask for a binary confirmation.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>approved</qianji:outputs>
-          <qianji:interaction type="confirm">
-            <qianji:question>Continue with the proposed workflow?</qianji:question>
-            <qianji:result output="approved"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>Continue with the proposed workflow?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Confirm_input_interactionType" name="interactionType" />
+    <dataOutput id="Task_Confirm_output_answer" name="answer" />
+    <inputSet id="Task_Confirm_input_set">
+    <dataInputRefs>Task_Confirm_input_interactionType</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Confirm_output_set">
+    <dataOutputRefs>Task_Confirm_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <assignment><from>confirm</from><to>Task_Confirm_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Confirm_output_answer</sourceRef>
+    <targetRef>approved</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <userTask id="Task_Choice" name="Static choice">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask the user to select one fixed option.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>selectedDirection</qianji:outputs>
-          <qianji:interaction type="choice">
-            <qianji:question>Which direction should the workflow emphasize?</qianji:question>
-            <qianji:choice value="expand" label="Explore more">Gather broader context before narrowing.</qianji:choice>
-            <qianji:choice value="narrow" label="Narrow scope">Pick the smallest useful slice now.</qianji:choice>
-            <qianji:result output="selectedDirection"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>Which direction should the workflow emphasize?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Choice_input_interactionType" name="interactionType" />
+    <dataInput id="Task_Choice_input_choices" name="choices" />
+    <dataOutput id="Task_Choice_output_answer" name="answer" />
+    <inputSet id="Task_Choice_input_set">
+    <dataInputRefs>Task_Choice_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_Choice_input_choices</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Choice_output_set">
+    <dataOutputRefs>Task_Choice_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <assignment><from>choice</from><to>Task_Choice_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>[{"value":"expand","label":"Explore more","description":"Gather broader context before narrowing."},{"value":"narrow","label":"Narrow scope","description":"Pick the smallest useful slice now."}]</from><to>Task_Choice_input_choices</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Choice_output_answer</sourceRef>
+    <targetRef>selectedDirection</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <userTask id="Task_ChoiceInput" name="Choice with custom answer">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask the user to choose or type a custom answer.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>choiceInputAnswer</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question>How should qianji repair this workflow?</qianji:question>
-            <qianji:choice value="minimal" label="Minimal fix">Only repair the failing contract.</qianji:choice>
-            <qianji:choice value="broaden" label="Broaden coverage">Add schema tests around the failure.</qianji:choice>
-            <qianji:freeText name="choiceInputAnswer" optional="true" placeholder="Type a custom repair direction"/>
-            <qianji:result output="choiceInputAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>How should qianji repair this workflow?</documentation>
+  <ioSpecification>
+    <dataInput id="Task_ChoiceInput_input_interactionType" name="interactionType" />
+    <dataInput id="Task_ChoiceInput_input_choices" name="choices" />
+    <dataInput id="Task_ChoiceInput_input_freeText" name="freeText" />
+    <dataOutput id="Task_ChoiceInput_output_answer" name="answer" />
+    <inputSet id="Task_ChoiceInput_input_set">
+    <dataInputRefs>Task_ChoiceInput_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_ChoiceInput_input_choices</dataInputRefs>
+    <dataInputRefs>Task_ChoiceInput_input_freeText</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_ChoiceInput_output_set">
+    <dataOutputRefs>Task_ChoiceInput_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <assignment><from>choice_input</from><to>Task_ChoiceInput_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>[{"value":"minimal","label":"Minimal fix","description":"Only repair the failing contract."},{"value":"broaden","label":"Broaden coverage","description":"Add schema tests around the failure."}]</from><to>Task_ChoiceInput_input_choices</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>{"name":"choiceInputAnswer","placeholder":"Type a custom repair direction","optional":true}</from><to>Task_ChoiceInput_input_freeText</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_ChoiceInput_output_answer</sourceRef>
+    <targetRef>choiceInputAnswer</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <userTask id="Task_DynamicChoiceInput" name="Dynamic generated question">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Ask the generated question with generated options.</qianji:prompt>
-          <qianji:tools></qianji:tools>
-          <qianji:inputs>currentQuestion,currentChoices</qianji:inputs>
-          <qianji:outputs>dynamicAnswer</qianji:outputs>
-          <qianji:interaction type="choice_input">
-            <qianji:question ref="currentQuestion"/>
-            <qianji:choices ref="currentChoices"/>
-            <qianji:freeText name="dynamicAnswer" optional="true" placeholder="Type another answer"/>
-            <qianji:result output="dynamicAnswer"/>
-          </qianji:interaction>
-        </qianji:config>
-      </extensionElements>
-    </userTask>
+  <documentation>Ask the generated question with generated options.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_DynamicChoiceInput_input_currentQuestion" name="currentQuestion" />
+    <dataInput id="Task_DynamicChoiceInput_input_currentChoices" name="currentChoices" />
+    <dataInput id="Task_DynamicChoiceInput_input_interactionType" name="interactionType" />
+    <dataInput id="Task_DynamicChoiceInput_input_question" name="question" />
+    <dataInput id="Task_DynamicChoiceInput_input_choices" name="choices" />
+    <dataInput id="Task_DynamicChoiceInput_input_freeText" name="freeText" />
+    <dataOutput id="Task_DynamicChoiceInput_output_answer" name="answer" />
+    <inputSet id="Task_DynamicChoiceInput_input_set">
+    <dataInputRefs>Task_DynamicChoiceInput_input_currentQuestion</dataInputRefs>
+    <dataInputRefs>Task_DynamicChoiceInput_input_currentChoices</dataInputRefs>
+    <dataInputRefs>Task_DynamicChoiceInput_input_interactionType</dataInputRefs>
+    <dataInputRefs>Task_DynamicChoiceInput_input_question</dataInputRefs>
+    <dataInputRefs>Task_DynamicChoiceInput_input_choices</dataInputRefs>
+    <dataInputRefs>Task_DynamicChoiceInput_input_freeText</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_DynamicChoiceInput_output_set">
+    <dataOutputRefs>Task_DynamicChoiceInput_output_answer</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>currentQuestion</sourceRef>
+    <targetRef>Task_DynamicChoiceInput_input_currentQuestion</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>currentChoices</sourceRef>
+    <targetRef>Task_DynamicChoiceInput_input_currentChoices</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>choice_input</from><to>Task_DynamicChoiceInput_input_interactionType</to></assignment>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>currentQuestion</sourceRef>
+    <targetRef>Task_DynamicChoiceInput_input_question</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>currentChoices</sourceRef>
+    <targetRef>Task_DynamicChoiceInput_input_choices</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <assignment><from>{"name":"dynamicAnswer","placeholder":"Type another answer","optional":true}</from><to>Task_DynamicChoiceInput_input_freeText</to></assignment>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_DynamicChoiceInput_output_answer</sourceRef>
+    <targetRef>dynamicAnswer</targetRef>
+  </dataOutputAssociation>
+</userTask>
 
     <endEvent id="End"/>
 

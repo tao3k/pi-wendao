@@ -1,0 +1,46 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`native BPMN interaction contract parsing > rejects dynamic question refs that would otherwise leak raw JSON into pi-ask 1`] = `
+"[pi-wendao.runtime.invalid_dynamic_question] Error: Invalid dynamic question payload
+
+Consumer activity: Task_DynamicChoiceInput
+Variable: currentQuestion
+Problem: ref did not resolve to a non-empty string
+Bad payload: {"prompt":"Which repair path should the workflow use?","choices":["minimal","broaden"]}
+
+Help: currentQuestion must be a non-empty string used as the user-facing prompt.
+Contract: bpmn.native_human_task_io.v1 requires question source values to be prompt text, not JSON objects.
+
+Expected value:
+\`\`\`json
+{
+  "currentQuestion": "Which repair path should the workflow use?"
+}
+\`\`\`"
+`;
+
+exports[`native BPMN interaction contract parsing > rejects producer choice_array outputs whose items are strings 1`] = `
+"[pi-wendao.runtime.invalid_dynamic_choices] Error: Invalid dynamic choices payload
+
+Producer activity: Task_PrepareQuestion
+Variable: currentChoices
+Item: 1
+Problem: item is not an object
+Bad payload: "Graph visualization (workflow display and node rendering)"
+
+Help: currentChoices must be a native Array<{ value: string; label?: string; description?: string }>; do not wrap the array in a JSON string.
+Contract: native choices data must be a JSON array whose items have a non-empty string value.
+
+Expected value:
+\`\`\`json
+{
+  "currentChoices": [
+    {
+      "value": "minimal",
+      "label": "Minimal repair",
+      "description": "Repair only the failing contract."
+    }
+  ]
+}
+\`\`\`"
+`;

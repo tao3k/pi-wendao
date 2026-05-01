@@ -9,7 +9,6 @@ import {
   type LoadExtensionsResult,
 } from "@mariozechner/pi-coding-agent";
 import {
-  DEFAULT_PI_WENDAO_SUBAGENT_TYPE,
   createCliExtensionContext,
   createCliPiSubagentsHost,
   defaultPiSubagentsRunStorePath,
@@ -87,7 +86,7 @@ describe("CLI pi-subagents host integration", () => {
       }),
     ).resolves.toEqual({ result: "cli_done" });
     expect(calls).toEqual([
-      { name: "Agent", cwd: dir, hasUI: false, subagentType: DEFAULT_PI_WENDAO_SUBAGENT_TYPE },
+      { name: "Agent", cwd: dir, hasUI: false, subagentType: "pi-wendao-output-only" },
       { name: "get_subagent_result", cwd: dir, hasUI: false },
     ]);
   });

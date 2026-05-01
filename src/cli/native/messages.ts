@@ -17,6 +17,10 @@ export interface NativeWorkflowRunMessageHandle {
   complete(success: boolean | "interrupted" | undefined): void;
 }
 
+export interface NativeWorkflowRunMessageOptions {
+  streamDetails?: PiWendaoWorkflowMessageDetails["streamDetails"];
+}
+
 const workflowRunMessages = new Map<string, PiWendaoWorkflowMessageDetails>();
 
 export function sendWorkflowMessage(
@@ -38,6 +42,7 @@ export function startWorkflowRunMessage(
   pi: ExtensionAPI,
   workflowPath: string,
   now = Date.now(),
+  options: NativeWorkflowRunMessageOptions = {},
 ): NativeWorkflowRunMessageHandle {
   const details: PiWendaoWorkflowMessageDetails = {
     kind: "run",
@@ -45,6 +50,7 @@ export function startWorkflowRunMessage(
     workflowPath,
     lines: ["starting workflow"],
     status: "running",
+    streamDetails: options.streamDetails ?? "visible",
     eventCount: 0,
     agentCount: 0,
     errorCount: 0,
@@ -138,6 +144,9 @@ function appendWorkflowRunLines(
   if (kind === "error" || success === false) {
     details.errorCount = (details.errorCount ?? 0) + normalized.length;
     details.status = "failed";
+  }
+  if (details.streamDetails === "summary" && (kind === "event" || kind === "agent")) {
+    return;
   }
   const label = labelForWorkflowMessage(kind);
   const prefixed = normalized.map((line) => `${label}: ${stripAnsi(line)}`);

@@ -1,11 +1,15 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   buildPiWendaoAgentPrompt,
   extractOutputVariablesFromText,
+  type PiWendaoConfig,
   type PiWendaoAgentHost,
   type PiWendaoAgentRequest,
 } from "./agent-host.js";
+import { validateOutputSchemas } from "./human-task.js";
+import { throwIfWorkflowInterrupted, waitForWorkflowInterrupt } from "./interrupt.js";
 
 export interface PiSubagentsSpawnRequest {
   prompt: string;
@@ -134,6 +138,11 @@ export interface PiSubagentsHostOptions {
   onToolEvent?: (event: PiSubagentsHostToolEvent) => void;
 }
 
+const PI_WENDAO_OUTPUT_ONLY_SUBAGENT = "pi-wendao-output-only";
+const PI_WENDAO_OUTPUT_WRITER_SUBAGENT = "pi-wendao-output-writer";
+const PI_WENDAO_READ_ONLY_SUBAGENT = "pi-wendao-readonly";
+const PI_WENDAO_READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
+
 export function createPiSubagentsClientFromTools(tools: PiSubagentsToolSurface): PiSubagentsClient {
   if (!tools.Agent || !tools.get_subagent_result) {
     throw new Error("pi-subagents tools Agent and get_subagent_result are required");
@@ -193,25 +202,26 @@ async function runPiSubagentTask(
   options: PiSubagentsHostOptions,
   request: PiWendaoAgentRequest,
 ): Promise<Record<string, unknown>> {
+  throwIfWorkflowInterrupted(request.signal);
   const config = request.config;
   const key = buildRunKey(request);
   const stored = key && options.runStore ? await options.runStore.get(key) : undefined;
-  if (
-    stored?.status === "completed" &&
-    stored.output &&
-    hasRequiredOutputs(stored.output, config.outputs)
-  ) {
-    return stored.output;
-  }
+  throwIfWorkflowInterrupted(request.signal);
+  const reusableOutput = reusableCompletedOutput(stored, config, request.activityId);
+  if (reusableOutput) return reusableOutput;
   const reusableStored = stored?.status === "spawned" ? stored : undefined;
   const spawnRequest = reusableStored?.spawnRequest ?? buildSpawnRequest(options, request);
   const agentId =
     reusableStored?.agentId ??
-    (await spawnAndStoreSubagent(options, request, key, spawnRequest, {
-      activityId: request.activityId,
-      description: spawnRequest.description,
-      onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, undefined, update),
-    }));
+    (await runInterruptible(
+      spawnAndStoreSubagent(options, request, key, spawnRequest, {
+        activityId: request.activityId,
+        description: spawnRequest.description,
+        onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, undefined, update),
+      }),
+      request.signal,
+    ));
+  throwIfWorkflowInterrupted(request.signal);
   emitHostEvent(options, {
     type: reusableStored ? "resumed" : "spawned",
     activityId: request.activityId,
@@ -224,21 +234,25 @@ async function runPiSubagentTask(
     agentId,
     description: spawnRequest.description,
   });
-  const result = await options.client.getResult(
-    {
-      agent_id: agentId,
-      wait: true,
-      ...(options.verboseResult === undefined && !options.onEvent
-        ? {}
-        : { verbose: options.verboseResult ?? true }),
-    },
-    {
-      activityId: request.activityId,
-      description: spawnRequest.description,
-      agentId,
-      onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, agentId, update),
-    },
+  const result = await runInterruptible(
+    options.client.getResult(
+      {
+        agent_id: agentId,
+        wait: true,
+        ...(options.verboseResult === undefined && !options.onEvent
+          ? {}
+          : { verbose: options.verboseResult ?? true }),
+      },
+      {
+        activityId: request.activityId,
+        description: spawnRequest.description,
+        agentId,
+        onUpdate: (update) => emitHostUpdate(options, request, spawnRequest, agentId, update),
+      },
+    ),
+    request.signal,
   );
+  throwIfWorkflowInterrupted(request.signal);
   const resultText = resultToText(result);
   emitHostEvent(options, {
     type: "result",
@@ -261,6 +275,16 @@ async function runPiSubagentTask(
     await storeFailedRun(options, request, key, agentId, spawnRequest, stored, message);
     throw new Error(message);
   }
+  let validatedOutput: Record<string, unknown>;
+  try {
+    validatedOutput = validateOutputSchemas(config, output, {
+      activityId: request.activityId,
+    });
+  } catch (caught) {
+    const error = caught instanceof Error ? caught : new Error(String(caught));
+    await storeFailedRun(options, request, key, agentId, spawnRequest, stored, error.message);
+    throw error;
+  }
   if (key && options.runStore) {
     const now = new Date().toISOString();
     await options.runStore.put({
@@ -272,12 +296,16 @@ async function runPiSubagentTask(
       nodeIndex: request.execution?.nodeIndex,
       status: "completed",
       spawnRequest,
-      output,
+      output: validatedOutput,
       createdAt: stored?.createdAt ?? now,
       updatedAt: now,
     });
   }
-  return output;
+  return validatedOutput;
+}
+
+function runInterruptible<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  return signal ? Promise.race([operation, waitForWorkflowInterrupt(signal)]) : operation;
 }
 
 function emitHostEvent(options: PiSubagentsHostOptions, event: PiSubagentsHostEvent): void {
@@ -364,7 +392,7 @@ function buildSpawnRequest(
       activityId: request.activityId,
     }),
     description: subagent?.description ?? `Run BPMN service task ${request.activityId}`,
-    subagent_type: subagent?.type ?? options.defaultSubagentType ?? "general-purpose",
+    subagent_type: resolveSubagentType(options, request.config),
     run_in_background: subagent?.runInBackground ?? options.defaultRunInBackground ?? true,
     ...(subagent?.model ? { model: subagent.model } : {}),
     ...(subagent?.thinking ? { thinking: subagent.thinking } : {}),
@@ -375,6 +403,52 @@ function buildSpawnRequest(
   };
 }
 
+function resolveSubagentType(
+  options: PiSubagentsHostOptions,
+  config: PiWendaoConfig,
+): string {
+  const tools = normalizedToolNames(config.tools);
+  if (tools.length === 0) {
+    return PI_WENDAO_OUTPUT_ONLY_SUBAGENT;
+  }
+  if (isWriteOnlyToolScope(tools)) {
+    return PI_WENDAO_OUTPUT_WRITER_SUBAGENT;
+  }
+  if (isReadOnlyToolScope(tools)) {
+    return PI_WENDAO_READ_ONLY_SUBAGENT;
+  }
+
+  return (
+    normalizedName(config.subagent?.type) ??
+    normalizedName(options.defaultSubagentType) ??
+    "general-purpose"
+  );
+}
+
+function normalizedName(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function normalizedToolNames(tools: readonly string[]): string[] {
+  return Array.from(
+    new Set(
+      tools
+        .map((tool) => tool.trim())
+        .filter((tool) => tool.length > 0)
+        .map((tool) => tool.toLowerCase()),
+    ),
+  ).sort();
+}
+
+function isWriteOnlyToolScope(tools: readonly string[]): boolean {
+  return tools.length === 1 && tools[0] === "write";
+}
+
+function isReadOnlyToolScope(tools: readonly string[]): boolean {
+  return tools.length > 0 && tools.every((tool) => PI_WENDAO_READ_ONLY_TOOLS.has(tool));
+}
+
 function buildRunKey(request: PiWendaoAgentRequest): string | undefined {
   const instanceId = request.execution?.instanceId;
   if (!instanceId) return undefined;
@@ -382,8 +456,39 @@ function buildRunKey(request: PiWendaoAgentRequest): string | undefined {
     instanceId,
     activityId: request.activityId,
     tokenId: request.execution?.tokenId ?? null,
+    contract: buildRunContractFingerprint(request.config),
     inputs: buildRunInputSnapshot(request),
   });
+}
+
+function buildRunContractFingerprint(config: PiWendaoConfig): string {
+  return createHash("sha256")
+    .update(
+      stableJson({
+        prompt: config.prompt,
+        tools: config.tools,
+        toolScopes: config.toolScopes ?? [],
+        outputs: config.outputs,
+        outputSchemas: config.outputSchemas ?? {},
+        subagent: config.subagent ?? {},
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function buildRunInputSnapshot(request: PiWendaoAgentRequest): Array<[string, unknown]> {
@@ -437,6 +542,20 @@ function resultToText(result: unknown): string {
 
 function hasRequiredOutputs(output: Record<string, unknown>, outputNames: string[]): boolean {
   return missingRequiredOutputs(output, outputNames).length === 0;
+}
+
+function reusableCompletedOutput(
+  stored: PiSubagentsRunRecord | undefined,
+  config: PiWendaoConfig,
+  activityId: string,
+): Record<string, unknown> | undefined {
+  if (stored?.status !== "completed" || !stored.output) return undefined;
+  if (!hasRequiredOutputs(stored.output, config.outputs)) return undefined;
+  try {
+    return validateOutputSchemas(config, stored.output, { activityId });
+  } catch {
+    return undefined;
+  }
 }
 
 function missingRequiredOutputs(output: Record<string, unknown>, outputNames: string[]): string[] {

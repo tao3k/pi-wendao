@@ -12,6 +12,7 @@ import {
   appendActiveBpmnNodeLabels,
   resolveQianjiCommand,
   runQianjiShow,
+  runWorkflowLintPreflight,
   runWorkflowInRenderer,
 } from "./workflow-runner.js";
 
@@ -195,44 +196,67 @@ program
       process.chdir(piContextCwd);
       const useGraph = options.graph !== false && options.tui !== false;
       const renderer = createRenderer(useGraph);
-      const resolvedModel = options.hostFixture
-        ? undefined
-        : await resolveModel(
+
+      console.log(`Executing ${resolvedWorkflowPath} with qianji CLI...`);
+
+      renderer.start();
+      let result: Awaited<ReturnType<typeof runWorkflowInRenderer>>;
+      try {
+        let resolvedModel: Awaited<ReturnType<typeof resolveModel>> | undefined;
+        const resolveRunModel = async () => {
+          resolvedModel ??= await resolveModel(
             resolveExecutionModelPattern(options.model),
             options.provider,
             options.apiKey,
             resolvedExtensionPaths,
           );
+          return resolvedModel;
+        };
+        const lint = await runWorkflowLintPreflight({
+          renderer,
+          resolvedWorkflowPath,
+          resolvedDmnPaths,
+          qianjiCommand: options.qianji,
+          cwd: invocationCwd,
+          resolveRepairModel: resolveRunModel,
+        });
+        if (!lint.success) {
+          process.exitCode = 1;
+          return;
+        }
+        const executionModel = resolvedHostFixturePath ? undefined : await resolveRunModel();
 
-      console.log(`Executing ${resolvedWorkflowPath} with qianji CLI...`);
-
-      renderer.start();
-      const result = await runWorkflowInRenderer({
-        renderer,
-        useGraph,
-        resolvedWorkflowPath,
-        options: {
-          process: options.process,
+        result = await runWorkflowInRenderer({
+          renderer,
+          useGraph,
+          resolvedWorkflowPath: lint.workflowPath,
+          options: {
+            process: options.process,
+            instanceId,
+            startAtNode: options.startAtNode,
+            qianji: options.qianji,
+            contextJson: options.contextJson,
+            traceFrameMs: options.traceFrameMs,
+            var: options.var,
+          },
           instanceId,
-          startAtNode: options.startAtNode,
-          qianji: options.qianji,
-          contextJson: options.contextJson,
-          traceFrameMs: options.traceFrameMs,
-          var: options.var,
-        },
-        instanceId,
-        invocationCwd,
-        piContextCwd,
-        resolvedDmnPaths,
-        resolvedHostFixturePath,
-        resolvedEventFixturePath,
-        resolvedModel,
-        thinkingLevel,
-      });
+          invocationCwd,
+          piContextCwd,
+          resolvedDmnPaths,
+          resolvedHostFixturePath,
+          resolvedEventFixturePath,
+          resolvedModel: executionModel,
+          thinkingLevel,
+          preflightLint: false,
+        });
 
-      renderer.appendLog("\nPress any key to exit.");
-      await renderer.waitForKey();
-      renderer.stop();
+        if (useGraph) {
+          renderer.appendLog("\nPress any key to exit.");
+          await renderer.waitForKey();
+        }
+      } finally {
+        renderer.stop();
+      }
       process.exit(result.success ? 0 : 1);
     } catch (err) {
       console.error("Error:", err instanceof Error ? err.message : String(err));

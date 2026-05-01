@@ -13,7 +13,6 @@ import {
 import { resolvePiWendaoPackageRoot as resolvePiWendaoPackageRootFromResources } from "../pi-resources.js";
 
 const require = createRequire(import.meta.url);
-const BUILTIN_PI_EXTENSION_PACKAGES = ["@tintinweb/pi-subagents"] as const;
 const PI_WENDAO_PI_EXTENSION_FILES = [
   "pi-wendao-pi-intercom.js",
   "pi-wendao-tool-event-bridge.js",
@@ -188,10 +187,7 @@ export async function createPiWendaoAgentServices(options: {
 
 export function resolveBuiltinPiExtensionPaths(): string[] {
   const paths: string[] = [];
-  for (const packageName of BUILTIN_PI_EXTENSION_PACKAGES) {
-    const packageRoot = resolvePackageRoot(packageName);
-    if (packageRoot) paths.push(packageRoot);
-  }
+  paths.push(resolvePiWendaoPiSubagentsExtensionPath());
   paths.push(...resolvePiWendaoPiExtensionPaths());
   return paths;
 }
@@ -206,6 +202,12 @@ export function resolvePiWendaoPiExtensionPaths(
   return PI_WENDAO_PI_EXTENSION_FILES.map((file) =>
     join(packageRoot, ".pi", "extensions", file),
   ).filter((path) => existsSync(path));
+}
+
+export function resolvePiWendaoPiSubagentsExtensionPath(
+  packageRoot = resolvePiWendaoPackageRoot(),
+): string {
+  return join(packageRoot, "src", "cli", "native", "pi-subagents-extension.ts");
 }
 
 function uniqueStrings(values: string[]): string[] {

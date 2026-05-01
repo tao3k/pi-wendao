@@ -11,6 +11,7 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
   it("emits pi-ask-valid schemas for confirm, choice, and choice_input interactions", async () => {
     const cases: Array<{
       expectedAnswer: string;
+      expectedFreeText?: { name?: string; optional?: boolean; placeholder?: string };
       expectedOptions: Array<{ label: string; value: string; description?: string }>;
       expectedPrompt: string;
       request: PlannerReplyRequest;
@@ -84,6 +85,11 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
       },
       {
         expectedAnswer: "write a custom repair",
+        expectedFreeText: {
+          name: "choiceInputAnswer",
+          optional: true,
+          placeholder: "Type a custom repair direction",
+        },
         expectedOptions: [
           {
             label: "Minimal fix",
@@ -161,6 +167,7 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
         required: true,
         type: "single",
       });
+      expect(capturedParams?.questions[0]?.freeText).toEqual(testCase.expectedFreeText);
     }
   });
 

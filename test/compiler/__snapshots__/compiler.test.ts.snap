@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`compileSkill > reports dynamic choice refs whose producer omits the native choices output 1`] = `
+"qianji lint failed after 0 repair attempt(s):
+# BPMN lint
+
+# Lint Passed
+
+# PiWendao Compile Contract Failed
+
+Issues: 1
+
+## [PI_WENDAO_DYNAMIC_CHOICES_PRODUCER] dynamic choices must have a declared producer
+Severity: error
+Summary: userTask 'Task_Answer' consumes choices source 'currentChoices', but no native BPMN task declares that output.
+
+### Repair Plan
+Add an upstream serviceTask that declares dataOutput 'currentChoices' and maps it with dataOutputAssociation before userTask 'Task_Answer'."
+`;

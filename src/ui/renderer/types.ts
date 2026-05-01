@@ -45,6 +45,7 @@ export interface QianjiHostWorkLogEvent {
   parallel: boolean;
   repeatKinds: string[];
   repeatSummaries: string[];
+  assignmentSummaries?: string[];
 }
 
 export type PiSubagentsHostLogEvent =

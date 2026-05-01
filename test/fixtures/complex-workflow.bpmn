@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns:qianji="https://qianji.dev/bpmn/extensions"
              id="Definitions_1"
              targetNamespace="https://qianji.dev">
   <process id="Process_1" name="Complex Workflow" isExecutable="true">
@@ -9,110 +8,225 @@
     <startEvent id="Start"/>
 
     <serviceTask id="Task_Init" name="Initialize" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>status,isReady</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_Init_output_status" name="status" />
+    <dataOutput id="Task_Init_output_isReady" name="isReady" />
+    <inputSet id="Task_Init_input_set"></inputSet>
+    <outputSet id="Task_Init_output_set">
+    <dataOutputRefs>Task_Init_output_status</dataOutputRefs>
+    <dataOutputRefs>Task_Init_output_isReady</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_Init_output_status</sourceRef>
+    <targetRef>status</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Init_output_isReady</sourceRef>
+    <targetRef>isReady</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
-    <exclusiveGateway id="GW_Check" name="Status?" default="Flow_NotReady"/>
+    <exclusiveGateway id="GW_Check" name="Status?" default="Flow_Ready"/>
 
     <serviceTask id="Task_FetchA" name="Fetch A" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output resultA as "alpha".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>status</qianji:inputs>
-          <qianji:outputs>resultA</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output resultA as "alpha".</documentation>
+  <ioSpecification>
+    <dataInput id="Task_FetchA_input_status" name="status" />
+    <dataOutput id="Task_FetchA_output_resultA" name="resultA" />
+    <inputSet id="Task_FetchA_input_set">
+    <dataInputRefs>Task_FetchA_input_status</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_FetchA_output_set">
+    <dataOutputRefs>Task_FetchA_output_resultA</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>status</sourceRef>
+    <targetRef>Task_FetchA_input_status</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_FetchA_output_resultA</sourceRef>
+    <targetRef>resultA</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <serviceTask id="Task_FetchB" name="Fetch B" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output resultB as "beta".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>status</qianji:inputs>
-          <qianji:outputs>resultB</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output resultB as "beta".</documentation>
+  <ioSpecification>
+    <dataInput id="Task_FetchB_input_status" name="status" />
+    <dataOutput id="Task_FetchB_output_resultB" name="resultB" />
+    <inputSet id="Task_FetchB_input_set">
+    <dataInputRefs>Task_FetchB_input_status</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_FetchB_output_set">
+    <dataOutputRefs>Task_FetchB_output_resultB</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>status</sourceRef>
+    <targetRef>Task_FetchB_input_status</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_FetchB_output_resultB</sourceRef>
+    <targetRef>resultB</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <serviceTask id="Task_Retry" name="Retry init" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs></qianji:inputs>
-          <qianji:outputs>status,isReady</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output status as "ready" and isReady as true.</documentation>
+  <ioSpecification>
+    <dataOutput id="Task_Retry_output_status" name="status" />
+    <dataOutput id="Task_Retry_output_isReady" name="isReady" />
+    <inputSet id="Task_Retry_input_set"></inputSet>
+    <outputSet id="Task_Retry_output_set">
+    <dataOutputRefs>Task_Retry_output_status</dataOutputRefs>
+    <dataOutputRefs>Task_Retry_output_isReady</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataOutputAssociation>
+    <sourceRef>Task_Retry_output_status</sourceRef>
+    <targetRef>status</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Retry_output_isReady</sourceRef>
+    <targetRef>isReady</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <parallelGateway id="GW_Fork" name="Fork"/>
     <parallelGateway id="GW_Join" name="Join"/>
 
     <serviceTask id="Task_Merge" name="Merge results" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output merged as the concatenation of resultA and resultB separated by a comma.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>resultA,resultB</qianji:inputs>
-          <qianji:outputs>merged</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output merged as the concatenation of resultA and resultB separated by a comma.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Merge_input_resultA" name="resultA" />
+    <dataInput id="Task_Merge_input_resultB" name="resultB" />
+    <dataOutput id="Task_Merge_output_merged" name="merged" />
+    <inputSet id="Task_Merge_input_set">
+    <dataInputRefs>Task_Merge_input_resultA</dataInputRefs>
+    <dataInputRefs>Task_Merge_input_resultB</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Merge_output_set">
+    <dataOutputRefs>Task_Merge_output_merged</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>resultA</sourceRef>
+    <targetRef>Task_Merge_input_resultA</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>resultB</sourceRef>
+    <targetRef>Task_Merge_input_resultB</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Merge_output_merged</sourceRef>
+    <targetRef>merged</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <serviceTask id="Task_Validate" name="Validate" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output valid as true.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>merged</qianji:inputs>
-          <qianji:outputs>valid</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output valid as true.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Validate_input_merged" name="merged" />
+    <dataOutput id="Task_Validate_output_valid" name="valid" />
+    <inputSet id="Task_Validate_input_set">
+    <dataInputRefs>Task_Validate_input_merged</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Validate_output_set">
+    <dataOutputRefs>Task_Validate_output_valid</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>merged</sourceRef>
+    <targetRef>Task_Validate_input_merged</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Validate_output_valid</sourceRef>
+    <targetRef>valid</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <serviceTask id="Task_Fallback" name="Fallback" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output valid as false and reason as "validation failed".</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>merged</qianji:inputs>
-          <qianji:outputs>valid,reason</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output valid as false and reason as "validation failed".</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Fallback_input_merged" name="merged" />
+    <dataOutput id="Task_Fallback_output_valid" name="valid" />
+    <dataOutput id="Task_Fallback_output_reason" name="reason" />
+    <inputSet id="Task_Fallback_input_set">
+    <dataInputRefs>Task_Fallback_input_merged</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Fallback_output_set">
+    <dataOutputRefs>Task_Fallback_output_valid</dataOutputRefs>
+    <dataOutputRefs>Task_Fallback_output_reason</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>merged</sourceRef>
+    <targetRef>Task_Fallback_input_merged</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Fallback_output_valid</sourceRef>
+    <targetRef>valid</targetRef>
+  </dataOutputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Fallback_output_reason</sourceRef>
+    <targetRef>reason</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <exclusiveGateway id="GW_Valid" name="Valid?" default="Flow_Invalid"/>
 
     <serviceTask id="Task_Publish" name="Publish" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output published as true.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>merged</qianji:inputs>
-          <qianji:outputs>published</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output published as true.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Publish_input_merged" name="merged" />
+    <dataOutput id="Task_Publish_output_published" name="published" />
+    <inputSet id="Task_Publish_input_set">
+    <dataInputRefs>Task_Publish_input_merged</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Publish_output_set">
+    <dataOutputRefs>Task_Publish_output_published</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>merged</sourceRef>
+    <targetRef>Task_Publish_input_merged</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Publish_output_published</sourceRef>
+    <targetRef>published</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <serviceTask id="Task_Reject" name="Reject" implementation="${environment.services.runAgent}">
-      <extensionElements>
-        <qianji:config>
-          <qianji:prompt>Sleep for 2 seconds using bash, then output rejected as true.</qianji:prompt>
-          <qianji:tools>bash</qianji:tools>
-          <qianji:inputs>merged,reason</qianji:inputs>
-          <qianji:outputs>rejected</qianji:outputs>
-        </qianji:config>
-      </extensionElements>
-    </serviceTask>
+  <documentation>Sleep for 2 seconds using bash, then output rejected as true.</documentation>
+  <ioSpecification>
+    <dataInput id="Task_Reject_input_merged" name="merged" />
+    <dataInput id="Task_Reject_input_reason" name="reason" />
+    <dataOutput id="Task_Reject_output_rejected" name="rejected" />
+    <inputSet id="Task_Reject_input_set">
+    <dataInputRefs>Task_Reject_input_merged</dataInputRefs>
+    <dataInputRefs>Task_Reject_input_reason</dataInputRefs>
+  </inputSet>
+    <outputSet id="Task_Reject_output_set">
+    <dataOutputRefs>Task_Reject_output_rejected</dataOutputRefs>
+  </outputSet>
+  </ioSpecification>
+  <dataInputAssociation>
+    <sourceRef>merged</sourceRef>
+    <targetRef>Task_Reject_input_merged</targetRef>
+  </dataInputAssociation>
+  <dataInputAssociation>
+    <sourceRef>reason</sourceRef>
+    <targetRef>Task_Reject_input_reason</targetRef>
+  </dataInputAssociation>
+  <dataOutputAssociation>
+    <sourceRef>Task_Reject_output_rejected</sourceRef>
+    <targetRef>rejected</targetRef>
+  </dataOutputAssociation>
+</serviceTask>
 
     <endEvent id="End_OK" name="Done"/>
     <endEvent id="End_Rejected" name="Rejected"/>
@@ -124,10 +238,10 @@
     <sequenceFlow id="F2" sourceRef="Task_Init" targetRef="GW_Check"/>
 
     <!-- Check: ready -> Fork, not ready -> Retry -->
-    <sequenceFlow id="Flow_Ready" sourceRef="GW_Check" targetRef="GW_Fork">
-      <conditionExpression xsi:type="tFormalExpression">isReady</conditionExpression>
+    <sequenceFlow id="Flow_Ready" sourceRef="GW_Check" targetRef="GW_Fork"/>
+    <sequenceFlow id="Flow_NotReady" sourceRef="GW_Check" targetRef="Task_Retry">
+      <conditionExpression xsi:type="tFormalExpression">not isReady</conditionExpression>
     </sequenceFlow>
-    <sequenceFlow id="Flow_NotReady" sourceRef="GW_Check" targetRef="Task_Retry"/>
 
     <!-- Retry -> back to Check -->
     <sequenceFlow id="F_RetryToCheck" sourceRef="Task_Retry" targetRef="GW_Check"/>
