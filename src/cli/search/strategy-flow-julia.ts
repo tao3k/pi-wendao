@@ -66,12 +66,11 @@ function resolveSearchStrategyFlowContext(
 async function runWithoutRustWorkspace(
   context: SearchStrategyFlowContext,
 ): Promise<SearchStrategyFlowTrace> {
-  if (context.searchBackend === "rust-julia") {
-    throw new Error(
-      "could not find xiuxian Rust workspace for SearchStrategyFlow; pass --search-rust-workspace <path>",
-    );
-  }
-  return runJuliaDirectStrategyFlow(context, false);
+  throw new Error(
+    context.searchBackend === "rust-julia"
+      ? "could not find xiuxian Rust workspace for SearchStrategyFlow; pass --search-rust-workspace <path>"
+      : "could not find xiuxian Rust workspace for SearchStrategyFlow auto mode; pass --search-rust-workspace <path> for the core Rust bridge, or use --search-backend julia-direct only for pi-local bridge smoke tests",
+  );
 }
 
 async function runRustBridgeOrFallback(
@@ -92,8 +91,9 @@ async function runRustBridgeOrFallback(
       }),
     );
   } catch (error) {
-    if (context.searchBackend === "rust-julia") throw error;
-    return runJuliaDirectStrategyFlow(context, true, rustWorkspace, summarizeBridgeError(error));
+    throw new Error(
+      `${summarizeBridgeError(error)}\nSearchStrategyFlow auto mode treats the Rust bridge as the core path. Use --search-backend julia-direct only for pi-local bridge smoke tests.`,
+    );
   }
 }
 

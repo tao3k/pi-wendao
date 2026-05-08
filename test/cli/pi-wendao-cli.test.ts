@@ -12,10 +12,12 @@ import {
 const projectRoot = process.cwd();
 const tempDirs: string[] = [];
 const liveWendaoGraphProject = join(projectRoot, "..", "WendaoGraph.jl");
+const liveRustWorkspace = join(projectRoot, "..", "..");
 const liveSearchStrategyFlowEnabled =
   process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE === "1" &&
   Boolean(process.env.DEEPSEEK_API_KEY?.trim()) &&
-  existsSync(join(liveWendaoGraphProject, "Project.toml"));
+  existsSync(join(liveWendaoGraphProject, "Project.toml")) &&
+  existsSync(join(liveRustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia"));
 const itLive = liveSearchStrategyFlowEnabled ? it : it.skip;
 
 describe("pi-wendao CLI", () => {
@@ -152,23 +154,20 @@ describe("pi-wendao CLI", () => {
     );
   }, 20_000);
 
-  it("falls back to Julia direct when the auto Rust bridge is not present", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-fallback-"));
+  it("fails auto mode when the Rust SearchStrategyFlow bridge is unavailable", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-failure-"));
     tempDirs.push(dir);
     const graphProject = join(dir, "WendaoGraph.jl");
     const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
     const fakeCargoPath = join(dir, "cargo");
-    const fakeJuliaPath = join(dir, "julia");
     writeSearchProjectFixture(graphProject, rustWorkspace);
     writeFailingCargoSearch(fakeCargoPath);
-    writeFakeJuliaSearch(fakeJuliaPath);
     chmodSync(fakeCargoPath, 0o755);
-    chmodSync(fakeJuliaPath, 0o755);
 
     const result = await runPiWendaoCli(
       [
         "--search",
-        "find SearchStrategyFlow owner through fallback",
+        "find SearchStrategyFlow owner through Rust",
         "--wendao-graph",
         graphProject,
         "--search-root",
@@ -177,20 +176,16 @@ describe("pi-wendao CLI", () => {
         rustWorkspace,
         "--search-rust-command",
         fakeCargoPath,
-        "--search-julia",
-        fakeJuliaPath,
         "--no-graph",
       ],
       dir,
     );
     const output = [result.stdout, result.stderr].join("\n");
 
-    expect(result.exitCode).toBe(0);
-    expect(output).toContain("backend: wendao-graph-julia");
-    expect(output).toContain("rust_bridge:");
-    expect(output).toContain("attempted: yes");
-    expect(output).toContain("fallback: julia-direct");
-    expect(output).toContain("error: error: no example target named");
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain("Error: error: no example target named");
+    expect(output).toContain("Rust bridge as the core path");
+    expect(output).toContain("--search-backend julia-direct only for pi-local bridge smoke tests");
   }, 20_000);
 
   itLive("runs live SearchStrategyFlow DeepSeek understanding without first-layer tools", async () => {
@@ -205,8 +200,8 @@ describe("pi-wendao CLI", () => {
         liveWendaoGraphProject,
         "--search-root",
         liveWendaoGraphProject,
-        "--search-backend",
-        "julia-direct",
+        "--search-rust-workspace",
+        liveRustWorkspace,
         "--search-agent",
         "--no-graph",
       ],
@@ -222,6 +217,8 @@ describe("pi-wendao CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("SearchStrategyFlow trace");
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("fallback: none");
     expect(output).toContain("live status=completed model=anthropic/deepseek-v4-pro");
     expect(output).toContain("live intent_understanding=");
     expect(output).toContain("live branch_decision=");

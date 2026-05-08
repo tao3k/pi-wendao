@@ -134,11 +134,11 @@ Options:
 - `--search-agent` — run a live pi-subagents LLM judgement for planner actions that require an LLM
 - `--search-json` — print the structured trace JSON
 
-The default `auto` backend tries the Rust-to-Julia bridge when a xiuxian
-workspace is available. If that bridge is not present in the current checkout,
-the command falls back to Julia direct and reports the fallback under
-`rust_bridge`. Use `--search-backend rust-julia` only when the Rust bridge is a
-hard requirement.
+The default `auto` backend treats the Rust-to-Julia bridge as the core path. It
+requires a xiuxian Rust workspace and fails if the Rust bridge is unavailable or
+broken, because pi-wendao should not silently bypass the Rust control plane.
+Use `--search-backend julia-direct` only for pi-local bridge smoke tests and
+diagnostics.
 
 For the default DeepSeek model through the Anthropic-compatible API:
 
@@ -161,15 +161,16 @@ npm run test:search-live
 ```
 
 The live gate expects `DEEPSEEK_API_KEY` in the worktree `.env`, verifies a
-completed `SearchStrategyFlow_QueryUnderstanding` judgement, and requires the
-first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
-agents that read candidate documents belong to the next reasoning-tree layer.
-First-layer query understanding and judgement keep the configured reasoning
-level because route selection is correctness-sensitive; latency work must come
-from orchestration, caching, compact traces, and later branch-level parallelism
-instead of weakening the first decision. The prompt receives the
-`graph_query_understanding` trace section as hard graph evidence: route hints,
-required evidence, ambiguity, and the applied loop/judgement/beam budgets.
+completed `SearchStrategyFlow_QueryUnderstanding` judgement through the default
+Rust bridge path, and requires the first-layer understanding agent to stay
+tool-less (`Tool uses: 0`). Expansion agents that read candidate documents
+belong to the next reasoning-tree layer. First-layer query understanding and
+judgement keep the configured reasoning level because route selection is
+correctness-sensitive; latency work must come from orchestration, caching,
+compact traces, and later branch-level parallelism instead of weakening the
+first decision. The prompt receives the `graph_query_understanding` trace
+section as hard graph evidence: route hints, required evidence, ambiguity, and
+the applied loop/judgement/beam budgets.
 
 Running `pi-wendao --tui` without a workflow enters pi's native interactive
 session for the current working directory. Type normally to talk with the
