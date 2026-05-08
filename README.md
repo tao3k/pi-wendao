@@ -153,24 +153,35 @@ for that model. It also honors the documented gateway variables when set:
 `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` plus
 `ANTHROPIC_AUTH_TOKEN=$DEEPSEEK_API_KEY`.
 
-The live DeepSeek smoke is opt-in so regular CI does not depend on network or
-paid model access:
+The live DeepSeek algorithm smoke is opt-in so regular CI does not depend on
+network or paid model access:
 
 ```bash
 npm run test:search-live
 ```
 
-The live gate expects `DEEPSEEK_API_KEY` in the worktree `.env`, verifies a
-completed `SearchStrategyFlow_QueryUnderstanding` judgement through the default
-Rust bridge path, and requires the first-layer understanding agent to stay
-tool-less (`Tool uses: 0`). Expansion agents that read candidate documents
-belong to the next reasoning-tree layer. First-layer query understanding and
-judgement keep the configured reasoning level because route selection is
-correctness-sensitive; latency work must come from orchestration, caching,
-compact traces, and later branch-level parallelism instead of weakening the
-first decision. The prompt receives the `graph_query_understanding` trace
-section as hard graph evidence: route hints, required evidence, ambiguity, and
-the applied loop/judgement/beam budgets.
+That test uses `--search-backend julia-direct` intentionally: it validates that
+the graph-owned SearchStrategyFlow algorithm trace and the first-layer
+`SearchStrategyFlow_QueryUnderstanding` LLM judgement are complete without
+paying the Rust bridge startup and compilation cost on every algorithm smoke.
+It expects `DEEPSEEK_API_KEY` in the worktree `.env` and requires the
+first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
+agents that read candidate documents belong to the next reasoning-tree layer.
+
+Use the slower bridge gate only when validating the normal production chain:
+
+```bash
+npm run test:search-bridge-live
+```
+
+The bridge gate verifies `pi-wendao -> Rust bridge -> WendaoGraph.jl` and
+requires the default backend to report `rust-wendao-julia` with no fallback.
+First-layer query understanding and judgement keep the configured reasoning
+level because route selection is correctness-sensitive; latency work must come
+from orchestration, caching, compact traces, and later branch-level parallelism
+instead of weakening the first decision. The prompt receives the
+`graph_query_understanding` trace section as hard graph evidence: route hints,
+required evidence, ambiguity, and the applied loop/judgement/beam budgets.
 
 Running `pi-wendao --tui` without a workflow enters pi's native interactive
 session for the current working directory. Type normally to talk with the

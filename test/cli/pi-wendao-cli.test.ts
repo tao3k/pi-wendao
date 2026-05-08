@@ -16,9 +16,13 @@ const liveRustWorkspace = join(projectRoot, "..", "..");
 const liveSearchStrategyFlowEnabled =
   process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE === "1" &&
   Boolean(process.env.DEEPSEEK_API_KEY?.trim()) &&
+  existsSync(join(liveWendaoGraphProject, "Project.toml"));
+const liveRustBridgeSearchStrategyFlowEnabled =
+  process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_LIVE === "1" &&
   existsSync(join(liveWendaoGraphProject, "Project.toml")) &&
   existsSync(join(liveRustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia"));
 const itLive = liveSearchStrategyFlowEnabled ? it : it.skip;
+const itBridgeLive = liveRustBridgeSearchStrategyFlowEnabled ? it : it.skip;
 
 describe("pi-wendao CLI", () => {
   afterEach(() => {
@@ -200,8 +204,8 @@ describe("pi-wendao CLI", () => {
         liveWendaoGraphProject,
         "--search-root",
         liveWendaoGraphProject,
-        "--search-rust-workspace",
-        liveRustWorkspace,
+        "--search-backend",
+        "julia-direct",
         "--search-agent",
         "--no-graph",
       ],
@@ -217,8 +221,8 @@ describe("pi-wendao CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("SearchStrategyFlow trace");
-    expect(output).toContain("backend: rust-wendao-julia");
-    expect(output).toContain("fallback: none");
+    expect(output).toContain("backend: wendao-graph-julia");
+    expect(output).toContain("requested: julia-direct");
     expect(output).toContain("live status=completed model=anthropic/deepseek-v4-pro");
     expect(output).toContain("live intent_understanding=");
     expect(output).toContain("live branch_decision=");
@@ -229,6 +233,33 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("Tool uses: 0");
     expect(output).not.toContain("tool=read");
     expect(output).not.toContain("tool_call");
+  }, 190_000);
+
+  itBridgeLive("runs live Rust bridge SearchStrategyFlow smoke", async () => {
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find the SearchStrategyFlow ownership boundary and validation path",
+        "--wendao-graph",
+        liveWendaoGraphProject,
+        "--search-root",
+        liveWendaoGraphProject,
+        "--search-rust-workspace",
+        liveRustWorkspace,
+        "--no-graph",
+      ],
+      projectRoot,
+      { timeoutMs: 180_000 },
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("SearchStrategyFlow trace");
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("fallback: none");
+    expect(output).toContain("graph_query_understanding:");
+    expect(output).toContain("strategy_flow_stages:");
+    expect(output).toContain("stage1 query_understanding");
   }, 190_000);
 });
 
