@@ -122,6 +122,10 @@ with the WendaoGraph Pluto notebooks:
 
 Those stage receipts make the CLI trace match the research notebooks and give
 pi-subagents a bounded reasoning-tree surface instead of a flat search result.
+Candidate ids use Markdown section granularity, for example
+`docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding`,
+so the first materialization layer can reveal the content under the selected
+heading instead of handing the agent a whole Markdown file.
 
 Options:
 
@@ -139,6 +143,16 @@ requires a xiuxian Rust workspace and fails if the Rust bridge is unavailable or
 broken, because pi-wendao should not silently bypass the Rust control plane.
 Use `--search-backend julia-direct` only for pi-local bridge smoke tests and
 diagnostics.
+
+The production subagent retrieval path should remain Studio/Rust-owned:
+`pi-wendao` receives the intent and agent trace, Studio owns HTTP query surfaces
+such as `/api/docs/retrieval`, `/api/docs/retrieval-context`,
+`/api/repo/projected-page-index-tree-search`, and
+`/api/repo/projected-retrieval`, and the Studio Flight service owns the stable
+Arrow routes such as `/search/intent`, `/search/knowledge`, repo search, graph
+neighbors, and projected page-index tree providers. SearchStrategyFlow section
+candidate ids are therefore routing evidence for Studio/Flight retrieval, not a
+license for pi-wendao to bypass the Rust boundary and read full Markdown files.
 
 For the default DeepSeek model through the Anthropic-compatible API:
 

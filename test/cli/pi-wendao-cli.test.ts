@@ -23,6 +23,12 @@ const rustBridgeSearchStrategyFlowSmokeEnabled =
   existsSync(join(liveRustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia"));
 const itLive = liveSearchStrategyFlowEnabled ? it : it.skip;
 const itBridgeSmoke = rustBridgeSearchStrategyFlowSmokeEnabled ? it : it.skip;
+const searchStrategySectionCandidate =
+  "docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding";
+const searchStrategyWholeFileAction =
+  "docs/30_search_strategy/30.01_search_strategy_flow.md action=keep";
+const pageIndexSectionCandidate =
+  "docs/20_page_index/20.01_reasoning_tree_contracts.md#relationship-to-search-strategy";
 
 describe("pi-wendao CLI", () => {
   afterEach(() => {
@@ -108,9 +114,8 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("stage5 planner_actions");
     expect(output).toContain("no_vector_mode: yes");
     expect(output).toContain("materialized_top_candidate: yes");
-    expect(output).toContain(
-      "docs/30_search_strategy/30.01_search_strategy_flow.md action=keep",
-    );
+    expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
+    expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("planner:");
     expect(output).toContain("llm_interactions:");
     expect(output).toContain("planned action=compare");
@@ -153,9 +158,8 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("fallback: none");
     expect(output).toContain("strategy_flow_stages:");
     expect(output).toContain("no_vector_mode: yes");
-    expect(output).toContain(
-      "docs/30_search_strategy/30.01_search_strategy_flow.md action=keep",
-    );
+    expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
+    expect(output).not.toContain(searchStrategyWholeFileAction);
   }, 20_000);
 
   it("fails auto mode when the Rust SearchStrategyFlow bridge is unavailable", async () => {
@@ -230,6 +234,8 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain(
       "planned type=pi-wendao-output-only activity=SearchStrategyFlow_QueryUnderstanding",
     );
+    expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
+    expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("Tool uses: 0");
     expect(output).not.toContain("tool=read");
     expect(output).not.toContain("tool_call");
@@ -260,6 +266,8 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("graph_query_understanding:");
     expect(output).toContain("strategy_flow_stages:");
     expect(output).toContain("stage1 query_understanding");
+    expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
+    expect(output).not.toContain(searchStrategyWholeFileAction);
   }, 190_000);
 });
 
@@ -413,7 +421,7 @@ console.log(JSON.stringify({
   searchRoot: process.argv[process.argv.length - 1],
   candidates: [
     {
-      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      candidateId: "${searchStrategySectionCandidate}",
       action: "keep",
       reason: "graph_verified_candidate",
       finalScore: 0.91,
@@ -428,7 +436,7 @@ console.log(JSON.stringify({
   ],
   frontier: [
     {
-      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      candidateId: "${searchStrategySectionCandidate}",
       rank: 1,
       selected: true,
       finalScore: 0.91,
@@ -440,7 +448,7 @@ console.log(JSON.stringify({
   plannerActions: [
     {
       actionKind: "materialize",
-      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      candidateId: "${searchStrategySectionCandidate}",
       targetCandidateId: "",
       cycleAllowed: false,
       requiresLlmJudgement: false,
@@ -449,8 +457,8 @@ console.log(JSON.stringify({
     },
     {
       actionKind: "compare",
-      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
-      targetCandidateId: "docs/20_page_index/20.01_reasoning_tree_contracts.md",
+      candidateId: "${searchStrategySectionCandidate}",
+      targetCandidateId: "${pageIndexSectionCandidate}",
       cycleAllowed: false,
       requiresLlmJudgement: true,
       score: 0.84,
@@ -514,7 +522,7 @@ console.log(JSON.stringify({
   searchRoot: process.argv[process.argv.indexOf("--search-root") + 1],
   candidates: [
     {
-      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      candidateId: "${searchStrategySectionCandidate}",
       action: "keep",
       reason: "graph_verified_candidate",
       finalScore: 0.91,
@@ -529,7 +537,7 @@ console.log(JSON.stringify({
   ],
   frontier: [
     {
-      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      candidateId: "${searchStrategySectionCandidate}",
       rank: 1,
       selected: true,
       finalScore: 0.91,
@@ -541,7 +549,7 @@ console.log(JSON.stringify({
   plannerActions: [
     {
       actionKind: "materialize",
-      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      candidateId: "${searchStrategySectionCandidate}",
       targetCandidateId: "",
       cycleAllowed: false,
       requiresLlmJudgement: false,
