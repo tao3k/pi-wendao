@@ -4,7 +4,7 @@ import type {
   SearchStrategyFlowTrace,
 } from "./strategy-flow-types.js";
 
-const STUDIO_REPO_PLACEHOLDER = "<repo>";
+const REPO_PLACEHOLDER = "<repo>";
 const RESOLVED_PAGE_ID_PLACEHOLDER = "<resolved-page-id>";
 const RESOLVED_NODE_ID_PLACEHOLDER = "<resolved-node-id>";
 
@@ -36,17 +36,12 @@ export function buildSearchStrategyFlowRetrievalRoutes(
       return {
         candidateId: candidate.candidateId,
         materializationOwner: "studio-rust",
+        primaryTransport: "arrow-flight",
         sourcePath: section.sourcePath,
         headingAnchor: section.headingAnchor,
         directFileReadAllowed: false,
-        studioHttpSteps: studioHttpSteps(section),
-        flightRouteHints: [
-          "/search/intent",
-          "/search/knowledge",
-          "repo_search",
-          "graph_neighbors",
-          "repo_projected_page_index_tree",
-        ],
+        flightSteps: flightSteps(section),
+        studioHttpFallbackSteps: studioHttpFallbackSteps(section),
       };
     });
 }
@@ -62,14 +57,62 @@ export function parseMarkdownSectionCandidateId(candidateId: string): {
   };
 }
 
-function studioHttpSteps(section: {
+function flightSteps(section: {
+  sourcePath: string;
+  headingAnchor?: string;
+}): SearchStrategyFlowRetrievalStep[] {
+  const query = sectionQuery(section);
+  return [
+    {
+      step: "flight_search_page",
+      transport: "arrow-flight",
+      route: "/search/repos/main",
+      metadataTemplates: [
+        `x-wendao-repo-search-repo=${REPO_PLACEHOLDER}`,
+        `x-wendao-repo-search-query=${query}`,
+        "x-wendao-repo-search-limit=5",
+        `x-wendao-repo-search-path-prefixes=${section.sourcePath}`,
+      ],
+      note: "Resolve the Markdown section candidate to a page hit through native repo search.",
+      requiresResolvedPageId: false,
+      requiresResolvedNodeId: false,
+    },
+    {
+      step: "flight_resolve_page_index_tree",
+      transport: "arrow-flight",
+      route: "/analysis/repo-projected-page-index-tree",
+      metadataTemplates: [
+        `x-wendao-repo-projected-page-index-tree-repo=${REPO_PLACEHOLDER}`,
+        `x-wendao-repo-projected-page-index-tree-page-id=${RESOLVED_PAGE_ID_PLACEHOLDER}`,
+        ...(section.headingAnchor ? [`candidate-heading-anchor=${section.headingAnchor}`] : []),
+      ],
+      note: "Select the concrete page-index node from the returned tree; do not treat the Markdown anchor as the node id.",
+      requiresResolvedPageId: true,
+      requiresResolvedNodeId: false,
+    },
+    {
+      step: "flight_expand_graph_context",
+      transport: "arrow-flight",
+      route: "/graph/neighbors",
+      metadataTemplates: [
+        `x-wendao-graph-node-id=${RESOLVED_NODE_ID_PLACEHOLDER}`,
+        "x-wendao-graph-direction=both",
+        "x-wendao-graph-hops=2",
+        "x-wendao-graph-limit=50",
+      ],
+      note: "Expand section context through the graph relation layer before the next reasoning-tree branch.",
+      requiresResolvedPageId: true,
+      requiresResolvedNodeId: true,
+    },
+  ];
+}
+
+function studioHttpFallbackSteps(section: {
   sourcePath: string;
   headingAnchor?: string;
 }): SearchStrategyFlowRetrievalStep[] {
   const query = encodeURIComponent(
-    section.headingAnchor
-      ? `${section.sourcePath}#${section.headingAnchor}`
-      : section.sourcePath,
+    sectionQuery(section),
   );
   const sourcePath = encodeURIComponent(section.sourcePath);
   const heading = section.headingAnchor
@@ -77,22 +120,37 @@ function studioHttpSteps(section: {
     : "";
   return [
     {
-      step: "search_page",
-      routeTemplate: `/api/docs/retrieval?repo=${STUDIO_REPO_PLACEHOLDER}&query=${query}&limit=5`,
+      step: "http_search_page",
+      transport: "studio-http",
+      route: `/api/docs/retrieval?repo=${REPO_PLACEHOLDER}&query=${query}&limit=5`,
+      metadataTemplates: [],
+      note: "HTTP fallback/debug equivalent for the native Flight search step.",
       requiresResolvedPageId: false,
       requiresResolvedNodeId: false,
     },
     {
-      step: "resolve_page_index_node",
-      routeTemplate: `/api/repo/projected-page-index-tree-search?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&source_path=${sourcePath}${heading}`,
+      step: "http_resolve_page_index_node",
+      transport: "studio-http",
+      route: `/api/repo/projected-page-index-tree-search?repo=${REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&source_path=${sourcePath}${heading}`,
+      metadataTemplates: [],
+      note: "HTTP fallback/debug equivalent for resolving the page-index node.",
       requiresResolvedPageId: true,
       requiresResolvedNodeId: false,
     },
     {
-      step: "open_section_context",
-      routeTemplate: `/api/docs/retrieval-context?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&node_id=${RESOLVED_NODE_ID_PLACEHOLDER}`,
+      step: "http_open_section_context",
+      transport: "studio-http",
+      route: `/api/docs/retrieval-context?repo=${REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&node_id=${RESOLVED_NODE_ID_PLACEHOLDER}`,
+      metadataTemplates: [],
+      note: "HTTP fallback/debug context opener until the same retrieval-context materialization is exposed as a Flight descriptor.",
       requiresResolvedPageId: true,
       requiresResolvedNodeId: true,
     },
   ];
+}
+
+function sectionQuery(section: { sourcePath: string; headingAnchor?: string }): string {
+  return section.headingAnchor
+    ? `${section.sourcePath}#${section.headingAnchor}`
+    : section.sourcePath;
 }

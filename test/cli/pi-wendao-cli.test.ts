@@ -121,16 +121,23 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust`,
     );
+    expect(output).toContain("primary=arrow-flight");
     expect(output).toContain("direct_file_read=no");
     expect(output).toContain(
-      "search_page:/api/docs/retrieval?repo=<repo>&query=docs%2F30_search_strategy%2F30.01_search_strategy_flow.md%23stage-1-query-understanding&limit=5",
+      "flight_steps=flight_search_page:/search/repos/main",
     );
-    expect(output).toContain("resolve_page_index_node:/api/repo/projected-page-index-tree-search");
     expect(output).toContain(
-      "open_section_context:/api/docs/retrieval-context?repo=<repo>&page_id=<resolved-page-id>&node_id=<resolved-node-id>",
+      "flight_resolve_page_index_tree:/analysis/repo-projected-page-index-tree",
+    );
+    expect(output).toContain("flight_expand_graph_context:/graph/neighbors");
+    expect(output).toContain(
+      "http_fallback_steps=http_search_page:/api/docs/retrieval?repo=<repo>&query=docs%2F30_search_strategy%2F30.01_search_strategy_flow.md%23stage-1-query-understanding&limit=5",
+    );
+    expect(output).toContain("http_resolve_page_index_node:/api/repo/projected-page-index-tree-search");
+    expect(output).toContain(
+      "http_open_section_context:/api/docs/retrieval-context?repo=<repo>&page_id=<resolved-page-id>&node_id=<resolved-node-id>",
     );
     expect(output).not.toContain("node_id=stage-1-query-understanding");
-    expect(output).toContain("flight=/search/intent|/search/knowledge|repo_search");
     expect(output).toContain("llm_interactions:");
     expect(output).toContain("planned action=compare");
     expect(output).toContain("subagent_interactions:");

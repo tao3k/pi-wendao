@@ -127,12 +127,15 @@ Candidate ids use Markdown section granularity, for example
 so the first materialization layer can reveal the content under the selected
 heading instead of handing the agent a whole Markdown file.
 The rendered trace also includes `retrieval_routes`, a derived route plan that
-maps selected section candidates to Studio/Rust-owned materialization surfaces
-and marks direct file reads as disallowed. The plan is deliberately staged:
-first search for the page, then resolve the heading through the projected
-page-index tree, then reopen the resolved page/node through retrieval context.
-The heading anchor is not treated as a stable `node_id`; Rust/Studio owns that
-resolution.
+maps selected section candidates to Rust-owned materialization surfaces and
+marks direct file reads as disallowed. The primary route plan is Arrow
+Flight-native: first search through `/search/repos/main`, then resolve the
+heading through `/analysis/repo-projected-page-index-tree`, then expand related
+context through `/graph/neighbors`. Studio HTTP templates are emitted only as
+fallback/debug views of the same retrieval path, including the final
+retrieval-context opener while that materialization surface does not yet have a
+dedicated Flight descriptor. The heading anchor is not treated as a stable
+`node_id`; Rust owns that resolution.
 
 Options:
 
@@ -151,15 +154,14 @@ broken, because pi-wendao should not silently bypass the Rust control plane.
 Use `--search-backend julia-direct` only for pi-local bridge smoke tests and
 diagnostics.
 
-The production subagent retrieval path should remain Studio/Rust-owned:
-`pi-wendao` receives the intent and agent trace, Studio owns HTTP query surfaces
-such as `/api/docs/retrieval`, `/api/docs/retrieval-context`,
-`/api/repo/projected-page-index-tree-search`, and
-`/api/repo/projected-retrieval`, and the Studio Flight service owns the stable
-Arrow routes such as `/search/intent`, `/search/knowledge`, repo search, graph
-neighbors, and projected page-index tree providers. SearchStrategyFlow section
-candidate ids are therefore routing evidence for Studio/Flight retrieval, not a
-license for pi-wendao to bypass the Rust boundary and read full Markdown files.
+The production subagent retrieval path should remain Flight/Rust-owned:
+`pi-wendao` receives the intent and agent trace, the Flight service owns stable
+Arrow routes such as `/search/intent`, `/search/knowledge`,
+`/search/repos/main`, `/graph/neighbors`, and
+`/analysis/repo-projected-page-index-tree`, and Studio HTTP remains a gateway
+fallback/debug representation. SearchStrategyFlow section candidate ids are
+therefore routing evidence for Flight retrieval, not a license for pi-wendao to
+bypass the Rust boundary and read full Markdown files.
 
 For the default DeepSeek model through the Anthropic-compatible API:
 

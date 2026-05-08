@@ -104,7 +104,7 @@ function renderSearchStrategyFlowTraceInternal(
     ...(retrievalRoutes.length > 0
       ? retrievalRoutes.map(
           (row) =>
-            `  - candidate=${row.candidateId} owner=${row.materializationOwner} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} studio_steps=${formatStudioSteps(row.studioHttpSteps)} flight=${row.flightRouteHints.join("|")}`,
+            `  - candidate=${row.candidateId} owner=${row.materializationOwner} primary=${row.primaryTransport} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} flight_steps=${formatRouteSteps(row.flightSteps)} http_fallback_steps=${formatRouteSteps(row.studioHttpFallbackSteps)}`,
         )
       : ["  - none"]),
     "",
@@ -176,10 +176,6 @@ function renderAgentOutput(
     : undefined;
 }
 
-function formatStudioSteps(
-  steps: { step: string; routeTemplate: string }[],
-): string {
-  return steps
-    .map((step) => `${step.step}:${step.routeTemplate}`)
-    .join(" -> ");
+function formatRouteSteps(steps: { step: string; route: string }[]): string {
+  return steps.map((step) => `${step.step}:${step.route}`).join(" -> ");
 }

@@ -164,7 +164,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
     "You are the first-layer Wendao SearchStrategyFlow query-understanding and branch-judgement agent.",
     "This first layer is correctness-sensitive: preserve the configured reasoning level and do not trade intent quality for latency.",
     "Use only the compact trace and the graph_query_understanding evidence. Do not request files, tools, or extra context.",
-    "Treat retrieval_routes as later-layer Studio/Rust materialization plans; never bypass Rust by reading a full Markdown file directly.",
+    "Treat retrieval_routes as later-layer Flight/Rust materialization plans; never bypass Rust by reading a full Markdown file directly.",
     "First normalize what the user is really asking for, using Julia's graph evidence as constraints rather than optional suggestions.",
     "Then judge whether the selected frontier branches are sufficient for that intent.",
     "Return concise outputs:",
@@ -238,8 +238,9 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       sourcePath: route.sourcePath,
       headingAnchor: route.headingAnchor,
       directFileReadAllowed: route.directFileReadAllowed,
-      studioHttpSteps: route.studioHttpSteps,
-      flight: route.flightRouteHints,
+      primaryTransport: route.primaryTransport,
+      flightSteps: route.flightSteps,
+      studioHttpFallbackSteps: route.studioHttpFallbackSteps,
     })),
   };
 }

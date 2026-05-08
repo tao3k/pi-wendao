@@ -54,16 +54,26 @@ export interface SearchStrategyFlowTrace {
 export interface SearchStrategyFlowRetrievalRoute {
   candidateId: string;
   materializationOwner: "studio-rust";
+  primaryTransport: "arrow-flight";
   sourcePath: string;
   headingAnchor?: string;
   directFileReadAllowed: false;
-  studioHttpSteps: SearchStrategyFlowRetrievalStep[];
-  flightRouteHints: string[];
+  flightSteps: SearchStrategyFlowRetrievalStep[];
+  studioHttpFallbackSteps: SearchStrategyFlowRetrievalStep[];
 }
 
 export interface SearchStrategyFlowRetrievalStep {
-  step: "search_page" | "resolve_page_index_node" | "open_section_context";
-  routeTemplate: string;
+  step:
+    | "flight_search_page"
+    | "flight_resolve_page_index_tree"
+    | "flight_expand_graph_context"
+    | "http_search_page"
+    | "http_resolve_page_index_node"
+    | "http_open_section_context";
+  transport: "arrow-flight" | "studio-http";
+  route: string;
+  metadataTemplates: string[];
+  note?: string;
   requiresResolvedPageId: boolean;
   requiresResolvedNodeId: boolean;
 }
