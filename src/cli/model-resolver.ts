@@ -13,6 +13,8 @@ import {
 import { resolvePiWendaoPackageRoot as resolvePiWendaoPackageRootFromResources } from "../pi-resources.js";
 
 const require = createRequire(import.meta.url);
+const DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+const DYNAMIC_GATEWAY_MODELS = Symbol.for("pi-wendao.dynamicGatewayModels");
 const PI_WENDAO_PI_EXTENSION_FILES = [
   "pi-wendao-pi-intercom.js",
   "pi-wendao-tool-event-bridge.js",
@@ -48,6 +50,15 @@ export interface PiWendaoAuthInfo {
  * - explicit -e paths (pi packages or single files)
  */
 export async function resolveModel(
+  modelPattern: string,
+  provider?: string,
+  apiKeyOverride?: string,
+  extensionPaths?: string[],
+): Promise<ResolvedModel> {
+  return resolveModelInternal(modelPattern, provider, apiKeyOverride, extensionPaths);
+}
+
+async function resolveModelInternal(
   modelPattern: string,
   provider?: string,
   apiKeyOverride?: string,
@@ -96,7 +107,11 @@ export async function resolveModel(
           m.provider === resolvedProvider && (m.id.includes(modelId) || m.name.includes(modelId)),
       );
     }
-    if (!model && resolvedProvider === "anthropic" && process.env.ANTHROPIC_BASE_URL?.trim()) {
+    if (
+      !model &&
+      resolvedProvider === "anthropic" &&
+      (process.env.ANTHROPIC_BASE_URL?.trim() || isDeepSeekAnthropicModelId(modelId))
+    ) {
       model = createAnthropicGatewayModel(modelRegistry, modelId);
     }
     if (!model) {
@@ -111,12 +126,16 @@ export async function resolveModel(
 
   model = applyAnthropicEnvOverrides(model);
   let authSource = apiKeyOverride ? "cli:--api-key" : "pi";
+  let envAuth: { apiKey: string; source: string } | undefined;
   if (!apiKeyOverride) {
-    const envAuth = applyPiWendaoEnvAuthOverride(authStorage, model.provider);
+    envAuth = applyPiWendaoEnvAuthOverride(authStorage, model.provider, model.id);
     if (envAuth) authSource = envAuth.source;
   }
 
-  const auth = await modelRegistry.getApiKeyAndHeaders(model);
+  const skipStoredAuth = shouldSkipStoredAuth(model, apiKeyOverride, envAuth);
+  const auth = skipStoredAuth
+    ? ({ ok: false, error: "DeepSeek gateway model requires explicit DeepSeek auth" } as const)
+    : await modelRegistry.getApiKeyAndHeaders(model);
   let apiKey: string | undefined;
   let headers: Record<string, string> | undefined;
   if (auth.ok) {
@@ -128,6 +147,9 @@ export async function resolveModel(
   }
   if (apiKey) {
     authStorage.setRuntimeApiKey(model.provider, apiKey);
+  }
+  if (!skipStoredAuth) {
+    installDynamicGatewayModel(modelRegistry, model);
   }
 
   return {
@@ -144,12 +166,81 @@ export async function resolveModel(
   };
 }
 
+type ModelRegistryWithDynamicModels = ModelRegistry & {
+  [DYNAMIC_GATEWAY_MODELS]?: Map<string, Model<Api>>;
+};
+
+function installDynamicGatewayModel(modelRegistry: ModelRegistry, model: Model<Api>): void {
+  if (!isGatewayModel(model)) return;
+  const registry = modelRegistry as ModelRegistryWithDynamicModels;
+  let dynamicModels = registry[DYNAMIC_GATEWAY_MODELS];
+  if (!dynamicModels) {
+    dynamicModels = new Map<string, Model<Api>>();
+    Object.defineProperty(registry, DYNAMIC_GATEWAY_MODELS, {
+      value: dynamicModels,
+      enumerable: false,
+    });
+    const originalFind = registry.find.bind(registry);
+    const originalGetAll = registry.getAll.bind(registry);
+    const originalGetAvailable = registry.getAvailable.bind(registry);
+    registry.find = ((provider: string, modelId: string) => {
+      return dynamicModels!.get(modelKey(provider, modelId)) ?? originalFind(provider, modelId);
+    }) as ModelRegistry["find"];
+    registry.getAll = (() => appendDynamicModels(originalGetAll(), dynamicModels!)) as ModelRegistry["getAll"];
+    registry.getAvailable = (() => {
+      const available = originalGetAvailable();
+      const configuredDynamicModels = [...dynamicModels!.values()].filter((dynamicModel) =>
+        registry.hasConfiguredAuth(dynamicModel),
+      );
+      return appendDynamicModels(available, new Map(configuredDynamicModels.map((item) => [modelKey(item.provider, item.id), item])));
+    }) as ModelRegistry["getAvailable"];
+  }
+  dynamicModels.set(modelKey(model.provider, model.id), model);
+}
+
+function appendDynamicModels(models: Model<Api>[], dynamicModels: Map<string, Model<Api>>): Model<Api>[] {
+  const seen = new Set(models.map((model) => modelKey(model.provider, model.id)));
+  const appended = [...models];
+  for (const [key, model] of dynamicModels) {
+    if (seen.has(key)) continue;
+    appended.push(model);
+  }
+  return appended;
+}
+
+function isGatewayModel(model: Model<Api>): boolean {
+  return Boolean(model.baseUrl) && !isBuiltInAnthropicModelId(model.id);
+}
+
+function shouldSkipStoredAuth(
+  model: Model<Api>,
+  apiKeyOverride: string | undefined,
+  envAuth: { apiKey: string; source: string } | undefined,
+): boolean {
+  return (
+    !apiKeyOverride &&
+    !envAuth &&
+    model.provider === "anthropic" &&
+    isDeepSeekAnthropicModelId(model.id) &&
+    model.baseUrl === DEEPSEEK_ANTHROPIC_BASE_URL
+  );
+}
+
+function isBuiltInAnthropicModelId(modelId: string): boolean {
+  return modelId.toLowerCase().startsWith("claude-");
+}
+
+function modelKey(provider: string, modelId: string): string {
+  return `${provider}/${modelId}`.toLowerCase();
+}
+
 export function applyPiWendaoEnvAuthOverride(
   authStorage: Pick<AuthStorage, "setRuntimeApiKey">,
   provider: string,
+  modelId?: string,
 ): { apiKey: string; source: string } | undefined {
   if (provider !== "anthropic") return undefined;
-  const envAuth = resolvePiWendaoAnthropicEnvAuth();
+  const envAuth = resolvePiWendaoAnthropicEnvAuth({ modelId });
   if (!envAuth) return undefined;
   authStorage.setRuntimeApiKey(provider, envAuth.apiKey);
   return envAuth;
@@ -227,7 +318,13 @@ function resolvePackageRoot(packageName: string): string | undefined {
 function applyAnthropicEnvOverrides(model: Model<Api>): Model<Api> {
   if (model.provider !== "anthropic") return model;
 
-  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim();
+  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim() ?? undefined;
+  if (!baseUrl && isDeepSeekAnthropicModelId(model.id)) {
+    return {
+      ...model,
+      baseUrl: DEEPSEEK_ANTHROPIC_BASE_URL,
+    };
+  }
   if (!baseUrl) return model;
 
   return {
@@ -236,13 +333,25 @@ function applyAnthropicEnvOverrides(model: Model<Api>): Model<Api> {
   };
 }
 
-export function resolvePiWendaoAnthropicEnvAuth(): { apiKey: string; source: string } | undefined {
+export function resolvePiWendaoAnthropicEnvAuth(options?: {
+  modelId?: string;
+}): { apiKey: string; source: string } | undefined {
   const apiKey = readEnv("ANTHROPIC_API_KEY");
   if (apiKey) return { apiKey, source: "env:ANTHROPIC_API_KEY" };
+  const authToken = readEnv("ANTHROPIC_AUTH_TOKEN");
+  const deepseekApiKey = readEnv("DEEPSEEK_API_KEY");
+  if (
+    deepseekApiKey &&
+    (isDeepSeekAnthropicGateway() || isDeepSeekAnthropicModelId(options?.modelId ?? ""))
+  ) {
+    return { apiKey: deepseekApiKey, source: "env:DEEPSEEK_API_KEY" };
+  }
   const oauthToken = readEnv("ANTHROPIC_OAUTH_TOKEN");
   if (oauthToken?.includes("sk-ant-oat"))
     return { apiKey: oauthToken, source: "env:ANTHROPIC_OAUTH_TOKEN" };
-  const authToken = readEnv("ANTHROPIC_AUTH_TOKEN");
+  if (authToken && readEnv("ANTHROPIC_BASE_URL")) {
+    return { apiKey: authToken, source: "env:ANTHROPIC_AUTH_TOKEN" };
+  }
   if (authToken?.includes("sk-ant-oat")) {
     return { apiKey: authToken, source: "env:ANTHROPIC_AUTH_TOKEN" };
   }
@@ -252,6 +361,20 @@ export function resolvePiWendaoAnthropicEnvAuth(): { apiKey: string; source: str
 function readEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value ? value : undefined;
+}
+
+function isDeepSeekAnthropicGateway(): boolean {
+  const baseUrl = readEnv("ANTHROPIC_BASE_URL");
+  if (!baseUrl) return false;
+  try {
+    return new URL(baseUrl).hostname === "api.deepseek.com";
+  } catch {
+    return baseUrl.includes("api.deepseek.com");
+  }
+}
+
+function isDeepSeekAnthropicModelId(modelId: string): boolean {
+  return modelId.toLowerCase().startsWith("deepseek-");
 }
 
 export function describeResolvedAuth(
@@ -277,7 +400,7 @@ function createAnthropicGatewayModel(
   modelId: string,
 ): Model<Api> | undefined {
   const template =
-    modelRegistry.find("anthropic", "claude-sonnet-4-20250514") ??
+    modelRegistry.find("anthropic", "claude-sonnet-4-6") ??
     modelRegistry.getAll().find((m) => m.provider === "anthropic");
   if (!template) return undefined;
 

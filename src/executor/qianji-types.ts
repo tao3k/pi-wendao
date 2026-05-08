@@ -1,4 +1,5 @@
 import type { PiWendaoHostWorkKind, PiWendaoQianjiCheckpointFeedback } from "./agent-host.js";
+import type { ActivityId, NodeId, NodeIndex, ProcessId, TokenId } from "../types/domain.js";
 
 export interface QianjiCliResult {
   exitCode: number | null;
@@ -30,11 +31,11 @@ export type QianjiHostWork = QianjiBaseHostWork;
 
 export interface QianjiBaseHostWork {
   kind: PiWendaoHostWorkKind;
-  process_id?: string;
-  activity_id?: string;
-  node_id: string;
-  node_index?: number;
-  token_id: number;
+  process_id?: ProcessId;
+  activity_id?: ActivityId;
+  node_id: NodeId;
+  node_index?: NodeIndex;
+  token_id: TokenId;
   variables?: Record<string, unknown> | null;
   repeat?: unknown;
   form?: QianjiHumanTaskForm | null;

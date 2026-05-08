@@ -101,6 +101,14 @@ export function populateGraphViewFromBpmn(
   processId: string,
   graphView: GraphView,
 ): void {
+  populateGraphViewFromBpmnInternal(source, processId, graphView);
+}
+
+function populateGraphViewFromBpmnInternal(
+  source: string,
+  processId: string,
+  graphView: GraphView,
+): void {
   const document = parser.parse(source) as { definitions?: { process?: unknown } };
   const process = findProcess(document.definitions?.process, processId);
   if (!process) {

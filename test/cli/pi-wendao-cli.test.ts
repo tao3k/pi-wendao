@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +11,12 @@ import {
 
 const projectRoot = process.cwd();
 const tempDirs: string[] = [];
+const liveWendaoGraphProject = join(projectRoot, "..", "WendaoGraph.jl");
+const liveSearchStrategyFlowEnabled =
+  process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE === "1" &&
+  Boolean(process.env.DEEPSEEK_API_KEY?.trim()) &&
+  existsSync(join(liveWendaoGraphProject, "Project.toml"));
+const itLive = liveSearchStrategyFlowEnabled ? it : it.skip;
 
 describe("pi-wendao CLI", () => {
   afterEach(() => {
@@ -45,11 +51,197 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("Expected value:");
     expect(output).not.toContain("human task Task_AskQuestion");
   }, 20_000);
+
+  it("runs SearchStrategyFlow from --search without requiring a workflow", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const fakeJuliaPath = join(dir, "julia");
+    mkdirSync(graphProject);
+    writeFileSync(
+      join(graphProject, "Project.toml"),
+      'name = "WendaoGraph"\nuuid = "764e742e-c622-4247-bda7-f0fdca413869"\n',
+      { encoding: "utf-8", flag: "wx" },
+    );
+    writeFakeJuliaSearch(fakeJuliaPath);
+    chmodSync(fakeJuliaPath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner and validation",
+        "--wendao-graph",
+        graphProject,
+        "--search-root",
+        graphProject,
+        "--search-julia",
+        fakeJuliaPath,
+        "--search-backend",
+        "julia-direct",
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("SearchStrategyFlow trace");
+    expect(output).toContain("intent: find SearchStrategyFlow owner and validation");
+    expect(output).toContain("backend: wendao-graph-julia");
+    expect(output).toContain("rust_bridge:");
+    expect(output).toContain("requested: julia-direct");
+    expect(output).toContain("graph_query_understanding:");
+    expect(output).toContain("kind=route_hint");
+    expect(output).toContain("strategy_budget:");
+    expect(output).toContain("source: query_understanding");
+    expect(output).toContain("strategy_flow_stages:");
+    expect(output).toContain("stage1 query_understanding");
+    expect(output).toContain("stage2 candidate_scoring");
+    expect(output).toContain("stage3 transition_inference");
+    expect(output).toContain("stage4 frontier_selection");
+    expect(output).toContain("stage5 planner_actions");
+    expect(output).toContain("no_vector_mode: yes");
+    expect(output).toContain("materialized_top_candidate: yes");
+    expect(output).toContain(
+      "docs/30_search_strategy/30.01_search_strategy_flow.md action=keep",
+    );
+    expect(output).toContain("planner:");
+    expect(output).toContain("llm_interactions:");
+    expect(output).toContain("planned action=compare");
+    expect(output).toContain("subagent_interactions:");
+    expect(output).toContain("planned type=pi-wendao-output-only");
+  }, 20_000);
+
+  it("prefers the Rust SearchStrategyFlow bridge when a workspace is available", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
+    const fakeCargoPath = join(dir, "cargo");
+    writeSearchProjectFixture(graphProject, rustWorkspace);
+    writeFakeCargoSearch(fakeCargoPath);
+    chmodSync(fakeCargoPath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner through Rust",
+        "--wendao-graph",
+        graphProject,
+        "--search-root",
+        graphProject,
+        "--search-rust-workspace",
+        rustWorkspace,
+        "--search-rust-command",
+        fakeCargoPath,
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("control_plane: rust");
+    expect(output).toContain("requested: auto");
+    expect(output).toContain("fallback: none");
+    expect(output).toContain("strategy_flow_stages:");
+    expect(output).toContain("no_vector_mode: yes");
+    expect(output).toContain(
+      "docs/30_search_strategy/30.01_search_strategy_flow.md action=keep",
+    );
+  }, 20_000);
+
+  it("falls back to Julia direct when the auto Rust bridge is not present", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-fallback-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
+    const fakeCargoPath = join(dir, "cargo");
+    const fakeJuliaPath = join(dir, "julia");
+    writeSearchProjectFixture(graphProject, rustWorkspace);
+    writeFailingCargoSearch(fakeCargoPath);
+    writeFakeJuliaSearch(fakeJuliaPath);
+    chmodSync(fakeCargoPath, 0o755);
+    chmodSync(fakeJuliaPath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner through fallback",
+        "--wendao-graph",
+        graphProject,
+        "--search-root",
+        graphProject,
+        "--search-rust-workspace",
+        rustWorkspace,
+        "--search-rust-command",
+        fakeCargoPath,
+        "--search-julia",
+        fakeJuliaPath,
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("backend: wendao-graph-julia");
+    expect(output).toContain("rust_bridge:");
+    expect(output).toContain("attempted: yes");
+    expect(output).toContain("fallback: julia-direct");
+    expect(output).toContain("error: error: no example target named");
+  }, 20_000);
+
+  itLive("runs live SearchStrategyFlow DeepSeek understanding without first-layer tools", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-live-"));
+    tempDirs.push(dir);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find the SearchStrategyFlow ownership boundary and validation path",
+        "--wendao-graph",
+        liveWendaoGraphProject,
+        "--search-root",
+        liveWendaoGraphProject,
+        "--search-backend",
+        "julia-direct",
+        "--search-agent",
+        "--no-graph",
+      ],
+      projectRoot,
+      {
+        env: {
+          PI_WENDAO_SUBAGENTS_RUN_STORE: join(dir, "pi-subagents-run-store.json"),
+        },
+        timeoutMs: 180_000,
+      },
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("SearchStrategyFlow trace");
+    expect(output).toContain("live status=completed model=anthropic/deepseek-v4-pro");
+    expect(output).toContain("live intent_understanding=");
+    expect(output).toContain("live branch_decision=");
+    expect(output).toContain("live judgement=");
+    expect(output).toContain(
+      "planned type=pi-wendao-output-only activity=SearchStrategyFlow_QueryUnderstanding",
+    );
+    expect(output).toContain("Tool uses: 0");
+    expect(output).not.toContain("tool=read");
+    expect(output).not.toContain("tool_call");
+  }, 190_000);
 });
 
 function runPiWendaoCli(
   args: string[],
   cwd: string,
+  options: {
+    env?: Record<string, string>;
+    timeoutMs?: number;
+  } = {},
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
   const jitiBin = join(
     projectRoot,
@@ -63,6 +255,7 @@ function runPiWendaoCli(
       cwd,
       env: {
         ...process.env,
+        ...options.env,
         FORCE_COLOR: "0",
         NO_COLOR: "1",
       },
@@ -72,7 +265,7 @@ function runPiWendaoCli(
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
       reject(new Error("pi-wendao CLI test timed out"));
-    }, 15_000);
+    }, options.timeoutMs ?? 15_000);
     child.stdout.setEncoding("utf-8");
     child.stderr.setEncoding("utf-8");
     child.stdout.on("data", (chunk) => {
@@ -158,6 +351,226 @@ if (args[0] === "bpmn" && args[1] === "host-session") {
 }
 console.error("unexpected qianji command: " + args.join(" "));
 process.exit(64);
+`,
+    "utf-8",
+  );
+}
+
+function writeSearchProjectFixture(graphProject: string, rustWorkspace: string): void {
+  mkdirSync(graphProject);
+  mkdirSync(join(rustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(graphProject, "Project.toml"),
+    'name = "WendaoGraph"\nuuid = "764e742e-c622-4247-bda7-f0fdca413869"\n',
+    { encoding: "utf-8", flag: "wx" },
+  );
+  writeFileSync(join(rustWorkspace, "Cargo.toml"), "[workspace]\n", "utf-8");
+  writeFileSync(
+    join(rustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia", "Cargo.toml"),
+    '[package]\nname = "xiuxian-wendao-julia"\n',
+    "utf-8",
+  );
+}
+
+function writeFakeJuliaSearch(path: string): void {
+  writeFileSync(
+    path,
+    `#!/usr/bin/env node
+console.log(JSON.stringify({
+  intent: process.argv[process.argv.length - 2],
+  backend: "wendao-graph-julia",
+  graphProject: "fake/WendaoGraph.jl",
+  searchRoot: process.argv[process.argv.length - 1],
+  candidates: [
+    {
+      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      action: "keep",
+      reason: "graph_verified_candidate",
+      finalScore: 0.91,
+      evidenceCoverage: 0.98,
+      graphScore: 0.95,
+      authorityScore: 0.93,
+      semanticScore: 0,
+      structuralScore: 0.9,
+      contextCost: 1000,
+      blocked: false
+    }
+  ],
+  frontier: [
+    {
+      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      rank: 1,
+      selected: true,
+      finalScore: 0.91,
+      action: "keep",
+      contextBudget: 1000,
+      judgementKind: "graph_verified_candidate"
+    }
+  ],
+  plannerActions: [
+    {
+      actionKind: "materialize",
+      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      targetCandidateId: "",
+      cycleAllowed: false,
+      requiresLlmJudgement: false,
+      score: 0.91,
+      reason: "graph_materialize_candidate"
+    },
+    {
+      actionKind: "compare",
+      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      targetCandidateId: "docs/20_page_index/20.01_reasoning_tree_contracts.md",
+      cycleAllowed: false,
+      requiresLlmJudgement: true,
+      score: 0.84,
+      reason: "llm_verify_adjacent_branch"
+    }
+  ],
+  queryUnderstanding: [
+    {
+      flowId: "pi-wendao-search-strategy-flow",
+      intentId: "cli-intent-1",
+      signalId: "cli-intent-1-signal-1",
+      signalKind: "route_hint",
+      signalValue: "search_strategy",
+      confidence: 0.92,
+      routeHint: "search_strategy",
+      requiredEvidence: "",
+      ambiguity: 0.42,
+      weight: 0.9,
+      recommendedLoopBudget: 1,
+      recommendedJudgementBudget: 1,
+      recommendedBeamWidth: 3,
+      reason: "route inferred from graph-owned query anchors"
+    }
+  ],
+  strategyBudget: {
+    source: "query_understanding",
+    loopBudget: 1,
+    judgementBudget: 1,
+    beamWidth: 3
+  },
+  summary: {
+    candidateCount: 1,
+    selectedCount: 1,
+    plannerActionCount: 2,
+    totalContextCost: 1800,
+    selectedContextCost: 1000,
+    contextReductionRatio: 0.444
+  },
+  validation: {
+    noVectorMode: true,
+    materializedTopCandidate: true,
+    blockedEvidencePruned: true,
+    selectedContextReduced: true
+  }
+}));
+`,
+    "utf-8",
+  );
+}
+
+function writeFakeCargoSearch(path: string): void {
+  writeFileSync(
+    path,
+    `#!/usr/bin/env node
+console.log(JSON.stringify({
+  intent: process.argv[process.argv.indexOf("--intent") + 1],
+  backend: "rust-wendao-julia",
+  controlPlane: "rust",
+  juliaProject: process.env.WENDAOGRAPH_PACKAGE_DIR,
+  graphProject: process.env.WENDAOGRAPH_PACKAGE_DIR,
+  searchRoot: process.argv[process.argv.indexOf("--search-root") + 1],
+  candidates: [
+    {
+      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      action: "keep",
+      reason: "graph_verified_candidate",
+      finalScore: 0.91,
+      evidenceCoverage: 0.98,
+      graphScore: 0.95,
+      authorityScore: 0.93,
+      semanticScore: 0,
+      structuralScore: 0.9,
+      contextCost: 1000,
+      blocked: false
+    }
+  ],
+  frontier: [
+    {
+      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      rank: 1,
+      selected: true,
+      finalScore: 0.91,
+      action: "keep",
+      contextBudget: 1000,
+      judgementKind: "graph_verified_candidate"
+    }
+  ],
+  plannerActions: [
+    {
+      actionKind: "materialize",
+      candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      targetCandidateId: "",
+      cycleAllowed: false,
+      requiresLlmJudgement: false,
+      score: 0.91,
+      reason: "graph_materialize_candidate"
+    }
+  ],
+  queryUnderstanding: [
+    {
+      flowId: "pi-wendao-search-strategy-flow",
+      intentId: "cli-intent-1",
+      signalId: "cli-intent-1-signal-1",
+      signalKind: "route_hint",
+      signalValue: "search_strategy",
+      confidence: 0.92,
+      routeHint: "search_strategy",
+      requiredEvidence: "",
+      ambiguity: 0.42,
+      weight: 0.9,
+      recommendedLoopBudget: 1,
+      recommendedJudgementBudget: 1,
+      recommendedBeamWidth: 3,
+      reason: "route inferred from graph-owned query anchors"
+    }
+  ],
+  strategyBudget: {
+    source: "query_understanding",
+    loopBudget: 1,
+    judgementBudget: 1,
+    beamWidth: 3
+  },
+  summary: {
+    candidateCount: 1,
+    selectedCount: 1,
+    plannerActionCount: 1,
+    totalContextCost: 1800,
+    selectedContextCost: 1000,
+    contextReductionRatio: 0.444
+  },
+  validation: {
+    noVectorMode: true,
+    materializedTopCandidate: true,
+    blockedEvidencePruned: true,
+    selectedContextReduced: true
+  }
+}));
+`,
+    "utf-8",
+  );
+}
+
+function writeFailingCargoSearch(path: string): void {
+  writeFileSync(
+    path,
+    `#!/usr/bin/env node
+console.error("error: no example target named \\u0060wendaograph_search_strategy_flow\\u0060 in \\u0060xiuxian-wendao-julia\\u0060 package");
+process.exit(101);
 `,
     "utf-8",
   );

@@ -14,6 +14,31 @@ exposes one `pi-wendao` CLI. Use `pi-wendao compile` to compile skills and
 npm install -g pi-wendao
 ```
 
+## Local Policy Checks
+
+`pi-wendao` uses `typescript-lang-project-harness` as its TypeScript policy
+gate. The policy is part of the normal check and test commands:
+
+```bash
+npm run check
+npm test
+```
+
+Both commands run the TypeScript compiler or Vitest first, then enforce the
+harness agent gate. Agent-facing findings are treated as required repair work,
+and failures include the compact parser-owned owner map and finding groups.
+
+To inspect the same surfaces directly:
+
+```bash
+npm run harness
+npm run harness:agent
+npm run harness:agent-gate
+```
+
+The package `Justfile` routes `just check` and `just test` through the same
+policy-enforced commands, so `just verify-local` inherits the harness gate.
+
 ## Usage
 
 ### Compile a skill
@@ -59,7 +84,7 @@ Options:
 - `--event-fixture <path>` — qianji event fixture JSON
 - `--context-json <json>` — merge a JSON object after `--var` pairs
 - `--trace-frame-ms <ms>` — optional delay between streamed graph trace frames
-- `--model <model>` — accepted compatibility option for real host execution (defaults through `PI_WENDAO_MODEL` or Anthropic model environment variables when set)
+- `--model <model>` — accepted compatibility option for real host execution (defaults to `anthropic/deepseek-v4-pro`, with `PI_WENDAO_MODEL` and Anthropic-compatible environment variables overriding it)
 - `--provider <provider>` — accepted compatibility option for model resolution
 - `--api-key <key>` — accepted compatibility option for model resolution
 - `--thinking <level>` — LLM thinking level for real host execution
@@ -69,6 +94,82 @@ Options:
 - `--tui` — enable interactive graph TUI visualization (default); without a workflow argument, open the native pi chat TUI
 - `--no-tui` — disable interactive graph TUI visualization
 - `--no-graph` — disable graph visualization (legacy alias for `--no-tui`)
+
+### SearchStrategyFlow
+
+```bash
+npx --no-install pi-wendao --search "find the SearchStrategyFlow ownership boundary" --no-graph
+```
+
+`--search` is a pi-wendao CLI entry point for WendaoGraph SearchStrategyFlow
+traces. The CLI discovers `WendaoGraph.jl`, asks Julia to score and prune graph
+candidates, and prints Julia's graph-guided query-understanding evidence, the
+frontier, planner actions, validation flags, and the planned LLM/subagent
+judgement points. This path lives in this package so the agent-facing command
+can evolve with pi-subagents instead of requiring users to call a Rust example
+directly.
+The rendered trace includes `strategy_budget`, which shows whether loop,
+judgement, and beam budgets came from Julia query-understanding evidence or
+from defaults.
+It also includes `strategy_flow_stages`, a compact five-stage receipt aligned
+with the WendaoGraph Pluto notebooks:
+
+1. query understanding
+2. candidate scoring
+3. transition inference
+4. frontier selection
+5. planner actions
+
+Those stage receipts make the CLI trace match the research notebooks and give
+pi-subagents a bounded reasoning-tree surface instead of a flat search result.
+
+Options:
+
+- `--wendao-graph <path>` — explicit `WendaoGraph.jl` project path
+- `--search-root <path>` — knowledge root used for candidate context-cost evidence
+- `--search-julia <command>` — Julia executable override
+- `--search-backend <mode>` — `auto`, `rust-julia`, or `julia-direct`
+- `--search-rust-workspace <path>` — optional xiuxian Rust workspace for the Rust bridge
+- `--search-rust-command <command>` — Cargo executable override for the Rust bridge
+- `--search-agent` — run a live pi-subagents LLM judgement for planner actions that require an LLM
+- `--search-json` — print the structured trace JSON
+
+The default `auto` backend tries the Rust-to-Julia bridge when a xiuxian
+workspace is available. If that bridge is not present in the current checkout,
+the command falls back to Julia direct and reports the fallback under
+`rust_bridge`. Use `--search-backend rust-julia` only when the Rust bridge is a
+hard requirement.
+
+For the default DeepSeek model through the Anthropic-compatible API:
+
+```bash
+export DEEPSEEK_API_KEY=...
+npx --no-install pi-wendao --search "find the relevant knowledge boundary" --search-agent --no-graph
+```
+
+`pi-wendao` defaults SearchStrategyFlow agent calls to
+`anthropic/deepseek-v4-pro` and uses DeepSeek's Anthropic-compatible endpoint
+for that model. It also honors the documented gateway variables when set:
+`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` plus
+`ANTHROPIC_AUTH_TOKEN=$DEEPSEEK_API_KEY`.
+
+The live DeepSeek smoke is opt-in so regular CI does not depend on network or
+paid model access:
+
+```bash
+npm run test:search-live
+```
+
+The live gate expects `DEEPSEEK_API_KEY` in the worktree `.env`, verifies a
+completed `SearchStrategyFlow_QueryUnderstanding` judgement, and requires the
+first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
+agents that read candidate documents belong to the next reasoning-tree layer.
+First-layer query understanding and judgement keep the configured reasoning
+level because route selection is correctness-sensitive; latency work must come
+from orchestration, caching, compact traces, and later branch-level parallelism
+instead of weakening the first decision. The prompt receives the
+`graph_query_understanding` trace section as hard graph evidence: route hints,
+required evidence, ambiguity, and the applied loop/judgement/beam budgets.
 
 Running `pi-wendao --tui` without a workflow enters pi's native interactive
 session for the current working directory. Type normally to talk with the

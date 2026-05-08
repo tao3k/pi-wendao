@@ -85,7 +85,7 @@ describe("pi-wendao native pi extension", () => {
       }
     >();
     createPiWendaoNativeExtension({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: "/repo",
       piContextCwd: "/repo/.data/qianji",
@@ -169,7 +169,7 @@ describe("pi-wendao native pi extension", () => {
       }
     >();
     createPiWendaoNativeExtension({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: "/repo",
       piContextCwd: "/repo/.data/qianji",
@@ -270,7 +270,7 @@ describe("pi-wendao native pi extension", () => {
       }
     >();
     createPiWendaoNativeExtension({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: "/repo",
       piContextCwd: "/repo/.data/qianji",
@@ -319,7 +319,7 @@ describe("pi-wendao native pi extension", () => {
       };
     }> = [];
     createPiWendaoNativeExtension({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: process.cwd(),
       piContextCwd: process.cwd(),
@@ -604,20 +604,19 @@ describe("pi-wendao native pi extension", () => {
     };
 
     const answer = await withTimeout(
-      requestNativeWorkflowInputReply(
-        pi as never,
-        ctx as never,
-        "/tmp/skillsc-real-llm-complex.bpmn",
-        {
+      requestNativeWorkflowInputReply({
+        pi: pi as never,
+        ctx: ctx as never,
+        workflowPath: "/tmp/skillsc-real-llm-complex.bpmn",
+        request: {
           action: "ask",
           interaction: { type: "confirm" },
           message: "Approve this step?",
           to: "planner",
           toolCallId: "tool-1",
         },
-        undefined,
-        askFlow,
-      ),
+        askFlow: askFlow,
+      }),
     );
 
     expect(answer).toBe("approved");
@@ -674,11 +673,11 @@ describe("pi-wendao native pi extension", () => {
     };
 
     const answer = await withTimeout(
-      requestNativeWorkflowInputReply(
-        pi as never,
-        ctx as never,
-        "/tmp/brainstorm-one-step.bpmn",
-        {
+      requestNativeWorkflowInputReply({
+        pi: pi as never,
+        ctx: ctx as never,
+        workflowPath: "/tmp/brainstorm-one-step.bpmn",
+        request: {
           action: "human_task",
           interaction: {
             question: "Which direction should BPMN integration take?",
@@ -688,9 +687,8 @@ describe("pi-wendao native pi extension", () => {
           to: "user",
           toolCallId: "tool-1",
         },
-        undefined,
-        askFlow,
-      ),
+        askFlow: askFlow,
+      }),
     );
 
     expect(answer).toBe("Use BPMN to orchestrate wendao workflows");
@@ -719,11 +717,11 @@ describe("pi-wendao native pi extension", () => {
     };
 
     await expect(
-      requestNativeWorkflowInputReply(
-        pi as never,
-        ctx as never,
-        "/tmp/stale-human-task.bpmn",
-        {
+      requestNativeWorkflowInputReply({
+        pi: pi as never,
+        ctx: ctx as never,
+        workflowPath: "/tmp/stale-human-task.bpmn",
+        request: {
           action: "human_task",
           context: {
             activityId: "Task_AskQuestion",
@@ -737,9 +735,8 @@ describe("pi-wendao native pi extension", () => {
           to: "user",
           toolCallId: "tool-1",
         },
-        undefined,
-        askFlow,
-      ),
+        askFlow: askFlow,
+      }),
     ).rejects.toThrow("[pi-wendao.runtime.missing_native_interaction_options]");
     expect(askCalls).toHaveLength(0);
   });
@@ -763,11 +760,11 @@ describe("pi-wendao native pi extension", () => {
     });
 
     await expect(
-      requestNativeWorkflowInputReply(
-        pi as never,
-        ctx as never,
-        "/tmp/human-task.bpmn",
-        {
+      requestNativeWorkflowInputReply({
+        pi: pi as never,
+        ctx: ctx as never,
+        workflowPath: "/tmp/human-task.bpmn",
+        request: {
           action: "human_task",
           interaction: {
             choices: [
@@ -781,9 +778,8 @@ describe("pi-wendao native pi extension", () => {
           to: "user",
           toolCallId: "tool-1",
         },
-        undefined,
-        askFlow,
-      ),
+        askFlow: askFlow,
+      }),
     ).rejects.toThrow("Workflow input cancelled; checkpoint preserved.");
   });
 
@@ -993,7 +989,7 @@ describe("pi-wendao native pi extension", () => {
   it("inherits the active pi session model registry auth for native /run", async () => {
     const authStorage = AuthStorage.inMemory();
     const modelRegistry = ModelRegistry.inMemory(authStorage);
-    const model = modelRegistry.find("anthropic", "claude-sonnet-4-20250514");
+    const model = modelRegistry.find("anthropic", "claude-sonnet-4-6");
     if (!model) throw new Error("expected built-in Anthropic model");
     authStorage.setRuntimeApiKey("anthropic", "session-api-key");
 
@@ -1003,7 +999,7 @@ describe("pi-wendao native pi extension", () => {
         modelRegistry,
       },
       {
-        modelPattern: "anthropic/claude-sonnet-4-20250514",
+        modelPattern: "anthropic/claude-sonnet-4-6",
         piContextCwd: process.cwd(),
         resolvedExtensionPaths: [],
       },
@@ -1022,7 +1018,7 @@ describe("pi-wendao native pi extension", () => {
       anthropic: { type: "api_key", key: "stale-auth-json-key" },
     });
     const modelRegistry = ModelRegistry.inMemory(authStorage);
-    const model = modelRegistry.find("anthropic", "claude-sonnet-4-20250514");
+    const model = modelRegistry.find("anthropic", "claude-sonnet-4-6");
     if (!model) throw new Error("expected built-in Anthropic model");
     process.env.ANTHROPIC_API_KEY = "fresh-env-api-key";
 
@@ -1032,7 +1028,7 @@ describe("pi-wendao native pi extension", () => {
         modelRegistry,
       },
       {
-        modelPattern: "anthropic/claude-sonnet-4-20250514",
+        modelPattern: "anthropic/claude-sonnet-4-6",
         piContextCwd: process.cwd(),
         resolvedExtensionPaths: [],
       },
@@ -1047,7 +1043,7 @@ describe("pi-wendao native pi extension", () => {
   it("does not use ANTHROPIC_AUTH_TOKEN as a native /run x-api-key fallback", async () => {
     const authStorage = AuthStorage.inMemory();
     const modelRegistry = ModelRegistry.inMemory(authStorage);
-    const model = modelRegistry.find("anthropic", "claude-sonnet-4-20250514");
+    const model = modelRegistry.find("anthropic", "claude-sonnet-4-6");
     if (!model) throw new Error("expected built-in Anthropic model");
     process.env.ANTHROPIC_AUTH_TOKEN = "invalid-x-api-key";
     delete process.env.ANTHROPIC_OAUTH_TOKEN;
@@ -1059,7 +1055,7 @@ describe("pi-wendao native pi extension", () => {
         modelRegistry,
       },
       {
-        modelPattern: "anthropic/claude-sonnet-4-20250514",
+        modelPattern: "anthropic/claude-sonnet-4-6",
         piContextCwd: process.cwd(),
         resolvedExtensionPaths: [],
       },
@@ -1072,7 +1068,7 @@ describe("pi-wendao native pi extension", () => {
   it("uses pi-native Anthropic API key env resolution for native /run", async () => {
     const authStorage = AuthStorage.inMemory();
     const modelRegistry = ModelRegistry.inMemory(authStorage);
-    const model = modelRegistry.find("anthropic", "claude-sonnet-4-20250514");
+    const model = modelRegistry.find("anthropic", "claude-sonnet-4-6");
     if (!model) throw new Error("expected built-in Anthropic model");
     process.env.ANTHROPIC_AUTH_TOKEN = "ignored-auth-token";
     process.env.ANTHROPIC_API_KEY = "env-api-key";
@@ -1084,7 +1080,7 @@ describe("pi-wendao native pi extension", () => {
         modelRegistry,
       },
       {
-        modelPattern: "anthropic/claude-sonnet-4-20250514",
+        modelPattern: "anthropic/claude-sonnet-4-6",
         piContextCwd: process.cwd(),
         resolvedExtensionPaths: [],
       },
@@ -1100,7 +1096,7 @@ describe("pi-wendao native pi extension", () => {
   it("prefers ANTHROPIC_API_KEY over ANTHROPIC_OAUTH_TOKEN for native /run", async () => {
     const authStorage = AuthStorage.inMemory();
     const modelRegistry = ModelRegistry.inMemory(authStorage);
-    const model = modelRegistry.find("anthropic", "claude-sonnet-4-20250514");
+    const model = modelRegistry.find("anthropic", "claude-sonnet-4-6");
     if (!model) throw new Error("expected built-in Anthropic model");
     process.env.ANTHROPIC_API_KEY = "env-api-key";
     process.env.ANTHROPIC_OAUTH_TOKEN = "older-oauth-token";
@@ -1111,7 +1107,7 @@ describe("pi-wendao native pi extension", () => {
         modelRegistry,
       },
       {
-        modelPattern: "anthropic/claude-sonnet-4-20250514",
+        modelPattern: "anthropic/claude-sonnet-4-6",
         piContextCwd: process.cwd(),
         resolvedExtensionPaths: [],
       },
@@ -1236,7 +1232,7 @@ describe("pi-wendao native pi extension", () => {
         | undefined
     >();
     createPiWendaoNativeExtension({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: "/repo",
       piContextCwd: "/repo/.data/qianji",
@@ -1293,7 +1289,7 @@ describe("pi-wendao native pi extension", () => {
 
   it("launches pi native TUI with bundled native extensions and user extensions", () => {
     const args = buildPiWendaoNativeArgs({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: "/repo",
       piContextCwd: "/repo/.data/qianji",
@@ -1304,7 +1300,7 @@ describe("pi-wendao native pi extension", () => {
 
     expect(args).toContain("--continue");
     expect(args).toContain("--model");
-    expect(args).toContain("anthropic/claude-sonnet-4-20250514");
+    expect(args).toContain("anthropic/claude-sonnet-4-6");
     expect(args).toContain("--thinking");
     expect(args).toContain("medium");
     expect(args).toContain("/tmp/custom-extension.js");
@@ -1319,7 +1315,7 @@ describe("pi-wendao native pi extension", () => {
     process.env.ANTHROPIC_API_KEY = "fresh-env-api-key";
 
     const args = buildPiWendaoNativeArgs({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: "/repo",
       piContextCwd: "/repo/.data/qianji",
@@ -1340,7 +1336,7 @@ describe("pi-wendao native pi extension", () => {
     const providers: Array<{ name: string; config: unknown }> = [];
 
     createPiWendaoNativeExtension({
-      modelPattern: "anthropic/claude-sonnet-4-20250514",
+      modelPattern: "anthropic/claude-sonnet-4-6",
       thinkingLevel: "medium",
       invocationCwd: "/repo",
       piContextCwd: "/repo/.data/qianji",

@@ -14,12 +14,14 @@ describe("resolveModel", () => {
   const originalAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
   const originalOAuthToken = process.env.ANTHROPIC_OAUTH_TOKEN;
   const originalApiKey = process.env.ANTHROPIC_API_KEY;
+  const originalDeepSeekApiKey = process.env.DEEPSEEK_API_KEY;
 
   afterEach(() => {
     restoreEnv("ANTHROPIC_BASE_URL", originalBaseUrl);
     restoreEnv("ANTHROPIC_AUTH_TOKEN", originalAuthToken);
     restoreEnv("ANTHROPIC_OAUTH_TOKEN", originalOAuthToken);
     restoreEnv("ANTHROPIC_API_KEY", originalApiKey);
+    restoreEnv("DEEPSEEK_API_KEY", originalDeepSeekApiKey);
   });
 
   it("uses Claude-compatible Anthropic environment overrides", async () => {
@@ -29,7 +31,7 @@ describe("resolveModel", () => {
     delete process.env.ANTHROPIC_OAUTH_TOKEN;
 
     const { result, warnings } = await captureWarnings(() =>
-      resolveModel("anthropic/claude-sonnet-4-20250514"),
+      resolveModel("anthropic/claude-sonnet-4-6"),
     );
 
     expect(result.model.provider).toBe("anthropic");
@@ -69,6 +71,73 @@ describe("resolveModel", () => {
       source: "env:ANTHROPIC_API_KEY",
     });
     await expect(authStorage.getApiKey("anthropic")).resolves.toBe("fresh-env-api-key");
+  });
+
+  it("accepts the DeepSeek Anthropic-compatible auth-token convention", () => {
+    process.env.ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+    process.env.ANTHROPIC_AUTH_TOKEN = "deepseek-auth-token";
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    delete process.env.DEEPSEEK_API_KEY;
+
+    expect(resolvePiWendaoAnthropicEnvAuth()).toEqual({
+      apiKey: "deepseek-auth-token",
+      source: "env:ANTHROPIC_AUTH_TOKEN",
+    });
+  });
+
+  it("accepts DEEPSEEK_API_KEY for the DeepSeek Anthropic-compatible gateway", () => {
+    process.env.ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+    process.env.DEEPSEEK_API_KEY = "deepseek-api-key";
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+
+    expect(resolvePiWendaoAnthropicEnvAuth()).toEqual({
+      apiKey: "deepseek-api-key",
+      source: "env:DEEPSEEK_API_KEY",
+    });
+  });
+
+  it("uses the DeepSeek Anthropic endpoint for DeepSeek model ids by default", async () => {
+    process.env.DEEPSEEK_API_KEY = "deepseek-api-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+
+    const { result, warnings } = await captureWarnings(() =>
+      resolveModel("anthropic/deepseek-v4-pro"),
+    );
+
+    expect(result.model.provider).toBe("anthropic");
+    expect(result.model.id).toBe("deepseek-v4-pro");
+    expect(result.model.baseUrl).toBe("https://api.deepseek.com/anthropic");
+    expect(result.apiKey).toBe("deepseek-api-key");
+    expect(result.auth?.source).toBe("env:DEEPSEEK_API_KEY");
+    expect(result.modelRegistry.find("anthropic", "deepseek-v4-pro")?.baseUrl).toBe(
+      "https://api.deepseek.com/anthropic",
+    );
+    expect(result.modelRegistry.getAvailable()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ provider: "anthropic", id: "deepseek-v4-pro" })]),
+    );
+    expect(warnings.join("\n")).not.toContain('Tool "intercom" conflicts');
+  });
+
+  it("does not reuse stored Anthropic auth for the default DeepSeek gateway model", async () => {
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+
+    const { result } = await captureWarnings(() => resolveModel("anthropic/deepseek-v4-pro"));
+
+    expect(result.model.baseUrl).toBe("https://api.deepseek.com/anthropic");
+    expect(result.apiKey).toBeUndefined();
+    expect(result.modelRegistry.getAvailable()).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ provider: "anthropic", id: "deepseek-v4-pro" })]),
+    );
   });
 
   it("ignores non-oauth ANTHROPIC_OAUTH_TOKEN values when no API key is present", () => {

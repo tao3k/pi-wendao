@@ -1,19 +1,28 @@
 import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
+import type {
+  ApiKey,
+  DmnPath,
+  EventFixturePath,
+  HostFixturePath,
+  InstanceId,
+  TraceFrameDelayMs,
+  WorkflowPath,
+} from "../../types/domain.js";
 import type { PiWendaoNamedWorkflow } from "../named-workflows.js";
 import type { PiWendaoWorkflowOptions } from "../workflow-runner.js";
 
 export interface PiWendaoNativeExtensionOptions {
   modelPattern: string;
   provider?: string;
-  apiKey?: string;
+  apiKey?: ApiKey;
   thinkingLevel: PiWendaoThinkingLevel;
   invocationCwd: string;
   piContextCwd: string;
   resolvedExtensionPaths: string[];
   baseWorkflowOptions: PiWendaoWorkflowOptions;
-  resolvedDmnPaths: string[];
-  resolvedHostFixturePath?: string;
-  resolvedEventFixturePath?: string;
+  resolvedDmnPaths: DmnPath[];
+  resolvedHostFixturePath?: HostFixturePath;
+  resolvedEventFixturePath?: EventFixturePath;
 }
 
 export interface PiWendaoWorkflowMessageDetails {
@@ -32,23 +41,23 @@ export interface PiWendaoWorkflowMessageDetails {
 }
 
 export interface NativeRunCommand {
-  workflowPath: string;
+  workflowPath: WorkflowPath;
   namedWorkflow?: PiWendaoNamedWorkflow;
   process?: string;
-  instanceId?: string;
+  instanceId?: InstanceId;
   startAtNode?: string;
   qianji?: string;
-  dmnPaths: string[];
-  hostFixturePath?: string;
-  eventFixturePath?: string;
+  dmnPaths: DmnPath[];
+  hostFixturePath?: HostFixturePath;
+  eventFixturePath?: EventFixturePath;
   contextJson?: string;
-  traceFrameMs?: number;
+  traceFrameMs?: TraceFrameDelayMs;
   variables: string[];
   graph: boolean;
 }
 
 export interface NativeShowCommand {
-  instanceId?: string;
-  workflowPath?: string;
-  dmnPaths: string[];
+  instanceId?: InstanceId;
+  workflowPath?: WorkflowPath;
+  dmnPaths: DmnPath[];
 }

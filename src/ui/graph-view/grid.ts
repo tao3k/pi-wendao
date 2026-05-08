@@ -32,14 +32,16 @@ export function drawEdgeOnGrid(
   }
 }
 
-export function writeAt(
-  grid: string[][],
-  row: number,
-  col: number,
-  text: string,
-  gridW: number,
-  gridH: number,
-): void {
+export interface GridWriteRequest {
+  grid: string[][];
+  row: number;
+  col: number;
+  text: string;
+  gridW: number;
+  gridH: number;
+}
+
+export function writeAt({ grid, row, col, text, gridW, gridH }: GridWriteRequest): void {
   if (row < 0 || row >= gridH || col < 0 || col >= gridW) return;
   const cells = splitStyledCells(text);
   for (let i = 0; i < cells.length && col + i < gridW; i++) {

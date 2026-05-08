@@ -67,6 +67,12 @@ export type PiWendaoAgentEvent =
     };
 
 export function toPiWendaoAgentEvent(event: AgentSessionEvent): PiWendaoAgentEvent | undefined {
+  return toPiWendaoAgentEventInternal(event);
+}
+
+function toPiWendaoAgentEventInternal(
+  event: AgentSessionEvent,
+): PiWendaoAgentEvent | undefined {
   switch (event.type) {
     case "agent_start":
     case "turn_start":

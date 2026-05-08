@@ -99,6 +99,10 @@ export class GraphView implements Component {
   }
 
   render(width: number): string[] {
+    return this.renderLines(width);
+  }
+
+  private renderLines(width: number): string[] {
     if (this.cachedLines && this.cachedWidth === width) {
       return this.cachedLines;
     }
@@ -168,7 +172,7 @@ export class GraphView implements Component {
       const boxW = nodeBoxWidth(node, maxLabelWidth);
       const left = Math.max(0, Math.round(pos.x - boxW / 2));
       this.nodeBounds.set(id, { left, right: Math.min(gridW - 1, left + boxW - 1) });
-      drawNodeOnGrid(grid, pos, node, gridW, gridH, maxLabelWidth);
+      drawNodeOnGrid({ grid, pos, node, gridW, gridH, maxLabelWidth });
     }
 
     let hasActiveNode = false;
