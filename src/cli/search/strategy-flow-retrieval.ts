@@ -90,6 +90,20 @@ function flightSteps(section: {
       requiresResolvedNodeId: false,
     },
     {
+      step: "flight_open_retrieval_context",
+      transport: "arrow-flight",
+      route: "/analysis/repo-projected-retrieval-context",
+      metadataTemplates: [
+        `x-wendao-repo-projected-retrieval-context-repo=${REPO_PLACEHOLDER}`,
+        `x-wendao-repo-projected-retrieval-context-page-id=${RESOLVED_PAGE_ID_PLACEHOLDER}`,
+        `x-wendao-repo-projected-retrieval-context-node-id=${RESOLVED_NODE_ID_PLACEHOLDER}`,
+        "x-wendao-repo-projected-retrieval-context-related-limit=5",
+      ],
+      note: "Open the section-level projected retrieval context through the native Flight route.",
+      requiresResolvedPageId: true,
+      requiresResolvedNodeId: true,
+    },
+    {
       step: "flight_expand_graph_context",
       transport: "arrow-flight",
       route: "/graph/neighbors",

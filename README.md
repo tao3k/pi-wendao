@@ -130,12 +130,13 @@ The rendered trace also includes `retrieval_routes`, a derived route plan that
 maps selected section candidates to Rust-owned materialization surfaces and
 marks direct file reads as disallowed. The primary route plan is Arrow
 Flight-native: first search through `/search/repos/main`, then resolve the
-heading through `/analysis/repo-projected-page-index-tree`, then expand related
-context through `/graph/neighbors`. There is no Studio HTTP fallback in this
-plan: if the Flight path cannot materialize the section, the retrieval layer
-must report a Flight/Rust failure instead of bypassing the primary contract.
-The heading anchor is not treated as a stable `node_id`; Rust owns that
-resolution.
+heading through `/analysis/repo-projected-page-index-tree`, then open the
+section retrieval context through
+`/analysis/repo-projected-retrieval-context`, then expand extra relations
+through `/graph/neighbors`. There is no Studio HTTP fallback in this plan: if
+the Flight path cannot materialize the section, the retrieval layer must report
+a Flight/Rust failure instead of bypassing the primary contract. The heading
+anchor is not treated as a stable `node_id`; Rust owns that resolution.
 
 Options:
 
@@ -158,7 +159,8 @@ The production subagent retrieval path should remain Flight/Rust-owned:
 `pi-wendao` receives the intent and agent trace, the Flight service owns stable
 Arrow routes such as `/search/intent`, `/search/knowledge`,
 `/search/repos/main`, `/graph/neighbors`, and
-`/analysis/repo-projected-page-index-tree`. SearchStrategyFlow section
+`/analysis/repo-projected-page-index-tree`, and
+`/analysis/repo-projected-retrieval-context`. SearchStrategyFlow section
 candidate ids are therefore routing evidence for Flight retrieval, not a
 license for pi-wendao to bypass the Rust boundary and read full Markdown files.
 

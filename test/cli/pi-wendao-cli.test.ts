@@ -129,6 +129,9 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain(
       "flight_resolve_page_index_tree:/analysis/repo-projected-page-index-tree",
     );
+    expect(output).toContain(
+      "flight_open_retrieval_context:/analysis/repo-projected-retrieval-context",
+    );
     expect(output).toContain("flight_expand_graph_context:/graph/neighbors");
     expect(output).not.toContain("http_fallback_steps=");
     expect(output).not.toContain("/api/docs/retrieval");

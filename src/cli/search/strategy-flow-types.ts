@@ -65,6 +65,7 @@ export interface SearchStrategyFlowRetrievalStep {
   step:
     | "flight_search_page"
     | "flight_resolve_page_index_tree"
+    | "flight_open_retrieval_context"
     | "flight_expand_graph_context";
   transport: "arrow-flight";
   route: string;
