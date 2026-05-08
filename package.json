@@ -14,7 +14,7 @@
     "prepack": "npm run build",
     "test": "vitest run && node scripts/harness-agent-gate.mjs",
     "test:search-live": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"live SearchStrategyFlow\"'",
-    "test:search-bridge-live": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_LIVE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"live Rust bridge SearchStrategyFlow\"'",
+    "test:search-bridge-smoke": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_SMOKE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"Rust bridge SearchStrategyFlow smoke\"'",
     "pi-wendao": "node dist/cli/pi-wendao.js"
   },
   "dependencies": {

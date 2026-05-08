@@ -168,20 +168,28 @@ It expects `DEEPSEEK_API_KEY` in the worktree `.env` and requires the
 first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
 agents that read candidate documents belong to the next reasoning-tree layer.
 
-Use the slower bridge gate only when validating the normal production chain:
+Use the slower bridge smoke only when validating the Rust-owned host-process
+proof surface:
 
 ```bash
-npm run test:search-bridge-live
+npm run test:search-bridge-smoke
 ```
 
-The bridge gate verifies `pi-wendao -> Rust bridge -> WendaoGraph.jl` and
-requires the default backend to report `rust-wendao-julia` with no fallback.
-First-layer query understanding and judgement keep the configured reasoning
-level because route selection is correctness-sensitive; latency work must come
-from orchestration, caching, compact traces, and later branch-level parallelism
-instead of weakening the first decision. The prompt receives the
-`graph_query_understanding` trace section as hard graph evidence: route hints,
-required evidence, ambiguity, and the applied loop/judgement/beam budgets.
+That smoke verifies `pi-wendao -> Rust bridge CLI proof -> WendaoGraph.jl` and
+requires the default backend to report `rust-wendao-julia` with no fallback. It
+does not claim to be the full service-backed production chain.
+
+The full bridge integration gate is a separate, slower layer: it must start the
+Rust service side and the Julia compute service, wait for readiness/prewarm, and
+then drive SearchStrategyFlow through the running service boundary. That gate
+belongs with the Rust/Juila service orchestration contract, not with the fast
+algorithm smoke. First-layer query understanding and judgement keep the
+configured reasoning level because route selection is correctness-sensitive;
+latency work must come from orchestration, caching, compact traces, and later
+branch-level parallelism instead of weakening the first decision. The prompt
+receives the `graph_query_understanding` trace section as hard graph evidence:
+route hints, required evidence, ambiguity, and the applied loop/judgement/beam
+budgets.
 
 Running `pi-wendao --tui` without a workflow enters pi's native interactive
 session for the current working directory. Type normally to talk with the

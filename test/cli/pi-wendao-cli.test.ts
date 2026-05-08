@@ -17,12 +17,12 @@ const liveSearchStrategyFlowEnabled =
   process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE === "1" &&
   Boolean(process.env.DEEPSEEK_API_KEY?.trim()) &&
   existsSync(join(liveWendaoGraphProject, "Project.toml"));
-const liveRustBridgeSearchStrategyFlowEnabled =
-  process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_LIVE === "1" &&
+const rustBridgeSearchStrategyFlowSmokeEnabled =
+  process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_SMOKE === "1" &&
   existsSync(join(liveWendaoGraphProject, "Project.toml")) &&
   existsSync(join(liveRustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia"));
 const itLive = liveSearchStrategyFlowEnabled ? it : it.skip;
-const itBridgeLive = liveRustBridgeSearchStrategyFlowEnabled ? it : it.skip;
+const itBridgeSmoke = rustBridgeSearchStrategyFlowSmokeEnabled ? it : it.skip;
 
 describe("pi-wendao CLI", () => {
   afterEach(() => {
@@ -235,7 +235,7 @@ describe("pi-wendao CLI", () => {
     expect(output).not.toContain("tool_call");
   }, 190_000);
 
-  itBridgeLive("runs live Rust bridge SearchStrategyFlow smoke", async () => {
+  itBridgeSmoke("runs Rust bridge SearchStrategyFlow smoke", async () => {
     const result = await runPiWendaoCli(
       [
         "--search",
