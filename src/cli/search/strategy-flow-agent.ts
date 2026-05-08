@@ -238,7 +238,7 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       sourcePath: route.sourcePath,
       headingAnchor: route.headingAnchor,
       directFileReadAllowed: route.directFileReadAllowed,
-      studioHttp: route.studioHttpRouteTemplates,
+      studioHttpSteps: route.studioHttpSteps,
       flight: route.flightRouteHints,
     })),
   };

@@ -104,7 +104,7 @@ function renderSearchStrategyFlowTraceInternal(
     ...(retrievalRoutes.length > 0
       ? retrievalRoutes.map(
           (row) =>
-            `  - candidate=${row.candidateId} owner=${row.materializationOwner} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} studio_http=${row.studioHttpRouteTemplates[0]} flight=${row.flightRouteHints.join("|")}`,
+            `  - candidate=${row.candidateId} owner=${row.materializationOwner} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} studio_steps=${formatStudioSteps(row.studioHttpSteps)} flight=${row.flightRouteHints.join("|")}`,
         )
       : ["  - none"]),
     "",
@@ -174,4 +174,12 @@ function renderAgentOutput(
   return typeof value === "string" && value.trim().length > 0
     ? `  - live ${key}=${formatSnippet(value)}`
     : undefined;
+}
+
+function formatStudioSteps(
+  steps: { step: string; routeTemplate: string }[],
+): string {
+  return steps
+    .map((step) => `${step.step}:${step.routeTemplate}`)
+    .join(" -> ");
 }

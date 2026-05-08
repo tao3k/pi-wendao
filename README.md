@@ -128,7 +128,11 @@ so the first materialization layer can reveal the content under the selected
 heading instead of handing the agent a whole Markdown file.
 The rendered trace also includes `retrieval_routes`, a derived route plan that
 maps selected section candidates to Studio/Rust-owned materialization surfaces
-and marks direct file reads as disallowed.
+and marks direct file reads as disallowed. The plan is deliberately staged:
+first search for the page, then resolve the heading through the projected
+page-index tree, then reopen the resolved page/node through retrieval context.
+The heading anchor is not treated as a stable `node_id`; Rust/Studio owns that
+resolution.
 
 Options:
 

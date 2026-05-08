@@ -1,9 +1,12 @@
 import type {
   SearchStrategyFlowRetrievalRoute,
+  SearchStrategyFlowRetrievalStep,
   SearchStrategyFlowTrace,
 } from "./strategy-flow-types.js";
 
 const STUDIO_REPO_PLACEHOLDER = "<repo>";
+const RESOLVED_PAGE_ID_PLACEHOLDER = "<resolved-page-id>";
+const RESOLVED_NODE_ID_PLACEHOLDER = "<resolved-node-id>";
 
 export function buildSearchStrategyFlowRetrievalRoutes(
   trace: SearchStrategyFlowTrace,
@@ -36,7 +39,7 @@ export function buildSearchStrategyFlowRetrievalRoutes(
         sourcePath: section.sourcePath,
         headingAnchor: section.headingAnchor,
         directFileReadAllowed: false,
-        studioHttpRouteTemplates: studioHttpRouteTemplates(section),
+        studioHttpSteps: studioHttpSteps(section),
         flightRouteHints: [
           "/search/intent",
           "/search/knowledge",
@@ -59,18 +62,37 @@ export function parseMarkdownSectionCandidateId(candidateId: string): {
   };
 }
 
-function studioHttpRouteTemplates(section: {
+function studioHttpSteps(section: {
   sourcePath: string;
   headingAnchor?: string;
-}): string[] {
-  const pageId = encodeURIComponent(section.sourcePath);
-  const node = section.headingAnchor
-    ? `&node_id=${encodeURIComponent(section.headingAnchor)}`
+}): SearchStrategyFlowRetrievalStep[] {
+  const query = encodeURIComponent(
+    section.headingAnchor
+      ? `${section.sourcePath}#${section.headingAnchor}`
+      : section.sourcePath,
+  );
+  const sourcePath = encodeURIComponent(section.sourcePath);
+  const heading = section.headingAnchor
+    ? `&query=${encodeURIComponent(section.headingAnchor)}`
     : "";
   return [
-    `/api/docs/retrieval-hit?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${pageId}${node}`,
-    `/api/docs/retrieval-context?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${pageId}${node}`,
-    `/api/repo/projected-retrieval-hit?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${pageId}${node}`,
-    `/api/repo/projected-retrieval-context?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${pageId}${node}`,
+    {
+      step: "search_page",
+      routeTemplate: `/api/docs/retrieval?repo=${STUDIO_REPO_PLACEHOLDER}&query=${query}&limit=5`,
+      requiresResolvedPageId: false,
+      requiresResolvedNodeId: false,
+    },
+    {
+      step: "resolve_page_index_node",
+      routeTemplate: `/api/repo/projected-page-index-tree-search?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&source_path=${sourcePath}${heading}`,
+      requiresResolvedPageId: true,
+      requiresResolvedNodeId: false,
+    },
+    {
+      step: "open_section_context",
+      routeTemplate: `/api/docs/retrieval-context?repo=${STUDIO_REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&node_id=${RESOLVED_NODE_ID_PLACEHOLDER}`,
+      requiresResolvedPageId: true,
+      requiresResolvedNodeId: true,
+    },
   ];
 }

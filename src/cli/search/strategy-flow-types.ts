@@ -57,8 +57,15 @@ export interface SearchStrategyFlowRetrievalRoute {
   sourcePath: string;
   headingAnchor?: string;
   directFileReadAllowed: false;
-  studioHttpRouteTemplates: string[];
+  studioHttpSteps: SearchStrategyFlowRetrievalStep[];
   flightRouteHints: string[];
+}
+
+export interface SearchStrategyFlowRetrievalStep {
+  step: "search_page" | "resolve_page_index_node" | "open_section_context";
+  routeTemplate: string;
+  requiresResolvedPageId: boolean;
+  requiresResolvedNodeId: boolean;
 }
 
 export interface SearchStrategyFlowAgentTrace {
