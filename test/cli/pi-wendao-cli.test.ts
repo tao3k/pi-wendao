@@ -119,10 +119,11 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("planner:");
     expect(output).toContain("retrieval_routes:");
     expect(output).toContain(
-      `candidate=${searchStrategySectionCandidate} owner=studio-rust`,
+      `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
     );
     expect(output).toContain("primary=arrow-flight");
     expect(output).toContain("direct_file_read=no");
+    expect(output).toContain("execute_before_answer=yes");
     expect(output).toContain(
       "flight_steps=flight_search_page:/search/repos/main",
     );
@@ -182,9 +183,10 @@ describe("pi-wendao CLI", () => {
     expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("retrieval_routes:");
     expect(output).toContain(
-      `candidate=${searchStrategySectionCandidate} owner=studio-rust`,
+      `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
     );
     expect(output).toContain("direct_file_read=no");
+    expect(output).toContain("execute_before_answer=yes");
   }, 20_000);
 
   it("fails auto mode when the Rust SearchStrategyFlow bridge is unavailable", async () => {

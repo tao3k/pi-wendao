@@ -36,10 +36,12 @@ export function buildSearchStrategyFlowRetrievalRoutes(
       return {
         candidateId: candidate.candidateId,
         materializationOwner: "studio-rust",
+        materializationStatus: "planned",
         primaryTransport: "arrow-flight",
         sourcePath: section.sourcePath,
         headingAnchor: section.headingAnchor,
         directFileReadAllowed: false,
+        executeBeforeAnswer: true,
         flightSteps: flightSteps(section),
       };
     });

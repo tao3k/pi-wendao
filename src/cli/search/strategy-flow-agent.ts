@@ -235,9 +235,11 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
     retrievalRoutes: retrievalRoutes.map((route) => ({
       candidateId: route.candidateId,
       owner: route.materializationOwner,
+      materializationStatus: route.materializationStatus,
       sourcePath: route.sourcePath,
       headingAnchor: route.headingAnchor,
       directFileReadAllowed: route.directFileReadAllowed,
+      executeBeforeAnswer: route.executeBeforeAnswer,
       primaryTransport: route.primaryTransport,
       flightSteps: route.flightSteps,
     })),

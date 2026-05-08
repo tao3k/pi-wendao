@@ -54,10 +54,12 @@ export interface SearchStrategyFlowTrace {
 export interface SearchStrategyFlowRetrievalRoute {
   candidateId: string;
   materializationOwner: "studio-rust";
+  materializationStatus: "planned" | "executed";
   primaryTransport: "arrow-flight";
   sourcePath: string;
   headingAnchor?: string;
   directFileReadAllowed: false;
+  executeBeforeAnswer: true;
   flightSteps: SearchStrategyFlowRetrievalStep[];
 }
 

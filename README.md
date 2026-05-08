@@ -137,6 +137,11 @@ through `/graph/neighbors`. There is no Studio HTTP fallback in this plan: if
 the Flight path cannot materialize the section, the retrieval layer must report
 a Flight/Rust failure instead of bypassing the primary contract. The heading
 anchor is not treated as a stable `node_id`; Rust owns that resolution.
+Route entries are explicitly marked `materialization=planned` until a later
+reasoning-tree layer executes the Flight steps and returns the bounded section
+context. Agent answer generation must treat `execute_before_answer=yes` as a
+hard guard: the trace is enough to decide the next branch, not enough to answer
+from source content.
 
 Options:
 
