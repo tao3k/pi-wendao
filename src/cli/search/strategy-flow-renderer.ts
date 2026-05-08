@@ -1,8 +1,9 @@
 import type {
   SearchStrategyFlowAgentTrace,
+  SearchStrategyFlowRetrievalRoute,
   SearchStrategyFlowTrace,
 } from "./strategy-flow-types.js";
-import { buildSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
+import { resolveSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
 
 export function renderSearchStrategyFlowTrace(
   trace: SearchStrategyFlowTrace,
@@ -16,7 +17,7 @@ function renderSearchStrategyFlowTraceInternal(
   agentTrace?: SearchStrategyFlowAgentTrace,
 ): string {
   const llmActions = trace.plannerActions.filter((row) => row.requiresLlmJudgement);
-  const retrievalRoutes = buildSearchStrategyFlowRetrievalRoutes(trace);
+  const retrievalRoutes = resolveSearchStrategyFlowRetrievalRoutes(trace);
   const lines = [
     "SearchStrategyFlow trace",
     `intent: ${trace.intent}`,
@@ -104,7 +105,7 @@ function renderSearchStrategyFlowTraceInternal(
     ...(retrievalRoutes.length > 0
       ? retrievalRoutes.map(
           (row) =>
-            `  - candidate=${row.candidateId} owner=${row.materializationOwner} materialization=${row.materializationStatus} primary=${row.primaryTransport} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} execute_before_answer=${formatBool(row.executeBeforeAnswer)} flight_steps=${formatRouteSteps(row.flightSteps)}`,
+            `  - candidate=${row.candidateId} owner=${row.materializationOwner} materialization=${row.materializationStatus} receipt_source=${row.receiptSource} primary=${row.primaryTransport} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} execute_before_answer=${formatBool(row.executeBeforeAnswer)}${formatMaterializationRows(row)} flight_steps=${formatRouteSteps(row.flightSteps)}`,
         )
       : ["  - none"]),
     "",
@@ -178,4 +179,16 @@ function renderAgentOutput(
 
 function formatRouteSteps(steps: { step: string; route: string }[]): string {
   return steps.map((step) => `${step.step}:${step.route}`).join(" -> ");
+}
+
+function formatMaterializationRows(route: SearchStrategyFlowRetrievalRoute): string {
+  const routeRows =
+    route.routeReceipts && route.routeReceipts.length > 0
+      ? ` route_rows=${route.routeReceipts
+          .map((receipt) => `${receipt.route}:${receipt.rowCount}`)
+          .join(",")}`
+      : "";
+  return route.materializedRows === undefined
+    ? routeRows
+    : ` rows=${route.materializedRows}${routeRows}`;
 }

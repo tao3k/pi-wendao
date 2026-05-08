@@ -1,6 +1,6 @@
 import { resolveModel } from "../model-resolver.js";
 import { createCliPiSubagentsHost } from "../pi-subagents.js";
-import { buildSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
+import { resolveSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
 import type {
   SearchStrategyFlowAgentEvent,
   SearchStrategyFlowAgentTrace,
@@ -178,7 +178,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
 }
 
 function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, unknown> {
-  const retrievalRoutes = buildSearchStrategyFlowRetrievalRoutes(trace);
+  const retrievalRoutes = resolveSearchStrategyFlowRetrievalRoutes(trace);
   return {
     backend: trace.backend,
     controlPlane: trace.controlPlane,
@@ -236,6 +236,9 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       candidateId: route.candidateId,
       owner: route.materializationOwner,
       materializationStatus: route.materializationStatus,
+      receiptSource: route.receiptSource,
+      materializedRows: route.materializedRows,
+      routeReceipts: route.routeReceipts,
       sourcePath: route.sourcePath,
       headingAnchor: route.headingAnchor,
       directFileReadAllowed: route.directFileReadAllowed,

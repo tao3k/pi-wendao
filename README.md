@@ -137,11 +137,13 @@ through `/graph/neighbors`. There is no Studio HTTP fallback in this plan: if
 the Flight path cannot materialize the section, the retrieval layer must report
 a Flight/Rust failure instead of bypassing the primary contract. The heading
 anchor is not treated as a stable `node_id`; Rust owns that resolution.
-Route entries are explicitly marked `materialization=planned` until a later
-reasoning-tree layer executes the Flight steps and returns the bounded section
-context. Agent answer generation must treat `execute_before_answer=yes` as a
-hard guard: the trace is enough to decide the next branch, not enough to answer
-from source content.
+Route entries are marked `materialization=planned` when `pi-wendao` derives
+the route plan locally, which is the expected `julia-direct` smoke-test shape.
+When the Rust bridge includes service-owned route receipts, `pi-wendao` renders
+those entries as `materialization=executed` with row counts while preserving
+`direct_file_read=no`. Agent answer generation must treat
+`execute_before_answer=yes` as a hard guard unless Rust has returned executed
+Arrow Flight evidence for the requested section.
 
 Options:
 
@@ -205,8 +207,11 @@ npm run test:search-bridge-smoke
 ```
 
 That smoke verifies `pi-wendao -> Rust bridge CLI proof -> WendaoGraph.jl` and
-requires the default backend to report `rust-wendao-julia` with no fallback. It
-does not claim to be the full service-backed production chain.
+requires the default backend to report `rust-wendao-julia` with no fallback.
+When the Rust bridge trace carries retrieval-route receipts, the CLI surfaces
+the executed route rows instead of rebuilding a local planned route list. It
+does not claim to be the full service-backed production chain unless those
+receipts are produced by the running Rust service boundary.
 
 The full bridge integration gate is a separate, slower layer: it must start the
 Rust service side and the Julia compute service, wait for readiness/prewarm, and

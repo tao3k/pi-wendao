@@ -37,6 +37,7 @@ export function buildSearchStrategyFlowRetrievalRoutes(
         candidateId: candidate.candidateId,
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
+        receiptSource: "local-plan",
         primaryTransport: "arrow-flight",
         sourcePath: section.sourcePath,
         headingAnchor: section.headingAnchor,
@@ -45,6 +46,14 @@ export function buildSearchStrategyFlowRetrievalRoutes(
         flightSteps: flightSteps(section),
       };
     });
+}
+
+export function resolveSearchStrategyFlowRetrievalRoutes(
+  trace: SearchStrategyFlowTrace,
+): SearchStrategyFlowRetrievalRoute[] {
+  return trace.retrievalRoutes && trace.retrievalRoutes.length > 0
+    ? trace.retrievalRoutes
+    : buildSearchStrategyFlowRetrievalRoutes(trace);
 }
 
 export function parseMarkdownSectionCandidateId(candidateId: string): {

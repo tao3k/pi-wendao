@@ -121,6 +121,7 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
     );
+    expect(output).toContain("receipt_source=local-plan");
     expect(output).toContain("primary=arrow-flight");
     expect(output).toContain("direct_file_read=no");
     expect(output).toContain("execute_before_answer=yes");
@@ -183,8 +184,11 @@ describe("pi-wendao CLI", () => {
     expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("retrieval_routes:");
     expect(output).toContain(
-      `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
+      `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=executed`,
     );
+    expect(output).toContain("receipt_source=rust-bridge");
+    expect(output).toContain("rows=8");
+    expect(output).toContain("/analysis/repo-projected-retrieval-context:1");
     expect(output).toContain("direct_file_read=no");
     expect(output).toContain("execute_before_answer=yes");
   }, 20_000);
@@ -582,6 +586,79 @@ console.log(JSON.stringify({
       requiresLlmJudgement: false,
       score: 0.91,
       reason: "graph_materialize_candidate"
+    }
+  ],
+  retrievalRoutes: [
+    {
+      candidateId: "${searchStrategySectionCandidate}",
+      materializationOwner: "studio-rust",
+      materializationStatus: "executed",
+      receiptSource: "rust-bridge",
+      primaryTransport: "arrow-flight",
+      sourcePath: "docs/30_search_strategy/30.01_search_strategy_flow.md",
+      headingAnchor: "stage-1-query-understanding",
+      directFileReadAllowed: false,
+      executeBeforeAnswer: true,
+      materializedRows: 8,
+      routeReceipts: [
+        { route: "/search/repos/main", rowCount: 5 },
+        { route: "/analysis/repo-projected-page-index-tree", rowCount: 1 },
+        { route: "/analysis/repo-projected-retrieval-context", rowCount: 1 },
+        { route: "/graph/neighbors", rowCount: 1 }
+      ],
+      flightSteps: [
+        {
+          step: "flight_search_page",
+          transport: "arrow-flight",
+          route: "/search/repos/main",
+          metadataTemplates: [
+            "x-wendao-repo-search-repo=<repo>",
+            "x-wendao-repo-search-query=docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding",
+            "x-wendao-repo-search-limit=5",
+            "x-wendao-repo-search-path-prefixes=docs/30_search_strategy/30.01_search_strategy_flow.md"
+          ],
+          requiresResolvedPageId: false,
+          requiresResolvedNodeId: false
+        },
+        {
+          step: "flight_resolve_page_index_tree",
+          transport: "arrow-flight",
+          route: "/analysis/repo-projected-page-index-tree",
+          metadataTemplates: [
+            "x-wendao-repo-projected-page-index-tree-repo=<repo>",
+            "x-wendao-repo-projected-page-index-tree-page-id=<resolved-page-id>",
+            "candidate-heading-anchor=stage-1-query-understanding"
+          ],
+          requiresResolvedPageId: true,
+          requiresResolvedNodeId: false
+        },
+        {
+          step: "flight_open_retrieval_context",
+          transport: "arrow-flight",
+          route: "/analysis/repo-projected-retrieval-context",
+          metadataTemplates: [
+            "x-wendao-repo-projected-retrieval-context-repo=<repo>",
+            "x-wendao-repo-projected-retrieval-context-page-id=<resolved-page-id>",
+            "x-wendao-repo-projected-retrieval-context-node-id=<resolved-node-id>",
+            "x-wendao-repo-projected-retrieval-context-related-limit=5"
+          ],
+          requiresResolvedPageId: true,
+          requiresResolvedNodeId: true
+        },
+        {
+          step: "flight_expand_graph_context",
+          transport: "arrow-flight",
+          route: "/graph/neighbors",
+          metadataTemplates: [
+            "x-wendao-graph-node-id=<resolved-node-id>",
+            "x-wendao-graph-direction=both",
+            "x-wendao-graph-hops=2",
+            "x-wendao-graph-limit=50"
+          ],
+          requiresResolvedPageId: true,
+          requiresResolvedNodeId: true
+        }
+      ]
     }
   ],
   queryUnderstanding: [

@@ -47,6 +47,7 @@ export interface SearchStrategyFlowTrace {
   candidates: SearchStrategyFlowCandidate[];
   frontier: SearchStrategyFlowFrontierRow[];
   plannerActions: SearchStrategyFlowPlannerAction[];
+  retrievalRoutes?: SearchStrategyFlowRetrievalRoute[];
   summary: SearchStrategyFlowSummary;
   validation: SearchStrategyFlowValidation;
 }
@@ -55,12 +56,20 @@ export interface SearchStrategyFlowRetrievalRoute {
   candidateId: string;
   materializationOwner: "studio-rust";
   materializationStatus: "planned" | "executed";
+  receiptSource: "local-plan" | "rust-bridge";
   primaryTransport: "arrow-flight";
   sourcePath: string;
   headingAnchor?: string;
   directFileReadAllowed: false;
   executeBeforeAnswer: true;
+  materializedRows?: number;
+  routeReceipts?: SearchStrategyFlowRouteReceipt[];
   flightSteps: SearchStrategyFlowRetrievalStep[];
+}
+
+export interface SearchStrategyFlowRouteReceipt {
+  route: string;
+  rowCount: number;
 }
 
 export interface SearchStrategyFlowRetrievalStep {
