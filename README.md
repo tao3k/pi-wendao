@@ -126,6 +126,9 @@ Candidate ids use Markdown section granularity, for example
 `docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding`,
 so the first materialization layer can reveal the content under the selected
 heading instead of handing the agent a whole Markdown file.
+The rendered trace also includes `retrieval_routes`, a derived route plan that
+maps selected section candidates to Studio/Rust-owned materialization surfaces
+and marks direct file reads as disallowed.
 
 Options:
 

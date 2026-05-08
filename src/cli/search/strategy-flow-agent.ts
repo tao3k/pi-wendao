@@ -1,5 +1,6 @@
 import { resolveModel } from "../model-resolver.js";
 import { createCliPiSubagentsHost } from "../pi-subagents.js";
+import { buildSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
 import type {
   SearchStrategyFlowAgentEvent,
   SearchStrategyFlowAgentTrace,
@@ -163,6 +164,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
     "You are the first-layer Wendao SearchStrategyFlow query-understanding and branch-judgement agent.",
     "This first layer is correctness-sensitive: preserve the configured reasoning level and do not trade intent quality for latency.",
     "Use only the compact trace and the graph_query_understanding evidence. Do not request files, tools, or extra context.",
+    "Treat retrieval_routes as later-layer Studio/Rust materialization plans; never bypass Rust by reading a full Markdown file directly.",
     "First normalize what the user is really asking for, using Julia's graph evidence as constraints rather than optional suggestions.",
     "Then judge whether the selected frontier branches are sufficient for that intent.",
     "Return concise outputs:",
@@ -176,6 +178,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
 }
 
 function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, unknown> {
+  const retrievalRoutes = buildSearchStrategyFlowRetrievalRoutes(trace);
   return {
     backend: trace.backend,
     controlPlane: trace.controlPlane,
@@ -229,6 +232,15 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
         targetCandidateId: action.targetCandidateId,
         reason: action.reason,
       })),
+    retrievalRoutes: retrievalRoutes.map((route) => ({
+      candidateId: route.candidateId,
+      owner: route.materializationOwner,
+      sourcePath: route.sourcePath,
+      headingAnchor: route.headingAnchor,
+      directFileReadAllowed: route.directFileReadAllowed,
+      studioHttp: route.studioHttpRouteTemplates,
+      flight: route.flightRouteHints,
+    })),
   };
 }
 

@@ -51,6 +51,16 @@ export interface SearchStrategyFlowTrace {
   validation: SearchStrategyFlowValidation;
 }
 
+export interface SearchStrategyFlowRetrievalRoute {
+  candidateId: string;
+  materializationOwner: "studio-rust";
+  sourcePath: string;
+  headingAnchor?: string;
+  directFileReadAllowed: false;
+  studioHttpRouteTemplates: string[];
+  flightRouteHints: string[];
+}
+
 export interface SearchStrategyFlowAgentTrace {
   mode: "live-subagent";
   status: "completed" | "skipped" | "unavailable" | "failed";

@@ -2,6 +2,7 @@ import type {
   SearchStrategyFlowAgentTrace,
   SearchStrategyFlowTrace,
 } from "./strategy-flow-types.js";
+import { buildSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
 
 export function renderSearchStrategyFlowTrace(
   trace: SearchStrategyFlowTrace,
@@ -15,6 +16,7 @@ function renderSearchStrategyFlowTraceInternal(
   agentTrace?: SearchStrategyFlowAgentTrace,
 ): string {
   const llmActions = trace.plannerActions.filter((row) => row.requiresLlmJudgement);
+  const retrievalRoutes = buildSearchStrategyFlowRetrievalRoutes(trace);
   const lines = [
     "SearchStrategyFlow trace",
     `intent: ${trace.intent}`,
@@ -97,6 +99,14 @@ function renderSearchStrategyFlowTraceInternal(
       (row) =>
         `  - ${row.actionKind} candidate=${row.candidateId}${row.targetCandidateId ? ` target=${row.targetCandidateId}` : ""} llm=${formatBool(row.requiresLlmJudgement)} cycle=${formatBool(row.cycleAllowed)} reason=${row.reason}`,
     ),
+    "",
+    "retrieval_routes:",
+    ...(retrievalRoutes.length > 0
+      ? retrievalRoutes.map(
+          (row) =>
+            `  - candidate=${row.candidateId} owner=${row.materializationOwner} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} studio_http=${row.studioHttpRouteTemplates[0]} flight=${row.flightRouteHints.join("|")}`,
+        )
+      : ["  - none"]),
     "",
     "llm_interactions:",
     ...(llmActions.length > 0

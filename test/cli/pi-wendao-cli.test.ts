@@ -117,6 +117,15 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
     expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("planner:");
+    expect(output).toContain("retrieval_routes:");
+    expect(output).toContain(
+      `candidate=${searchStrategySectionCandidate} owner=studio-rust`,
+    );
+    expect(output).toContain("direct_file_read=no");
+    expect(output).toContain(
+      "/api/docs/retrieval-hit?repo=<repo>&page_id=docs%2F30_search_strategy%2F30.01_search_strategy_flow.md&node_id=stage-1-query-understanding",
+    );
+    expect(output).toContain("flight=/search/intent|/search/knowledge|repo_search");
     expect(output).toContain("llm_interactions:");
     expect(output).toContain("planned action=compare");
     expect(output).toContain("subagent_interactions:");
@@ -160,6 +169,11 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("no_vector_mode: yes");
     expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
     expect(output).not.toContain(searchStrategyWholeFileAction);
+    expect(output).toContain("retrieval_routes:");
+    expect(output).toContain(
+      `candidate=${searchStrategySectionCandidate} owner=studio-rust`,
+    );
+    expect(output).toContain("direct_file_read=no");
   }, 20_000);
 
   it("fails auto mode when the Rust SearchStrategyFlow bridge is unavailable", async () => {
