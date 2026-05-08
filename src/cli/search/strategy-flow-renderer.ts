@@ -104,7 +104,7 @@ function renderSearchStrategyFlowTraceInternal(
     ...(retrievalRoutes.length > 0
       ? retrievalRoutes.map(
           (row) =>
-            `  - candidate=${row.candidateId} owner=${row.materializationOwner} primary=${row.primaryTransport} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} flight_steps=${formatRouteSteps(row.flightSteps)} http_fallback_steps=${formatRouteSteps(row.studioHttpFallbackSteps)}`,
+            `  - candidate=${row.candidateId} owner=${row.materializationOwner} primary=${row.primaryTransport} source=${row.sourcePath}${row.headingAnchor ? ` anchor=${row.headingAnchor}` : ""} direct_file_read=${formatBool(row.directFileReadAllowed)} flight_steps=${formatRouteSteps(row.flightSteps)}`,
         )
       : ["  - none"]),
     "",

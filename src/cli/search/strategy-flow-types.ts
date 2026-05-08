@@ -59,18 +59,14 @@ export interface SearchStrategyFlowRetrievalRoute {
   headingAnchor?: string;
   directFileReadAllowed: false;
   flightSteps: SearchStrategyFlowRetrievalStep[];
-  studioHttpFallbackSteps: SearchStrategyFlowRetrievalStep[];
 }
 
 export interface SearchStrategyFlowRetrievalStep {
   step:
     | "flight_search_page"
     | "flight_resolve_page_index_tree"
-    | "flight_expand_graph_context"
-    | "http_search_page"
-    | "http_resolve_page_index_node"
-    | "http_open_section_context";
-  transport: "arrow-flight" | "studio-http";
+    | "flight_expand_graph_context";
+  transport: "arrow-flight";
   route: string;
   metadataTemplates: string[];
   note?: string;

@@ -41,7 +41,6 @@ export function buildSearchStrategyFlowRetrievalRoutes(
         headingAnchor: section.headingAnchor,
         directFileReadAllowed: false,
         flightSteps: flightSteps(section),
-        studioHttpFallbackSteps: studioHttpFallbackSteps(section),
       };
     });
 }
@@ -101,48 +100,6 @@ function flightSteps(section: {
         "x-wendao-graph-limit=50",
       ],
       note: "Expand section context through the graph relation layer before the next reasoning-tree branch.",
-      requiresResolvedPageId: true,
-      requiresResolvedNodeId: true,
-    },
-  ];
-}
-
-function studioHttpFallbackSteps(section: {
-  sourcePath: string;
-  headingAnchor?: string;
-}): SearchStrategyFlowRetrievalStep[] {
-  const query = encodeURIComponent(
-    sectionQuery(section),
-  );
-  const sourcePath = encodeURIComponent(section.sourcePath);
-  const heading = section.headingAnchor
-    ? `&query=${encodeURIComponent(section.headingAnchor)}`
-    : "";
-  return [
-    {
-      step: "http_search_page",
-      transport: "studio-http",
-      route: `/api/docs/retrieval?repo=${REPO_PLACEHOLDER}&query=${query}&limit=5`,
-      metadataTemplates: [],
-      note: "HTTP fallback/debug equivalent for the native Flight search step.",
-      requiresResolvedPageId: false,
-      requiresResolvedNodeId: false,
-    },
-    {
-      step: "http_resolve_page_index_node",
-      transport: "studio-http",
-      route: `/api/repo/projected-page-index-tree-search?repo=${REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&source_path=${sourcePath}${heading}`,
-      metadataTemplates: [],
-      note: "HTTP fallback/debug equivalent for resolving the page-index node.",
-      requiresResolvedPageId: true,
-      requiresResolvedNodeId: false,
-    },
-    {
-      step: "http_open_section_context",
-      transport: "studio-http",
-      route: `/api/docs/retrieval-context?repo=${REPO_PLACEHOLDER}&page_id=${RESOLVED_PAGE_ID_PLACEHOLDER}&node_id=${RESOLVED_NODE_ID_PLACEHOLDER}`,
-      metadataTemplates: [],
-      note: "HTTP fallback/debug context opener until the same retrieval-context materialization is exposed as a Flight descriptor.",
       requiresResolvedPageId: true,
       requiresResolvedNodeId: true,
     },

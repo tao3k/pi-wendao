@@ -131,11 +131,11 @@ maps selected section candidates to Rust-owned materialization surfaces and
 marks direct file reads as disallowed. The primary route plan is Arrow
 Flight-native: first search through `/search/repos/main`, then resolve the
 heading through `/analysis/repo-projected-page-index-tree`, then expand related
-context through `/graph/neighbors`. Studio HTTP templates are emitted only as
-fallback/debug views of the same retrieval path, including the final
-retrieval-context opener while that materialization surface does not yet have a
-dedicated Flight descriptor. The heading anchor is not treated as a stable
-`node_id`; Rust owns that resolution.
+context through `/graph/neighbors`. There is no Studio HTTP fallback in this
+plan: if the Flight path cannot materialize the section, the retrieval layer
+must report a Flight/Rust failure instead of bypassing the primary contract.
+The heading anchor is not treated as a stable `node_id`; Rust owns that
+resolution.
 
 Options:
 
@@ -158,10 +158,9 @@ The production subagent retrieval path should remain Flight/Rust-owned:
 `pi-wendao` receives the intent and agent trace, the Flight service owns stable
 Arrow routes such as `/search/intent`, `/search/knowledge`,
 `/search/repos/main`, `/graph/neighbors`, and
-`/analysis/repo-projected-page-index-tree`, and Studio HTTP remains a gateway
-fallback/debug representation. SearchStrategyFlow section candidate ids are
-therefore routing evidence for Flight retrieval, not a license for pi-wendao to
-bypass the Rust boundary and read full Markdown files.
+`/analysis/repo-projected-page-index-tree`. SearchStrategyFlow section
+candidate ids are therefore routing evidence for Flight retrieval, not a
+license for pi-wendao to bypass the Rust boundary and read full Markdown files.
 
 For the default DeepSeek model through the Anthropic-compatible API:
 

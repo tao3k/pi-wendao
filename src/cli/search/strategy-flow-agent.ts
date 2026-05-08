@@ -240,7 +240,6 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       directFileReadAllowed: route.directFileReadAllowed,
       primaryTransport: route.primaryTransport,
       flightSteps: route.flightSteps,
-      studioHttpFallbackSteps: route.studioHttpFallbackSteps,
     })),
   };
 }
