@@ -101,6 +101,9 @@ Options:
 npx --no-install pi-wendao --search "find the SearchStrategyFlow ownership boundary" --no-graph
 ```
 
+Architecture details live in
+[docs/search-strategy-flow.md](docs/search-strategy-flow.md).
+
 `--search` is a pi-wendao CLI entry point for WendaoGraph SearchStrategyFlow
 traces. The CLI discovers `WendaoGraph.jl`, asks Julia to score and prune graph
 candidates, and prints Julia's graph-guided query-understanding evidence, the
@@ -136,14 +139,19 @@ section retrieval context through
 through `/graph/neighbors`. There is no Studio HTTP fallback in this plan: if
 the Flight path cannot materialize the section, the retrieval layer must report
 a Flight/Rust failure instead of bypassing the primary contract. The heading
-anchor is not treated as a stable `node_id`; Rust owns that resolution.
+anchor is not treated as a stable `node_id`; Rust owns that resolution. The
+page-index section node and the link-graph document node are separate
+namespaces, so graph expansion uses `resolvedGraphNodeId` rather than the
+section-level `resolvedNodeId`.
 Route entries are marked `materialization=planned` when `pi-wendao` derives
 the route plan locally, which is the expected `julia-direct` smoke-test shape.
-When the Rust bridge includes service-owned route receipts, `pi-wendao` renders
-those entries as `materialization=executed` with row counts while preserving
-`direct_file_read=no`. Agent answer generation must treat
-`execute_before_answer=yes` as a hard guard unless Rust has returned executed
-Arrow Flight evidence for the requested section.
+The Rust bridge also returns planned Studio Flight routes by default. It must
+only return `materialization=executed` when it has connected to a real Flight
+service endpoint and decoded the route batches. Agent answer generation must
+treat `execute_before_answer=yes` as a hard guard unless Rust has returned
+executed Arrow Flight evidence for the requested section.
+`pi-wendao` forwards endpoint settings to the Rust bridge and renders the
+returned evidence; it does not decode Arrow Flight streams with JS Arrow.
 
 Options:
 
@@ -153,6 +161,9 @@ Options:
 - `--search-backend <mode>` — `auto`, `rust-julia`, or `julia-direct`
 - `--search-rust-workspace <path>` — optional xiuxian Rust workspace for the Rust bridge
 - `--search-rust-command <command>` — Cargo executable override for the Rust bridge
+- `--search-flight-base-url <url>` — Studio Arrow Flight endpoint consumed by the Rust bridge
+- `--search-flight-repo <repo>` — Wendao repo id for native Flight route execution
+- `--search-flight-timeout-seconds <seconds>` — Rust bridge Flight request timeout
 - `--search-agent` — run a live pi-subagents LLM judgement for planner actions that require an LLM
 - `--search-json` — print the structured trace JSON
 
@@ -208,10 +219,9 @@ npm run test:search-bridge-smoke
 
 That smoke verifies `pi-wendao -> Rust bridge CLI proof -> WendaoGraph.jl` and
 requires the default backend to report `rust-wendao-julia` with no fallback.
-When the Rust bridge trace carries retrieval-route receipts, the CLI surfaces
-the executed route rows instead of rebuilding a local planned route list. It
-does not claim to be the full service-backed production chain unless those
-receipts are produced by the running Rust service boundary.
+The bridge smoke does not claim to be the full service-backed production
+materialization chain unless those receipts are produced by the running Rust
+service boundary over Arrow Flight.
 
 The full bridge integration gate is a separate, slower layer: it must start the
 Rust service side and the Julia compute service, wait for readiness/prewarm, and

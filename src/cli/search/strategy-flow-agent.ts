@@ -1,5 +1,6 @@
 import { resolveModel } from "../model-resolver.js";
 import { createCliPiSubagentsHost } from "../pi-subagents.js";
+import { buildSearchStrategyFlowBranchContexts } from "./strategy-flow-branch-context.js";
 import { resolveSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
 import type {
   SearchStrategyFlowAgentEvent,
@@ -165,6 +166,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
     "This first layer is correctness-sensitive: preserve the configured reasoning level and do not trade intent quality for latency.",
     "Use only the compact trace and the graph_query_understanding evidence. Do not request files, tools, or extra context.",
     "Treat retrieval_routes as later-layer Flight/Rust materialization plans; never bypass Rust by reading a full Markdown file directly.",
+    "Prefer frontier_branches over raw candidates when judging coverage; each branch includes its route role, purpose, and evidence anchors.",
     "First normalize what the user is really asking for, using Julia's graph evidence as constraints rather than optional suggestions.",
     "Then judge whether the selected frontier branches are sufficient for that intent.",
     "Return concise outputs:",
@@ -179,6 +181,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
 
 function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, unknown> {
   const retrievalRoutes = resolveSearchStrategyFlowRetrievalRoutes(trace);
+  const branchContexts = buildSearchStrategyFlowBranchContexts(trace);
   return {
     backend: trace.backend,
     controlPlane: trace.controlPlane,
@@ -224,6 +227,22 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       action: row.action,
       judgementKind: row.judgementKind,
     })),
+    frontierBranches: branchContexts.map((branch) => ({
+      id: branch.candidateId,
+      role: branch.routeRole,
+      purpose: branch.routePurpose,
+      selected: branch.selected,
+      rank: branch.frontierRank,
+      judgementKind: branch.judgementKind,
+      action: branch.actionKind,
+      compareTargetId: branch.compareTargetId,
+      materializationStatus: branch.materializationStatus,
+      materializedRows: branch.materializedRows,
+      sourcePath: branch.sourcePath,
+      headingAnchor: branch.headingAnchor,
+      resolvedGraphNodeId: branch.resolvedGraphNodeId,
+      evidenceAnchors: branch.evidenceAnchors,
+    })),
     llmActions: trace.plannerActions
       .filter((action) => action.requiresLlmJudgement)
       .map((action) => ({
@@ -239,6 +258,7 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       receiptSource: route.receiptSource,
       materializedRows: route.materializedRows,
       routeReceipts: route.routeReceipts,
+      resolvedGraphNodeId: route.resolvedGraphNodeId,
       sourcePath: route.sourcePath,
       headingAnchor: route.headingAnchor,
       directFileReadAllowed: route.directFileReadAllowed,

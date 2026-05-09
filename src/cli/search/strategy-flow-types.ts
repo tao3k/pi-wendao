@@ -1,20 +1,40 @@
-export interface SearchStrategyFlowOptions {
-  intent: string;
-  cwd: string;
-  wendaoGraphPath?: string;
-  juliaCommand?: string;
-  searchRoot?: string;
-  searchBackend?: SearchStrategyFlowBackend;
-  rustWorkspace?: string;
-  rustCommand?: string;
-}
-
-export type SearchStrategyFlowBackend = "auto" | "rust-julia" | "julia-direct";
-
+declare const searchStrategyFlowPathBrand: unique symbol;
+declare const searchStrategyFlowFlightBaseUrlBrand: unique symbol;
+declare const searchStrategyFlowFlightRepoBrand: unique symbol;
+declare const searchStrategyFlowFlightTimeoutSecondsBrand: unique symbol;
+declare const searchStrategyFlowSourcePathBrand: unique symbol;
+declare const searchStrategyFlowPageIdBrand: unique symbol;
+declare const searchStrategyFlowNodeIdBrand: unique symbol;
+declare const searchStrategyFlowGraphNodeIdBrand: unique symbol;
 declare const searchStrategyFlowIdBrand: unique symbol;
 declare const searchStrategyFlowIntentIdBrand: unique symbol;
 declare const searchStrategyFlowSignalIdBrand: unique symbol;
+declare const searchStrategyFlowResolutionRequirementBrand: unique symbol;
 
+export type SearchStrategyFlowPath = string & {
+  readonly [searchStrategyFlowPathBrand]: "SearchStrategyFlowPath";
+};
+export type SearchStrategyFlowFlightBaseUrl = string & {
+  readonly [searchStrategyFlowFlightBaseUrlBrand]: "SearchStrategyFlowFlightBaseUrl";
+};
+export type SearchStrategyFlowFlightRepo = string & {
+  readonly [searchStrategyFlowFlightRepoBrand]: "SearchStrategyFlowFlightRepo";
+};
+export type SearchStrategyFlowFlightTimeoutSeconds = number & {
+  readonly [searchStrategyFlowFlightTimeoutSecondsBrand]: "SearchStrategyFlowFlightTimeoutSeconds";
+};
+export type SearchStrategyFlowSourcePath = string & {
+  readonly [searchStrategyFlowSourcePathBrand]: "SearchStrategyFlowSourcePath";
+};
+export type SearchStrategyFlowPageId = string & {
+  readonly [searchStrategyFlowPageIdBrand]: "SearchStrategyFlowPageId";
+};
+export type SearchStrategyFlowNodeId = string & {
+  readonly [searchStrategyFlowNodeIdBrand]: "SearchStrategyFlowNodeId";
+};
+export type SearchStrategyFlowGraphNodeId = string & {
+  readonly [searchStrategyFlowGraphNodeIdBrand]: "SearchStrategyFlowGraphNodeId";
+};
 export type SearchStrategyFlowId = string & {
   readonly [searchStrategyFlowIdBrand]: "SearchStrategyFlowId";
 };
@@ -24,6 +44,25 @@ export type SearchStrategyFlowIntentId = string & {
 export type SearchStrategyFlowSignalId = string & {
   readonly [searchStrategyFlowSignalIdBrand]: "SearchStrategyFlowSignalId";
 };
+export type SearchStrategyFlowResolutionRequirement = boolean & {
+  readonly [searchStrategyFlowResolutionRequirementBrand]: "SearchStrategyFlowResolutionRequirement";
+};
+
+export interface SearchStrategyFlowOptions {
+  intent: string;
+  cwd: string;
+  wendaoGraphPath?: SearchStrategyFlowPath;
+  juliaCommand?: string;
+  searchRoot?: SearchStrategyFlowPath;
+  searchBackend?: SearchStrategyFlowBackend;
+  rustWorkspace?: SearchStrategyFlowPath;
+  rustCommand?: string;
+  flightBaseUrl?: SearchStrategyFlowFlightBaseUrl;
+  flightRepo?: SearchStrategyFlowFlightRepo;
+  flightTimeoutSeconds?: SearchStrategyFlowFlightTimeoutSeconds;
+}
+
+export type SearchStrategyFlowBackend = "auto" | "rust-julia" | "julia-direct";
 
 export interface SearchStrategyFlowBridgeTrace {
   requestedBackend: SearchStrategyFlowBackend;
@@ -37,6 +76,8 @@ export interface SearchStrategyFlowTrace {
   intent: string;
   backend: string;
   controlPlane?: string;
+  candidateInputSource?: string;
+  candidateInputCount?: number;
   juliaProject?: string;
   graphProject: string;
   searchRoot: string;
@@ -53,23 +94,35 @@ export interface SearchStrategyFlowTrace {
 }
 
 export interface SearchStrategyFlowRetrievalRoute {
-  candidateId: string;
+  candidateId: SearchStrategyFlowId;
   materializationOwner: "studio-rust";
   materializationStatus: "planned" | "executed";
   receiptSource: "local-plan" | "rust-bridge";
   primaryTransport: "arrow-flight";
-  sourcePath: string;
+  sourcePath: SearchStrategyFlowSourcePath;
   headingAnchor?: string;
   directFileReadAllowed: false;
   executeBeforeAnswer: true;
   materializedRows?: number;
   routeReceipts?: SearchStrategyFlowRouteReceipt[];
+  decodedPayloadStatus?: "decoded";
+  decodedPayloadReceipts?: SearchStrategyFlowDecodedPayloadReceipt[];
+  resolvedPageId?: SearchStrategyFlowPageId;
+  resolvedNodeId?: SearchStrategyFlowNodeId;
+  resolvedGraphNodeId?: SearchStrategyFlowGraphNodeId;
   flightSteps: SearchStrategyFlowRetrievalStep[];
 }
 
 export interface SearchStrategyFlowRouteReceipt {
   route: string;
   rowCount: number;
+}
+
+export interface SearchStrategyFlowDecodedPayloadReceipt {
+  route: string;
+  rowCount: number;
+  decodedColumns: string[];
+  evidenceAnchor: string;
 }
 
 export interface SearchStrategyFlowRetrievalStep {
@@ -82,8 +135,9 @@ export interface SearchStrategyFlowRetrievalStep {
   route: string;
   metadataTemplates: string[];
   note?: string;
-  requiresResolvedPageId: boolean;
-  requiresResolvedNodeId: boolean;
+  requiresResolvedPageId: SearchStrategyFlowResolutionRequirement;
+  requiresResolvedNodeId: SearchStrategyFlowResolutionRequirement;
+  requiresResolvedGraphNodeId: SearchStrategyFlowResolutionRequirement;
 }
 
 export interface SearchStrategyFlowAgentTrace {

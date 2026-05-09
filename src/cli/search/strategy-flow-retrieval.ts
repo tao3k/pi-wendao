@@ -1,12 +1,16 @@
 import type {
+  SearchStrategyFlowId,
+  SearchStrategyFlowResolutionRequirement,
   SearchStrategyFlowRetrievalRoute,
   SearchStrategyFlowRetrievalStep,
+  SearchStrategyFlowSourcePath,
   SearchStrategyFlowTrace,
 } from "./strategy-flow-types.js";
 
 const REPO_PLACEHOLDER = "<repo>";
 const RESOLVED_PAGE_ID_PLACEHOLDER = "<resolved-page-id>";
 const RESOLVED_NODE_ID_PLACEHOLDER = "<resolved-node-id>";
+const RESOLVED_GRAPH_NODE_ID_PLACEHOLDER = "<resolved-graph-node-id>";
 
 export function buildSearchStrategyFlowRetrievalRoutes(
   trace: SearchStrategyFlowTrace,
@@ -34,12 +38,12 @@ export function buildSearchStrategyFlowRetrievalRoutes(
     .map((candidate) => {
       const section = parseMarkdownSectionCandidateId(candidate.candidateId);
       return {
-        candidateId: candidate.candidateId,
+        candidateId: candidate.candidateId as SearchStrategyFlowId,
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
         receiptSource: "local-plan",
         primaryTransport: "arrow-flight",
-        sourcePath: section.sourcePath,
+        sourcePath: section.sourcePath as SearchStrategyFlowSourcePath,
         headingAnchor: section.headingAnchor,
         directFileReadAllowed: false,
         executeBeforeAnswer: true,
@@ -84,8 +88,9 @@ function flightSteps(section: {
         `x-wendao-repo-search-path-prefixes=${section.sourcePath}`,
       ],
       note: "Resolve the Markdown section candidate to a page hit through native repo search.",
-      requiresResolvedPageId: false,
-      requiresResolvedNodeId: false,
+      requiresResolvedPageId: resolutionRequirement(false),
+      requiresResolvedNodeId: resolutionRequirement(false),
+      requiresResolvedGraphNodeId: resolutionRequirement(false),
     },
     {
       step: "flight_resolve_page_index_tree",
@@ -97,8 +102,9 @@ function flightSteps(section: {
         ...(section.headingAnchor ? [`candidate-heading-anchor=${section.headingAnchor}`] : []),
       ],
       note: "Select the concrete page-index node from the returned tree; do not treat the Markdown anchor as the node id.",
-      requiresResolvedPageId: true,
-      requiresResolvedNodeId: false,
+      requiresResolvedPageId: resolutionRequirement(true),
+      requiresResolvedNodeId: resolutionRequirement(false),
+      requiresResolvedGraphNodeId: resolutionRequirement(false),
     },
     {
       step: "flight_open_retrieval_context",
@@ -111,24 +117,30 @@ function flightSteps(section: {
         "x-wendao-repo-projected-retrieval-context-related-limit=5",
       ],
       note: "Open the section-level projected retrieval context through the native Flight route.",
-      requiresResolvedPageId: true,
-      requiresResolvedNodeId: true,
+      requiresResolvedPageId: resolutionRequirement(true),
+      requiresResolvedNodeId: resolutionRequirement(true),
+      requiresResolvedGraphNodeId: resolutionRequirement(false),
     },
     {
       step: "flight_expand_graph_context",
       transport: "arrow-flight",
       route: "/graph/neighbors",
       metadataTemplates: [
-        `x-wendao-graph-node-id=${RESOLVED_NODE_ID_PLACEHOLDER}`,
+        `x-wendao-graph-node-id=${RESOLVED_GRAPH_NODE_ID_PLACEHOLDER}`,
         "x-wendao-graph-direction=both",
         "x-wendao-graph-hops=2",
         "x-wendao-graph-limit=50",
       ],
-      note: "Expand section context through the graph relation layer before the next reasoning-tree branch.",
-      requiresResolvedPageId: true,
-      requiresResolvedNodeId: true,
+      note: "Expand document-level graph context through the relation layer before the next reasoning-tree branch.",
+      requiresResolvedPageId: resolutionRequirement(true),
+      requiresResolvedNodeId: resolutionRequirement(true),
+      requiresResolvedGraphNodeId: resolutionRequirement(true),
     },
   ];
+}
+
+function resolutionRequirement(value: boolean): SearchStrategyFlowResolutionRequirement {
+  return value as SearchStrategyFlowResolutionRequirement;
 }
 
 function sectionQuery(section: { sourcePath: string; headingAnchor?: string }): string {

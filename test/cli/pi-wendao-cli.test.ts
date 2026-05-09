@@ -117,6 +117,9 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
     expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("planner:");
+    expect(output).toContain("frontier_branches:");
+    expect(output).toContain("role=search_strategy");
+    expect(output).toContain("purpose=Normalize intent, strategy loop, and first-layer branch policy.");
     expect(output).toContain("retrieval_routes:");
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
@@ -176,21 +179,78 @@ describe("pi-wendao CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(output).toContain("backend: rust-wendao-julia");
     expect(output).toContain("control_plane: rust");
+    expect(output).toContain("candidate_input_source: rust-markdown-headings");
+    expect(output).toContain("candidate_input_count: 1");
     expect(output).toContain("requested: auto");
     expect(output).toContain("fallback: none");
     expect(output).toContain("strategy_flow_stages:");
     expect(output).toContain("no_vector_mode: yes");
     expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
     expect(output).not.toContain(searchStrategyWholeFileAction);
+    expect(output).toContain("frontier_branches:");
+    expect(output).toContain("role=search_strategy");
     expect(output).toContain("retrieval_routes:");
+    expect(output).toContain(
+      `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
+    );
+    expect(output).toContain("receipt_source=rust-bridge");
+    expect(output).not.toContain("rows=8");
+    expect(output).not.toContain("/analysis/repo-projected-retrieval-context:1");
+    expect(output).toContain("direct_file_read=no");
+    expect(output).toContain("execute_before_answer=yes");
+  }, 20_000);
+
+  it("forwards Flight endpoint settings to the Rust SearchStrategyFlow bridge", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-flight-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
+    const fakeCargoPath = join(dir, "cargo");
+    writeSearchProjectFixture(graphProject, rustWorkspace);
+    writeFakeCargoSearch(fakeCargoPath);
+    chmodSync(fakeCargoPath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner through Rust Flight",
+        "--wendao-graph",
+        graphProject,
+        "--search-root",
+        graphProject,
+        "--search-rust-workspace",
+        rustWorkspace,
+        "--search-rust-command",
+        fakeCargoPath,
+        "--search-flight-base-url",
+        "http://127.0.0.1:50051",
+        "--search-flight-repo",
+        "docs-fixture",
+        "--search-flight-timeout-seconds",
+        "7",
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("candidate_input_source: rust-flight-repo-search");
+    expect(output).toContain("candidate_input_count: 1");
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=executed`,
     );
-    expect(output).toContain("receipt_source=rust-bridge");
-    expect(output).toContain("rows=8");
-    expect(output).toContain("/analysis/repo-projected-retrieval-context:1");
-    expect(output).toContain("direct_file_read=no");
-    expect(output).toContain("execute_before_answer=yes");
+    expect(output).toContain("frontier_branches:");
+    expect(output).toContain("role=search_strategy");
+    expect(output).toContain("materialization=executed rows=4");
+    expect(output).toContain(
+      "evidence=node-context:node:stage-1-query-understanding|graph-node:docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
+    );
+    expect(output).toContain("rows=4");
+    expect(output).toContain(
+      "resolved_graph_node=docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
+    );
+    expect(output).toContain("route_rows=/search/repos/main:1");
   }, 20_000);
 
   it("fails auto mode when the Rust SearchStrategyFlow bridge is unavailable", async () => {
@@ -544,10 +604,18 @@ function writeFakeCargoSearch(path: string): void {
   writeFileSync(
     path,
     `#!/usr/bin/env node
+const hasFlightBaseUrl = process.argv.includes("--flight-base-url");
+const hasFlightRepo = process.argv.includes("--flight-repo");
+if (hasFlightBaseUrl !== hasFlightRepo) {
+  console.error("missing paired Flight endpoint configuration");
+  process.exit(64);
+}
 console.log(JSON.stringify({
   intent: process.argv[process.argv.indexOf("--intent") + 1],
   backend: "rust-wendao-julia",
   controlPlane: "rust",
+  candidateInputSource: hasFlightBaseUrl ? "rust-flight-repo-search" : "rust-markdown-headings",
+  candidateInputCount: 1,
   juliaProject: process.env.WENDAOGRAPH_PACKAGE_DIR,
   graphProject: process.env.WENDAOGRAPH_PACKAGE_DIR,
   searchRoot: process.argv[process.argv.indexOf("--search-root") + 1],
@@ -592,20 +660,40 @@ console.log(JSON.stringify({
     {
       candidateId: "${searchStrategySectionCandidate}",
       materializationOwner: "studio-rust",
-      materializationStatus: "executed",
+      materializationStatus: hasFlightBaseUrl ? "executed" : "planned",
       receiptSource: "rust-bridge",
       primaryTransport: "arrow-flight",
       sourcePath: "docs/30_search_strategy/30.01_search_strategy_flow.md",
       headingAnchor: "stage-1-query-understanding",
       directFileReadAllowed: false,
       executeBeforeAnswer: true,
-      materializedRows: 8,
-      routeReceipts: [
-        { route: "/search/repos/main", rowCount: 5 },
-        { route: "/analysis/repo-projected-page-index-tree", rowCount: 1 },
-        { route: "/analysis/repo-projected-retrieval-context", rowCount: 1 },
-        { route: "/graph/neighbors", rowCount: 1 }
-      ],
+      ...(hasFlightBaseUrl ? {
+        materializedRows: 4,
+        resolvedPageId: "repo:docs-fixture:projection:reference:doc:repo:docs-fixture:doc:docs/30_search_strategy/30.01_search_strategy_flow.md",
+        resolvedNodeId: "node:stage-1-query-understanding",
+        resolvedGraphNodeId: "docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
+        decodedPayloadStatus: "decoded",
+        routeReceipts: [
+          { route: "/search/repos/main", rowCount: 1 },
+          { route: "/analysis/repo-projected-page-index-tree", rowCount: 1 },
+          { route: "/analysis/repo-projected-retrieval-context", rowCount: 1 },
+          { route: "/graph/neighbors", rowCount: 1 }
+        ],
+        decodedPayloadReceipts: [
+          {
+            route: "/analysis/repo-projected-retrieval-context",
+            rowCount: 1,
+            decodedColumns: ["pageId", "nodeId", "centerJson", "nodeContextJson"],
+            evidenceAnchor: "node-context:node:stage-1-query-understanding"
+          },
+          {
+            route: "/graph/neighbors",
+            rowCount: 1,
+            decodedColumns: ["rowType"],
+            evidenceAnchor: "graph-node:docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md"
+          }
+        ]
+      } : {}),
       flightSteps: [
         {
           step: "flight_search_page",
@@ -618,7 +706,8 @@ console.log(JSON.stringify({
             "x-wendao-repo-search-path-prefixes=docs/30_search_strategy/30.01_search_strategy_flow.md"
           ],
           requiresResolvedPageId: false,
-          requiresResolvedNodeId: false
+          requiresResolvedNodeId: false,
+          requiresResolvedGraphNodeId: false
         },
         {
           step: "flight_resolve_page_index_tree",
@@ -630,7 +719,8 @@ console.log(JSON.stringify({
             "candidate-heading-anchor=stage-1-query-understanding"
           ],
           requiresResolvedPageId: true,
-          requiresResolvedNodeId: false
+          requiresResolvedNodeId: false,
+          requiresResolvedGraphNodeId: false
         },
         {
           step: "flight_open_retrieval_context",
@@ -643,20 +733,22 @@ console.log(JSON.stringify({
             "x-wendao-repo-projected-retrieval-context-related-limit=5"
           ],
           requiresResolvedPageId: true,
-          requiresResolvedNodeId: true
+          requiresResolvedNodeId: true,
+          requiresResolvedGraphNodeId: false
         },
         {
           step: "flight_expand_graph_context",
           transport: "arrow-flight",
           route: "/graph/neighbors",
           metadataTemplates: [
-            "x-wendao-graph-node-id=<resolved-node-id>",
+            "x-wendao-graph-node-id=<resolved-graph-node-id>",
             "x-wendao-graph-direction=both",
             "x-wendao-graph-hops=2",
             "x-wendao-graph-limit=50"
           ],
           requiresResolvedPageId: true,
-          requiresResolvedNodeId: true
+          requiresResolvedNodeId: true,
+          requiresResolvedGraphNodeId: true
         }
       ]
     }

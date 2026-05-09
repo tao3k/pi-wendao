@@ -36,6 +36,9 @@ interface RustStrategyFlowOptions {
   intent: string;
   searchRoot: string;
   juliaCommand?: string;
+  flightBaseUrl?: string;
+  flightRepo?: string;
+  flightTimeoutSeconds?: number;
 }
 
 async function runResolvedStrategyFlow(
@@ -88,6 +91,10 @@ async function runRustBridgeOrFallback(
         intent: context.intent,
         searchRoot: context.searchRoot,
         juliaCommand: context.options.juliaCommand,
+        flightBaseUrl:
+          context.options.flightBaseUrl ?? process.env.PI_WENDAO_SEARCH_FLIGHT_BASE_URL,
+        flightRepo: context.options.flightRepo ?? process.env.PI_WENDAO_SEARCH_FLIGHT_REPO,
+        flightTimeoutSeconds: context.options.flightTimeoutSeconds,
       }),
     );
   } catch (error) {
@@ -176,7 +183,7 @@ async function runJuliaStrategyFlow(
 }
 
 function rustBridgeArgs(options: RustStrategyFlowOptions): string[] {
-  return [
+  const args = [
     "run",
     "-q",
     "-p",
@@ -189,6 +196,12 @@ function rustBridgeArgs(options: RustStrategyFlowOptions): string[] {
     "--search-root",
     options.searchRoot,
   ];
+  if (options.flightBaseUrl) args.push("--flight-base-url", options.flightBaseUrl);
+  if (options.flightRepo) args.push("--flight-repo", options.flightRepo);
+  if (options.flightTimeoutSeconds !== undefined) {
+    args.push("--flight-timeout-seconds", String(options.flightTimeoutSeconds));
+  }
+  return args;
 }
 
 function summarizeBridgeError(error: unknown): string {

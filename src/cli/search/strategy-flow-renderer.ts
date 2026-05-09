@@ -3,6 +3,10 @@ import type {
   SearchStrategyFlowRetrievalRoute,
   SearchStrategyFlowTrace,
 } from "./strategy-flow-types.js";
+import {
+  buildSearchStrategyFlowBranchContexts,
+  type SearchStrategyFlowBranchContext,
+} from "./strategy-flow-branch-context.js";
 import { resolveSearchStrategyFlowRetrievalRoutes } from "./strategy-flow-retrieval.js";
 
 export function renderSearchStrategyFlowTrace(
@@ -18,11 +22,18 @@ function renderSearchStrategyFlowTraceInternal(
 ): string {
   const llmActions = trace.plannerActions.filter((row) => row.requiresLlmJudgement);
   const retrievalRoutes = resolveSearchStrategyFlowRetrievalRoutes(trace);
+  const branchContexts = buildSearchStrategyFlowBranchContexts(trace);
   const lines = [
     "SearchStrategyFlow trace",
     `intent: ${trace.intent}`,
     `backend: ${trace.backend}`,
     ...(trace.controlPlane ? [`control_plane: ${trace.controlPlane}`] : []),
+    ...(trace.candidateInputSource
+      ? [`candidate_input_source: ${trace.candidateInputSource}`]
+      : []),
+    ...(trace.candidateInputCount === undefined
+      ? []
+      : [`candidate_input_count: ${trace.candidateInputCount}`]),
     ...(trace.juliaProject ? [`julia_project: ${trace.juliaProject}`] : []),
     `graph_project: ${trace.graphProject}`,
     `search_root: ${trace.searchRoot}`,
@@ -95,6 +106,11 @@ function renderSearchStrategyFlowTraceInternal(
         `  - #${row.rank} ${row.candidateId} selected=${formatBool(row.selected)} action=${row.action} budget=${row.contextBudget} judgement=${row.judgementKind}`,
     ),
     "",
+    "frontier_branches:",
+    ...(branchContexts.length > 0
+      ? branchContexts.map(renderBranchContext)
+      : ["  - none"]),
+    "",
     "planner:",
     ...trace.plannerActions.map(
       (row) =>
@@ -142,6 +158,19 @@ function renderSearchStrategyFlowTraceInternal(
   return `${lines.join("\n")}\n`;
 }
 
+function renderBranchContext(branch: SearchStrategyFlowBranchContext): string {
+  const anchors =
+    branch.evidenceAnchors.length > 0
+      ? ` evidence=${branch.evidenceAnchors.join("|")}`
+      : "";
+  const rows =
+    branch.materializedRows === undefined ? "" : ` rows=${branch.materializedRows}`;
+  const resolvedGraphNode = branch.resolvedGraphNodeId
+    ? ` resolved_graph_node=${branch.resolvedGraphNodeId}`
+    : "";
+  return `  - role=${branch.routeRole} selected=${formatBool(branch.selected)} rank=${branch.frontierRank ?? "none"} candidate=${branch.candidateId}${branch.actionKind ? ` action=${branch.actionKind}` : ""}${branch.compareTargetId ? ` compare_target=${branch.compareTargetId}` : ""} purpose=${branch.routePurpose} materialization=${branch.materializationStatus ?? "unknown"}${rows}${resolvedGraphNode}${anchors}`;
+}
+
 function formatBool(value: boolean): string {
   return value ? "yes" : "no";
 }
@@ -182,6 +211,9 @@ function formatRouteSteps(steps: { step: string; route: string }[]): string {
 }
 
 function formatMaterializationRows(route: SearchStrategyFlowRetrievalRoute): string {
+  const resolvedGraphNode = route.resolvedGraphNodeId
+    ? ` resolved_graph_node=${route.resolvedGraphNodeId}`
+    : "";
   const routeRows =
     route.routeReceipts && route.routeReceipts.length > 0
       ? ` route_rows=${route.routeReceipts
@@ -189,6 +221,6 @@ function formatMaterializationRows(route: SearchStrategyFlowRetrievalRoute): str
           .join(",")}`
       : "";
   return route.materializedRows === undefined
-    ? routeRows
-    : ` rows=${route.materializedRows}${routeRows}`;
+    ? `${resolvedGraphNode}${routeRows}`
+    : ` rows=${route.materializedRows}${resolvedGraphNode}${routeRows}`;
 }

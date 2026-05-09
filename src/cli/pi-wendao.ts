@@ -9,6 +9,7 @@ import { createRenderer } from "../ui/renderer.js";
 import { resolveModel, resolvePiWendaoPackageRoot } from "./model-resolver.js";
 import { launchPiWendaoNativeTui } from "./pi-wendao-native-launcher.js";
 import { runSearchStrategyFlowAgentTrace } from "./search/strategy-flow-agent.js";
+import { resolveSearchStrategyFlowCliOptions } from "./search/strategy-flow-cli-options.js";
 import { runSearchStrategyFlow } from "./search/strategy-flow-julia.js";
 import { renderSearchStrategyFlowTrace } from "./search/strategy-flow-renderer.js";
 import {
@@ -51,6 +52,9 @@ interface PiWendaoCliOptions {
   searchBackend?: string;
   searchRustWorkspace?: string;
   searchRustCommand?: string;
+  searchFlightBaseUrl?: string;
+  searchFlightRepo?: string;
+  searchFlightTimeoutSeconds?: number;
   searchAgent?: boolean;
   searchJson?: boolean;
 }
@@ -136,6 +140,16 @@ program
   )
   .option("--search-rust-workspace <path>", "xiuxian Rust workspace for --search")
   .option("--search-rust-command <command>", "Cargo executable for the Rust search bridge")
+  .option(
+    "--search-flight-base-url <url>",
+    "Studio Arrow Flight endpoint for Rust SearchStrategyFlow materialization",
+  )
+  .option("--search-flight-repo <repo>", "Wendao repo id for Rust SearchStrategyFlow Flight routes")
+  .option(
+    "--search-flight-timeout-seconds <seconds>",
+    "Rust SearchStrategyFlow Flight request timeout",
+    (value) => parseNonNegativeInt(value, "--search-flight-timeout-seconds"),
+  )
   .option("--search-agent", "Run a live pi-subagents LLM judgement for LLM planner actions")
   .option("--search-json", "Print raw SearchStrategyFlow JSON")
   .option(
@@ -155,16 +169,19 @@ program
       const instanceId = validateInstanceId(options.instanceId);
       const thinkingLevel = resolveExecutionThinkingLevel(options.thinking);
       if (options.search !== undefined) {
-        const trace = await runSearchStrategyFlow({
+        const trace = await runSearchStrategyFlow(resolveSearchStrategyFlowCliOptions({
           intent: options.search,
           cwd: invocationCwd,
-          wendaoGraphPath: resolveOptionalCliPath(invocationCwd, options.wendaoGraph),
-          searchRoot: resolveOptionalCliPath(invocationCwd, options.searchRoot),
-          juliaCommand: options.searchJulia,
-          searchBackend: resolveSearchBackend(options.searchBackend),
-          rustWorkspace: resolveOptionalCliPath(invocationCwd, options.searchRustWorkspace),
-          rustCommand: options.searchRustCommand,
-        });
+          wendaoGraph: options.wendaoGraph,
+          searchRoot: options.searchRoot,
+          searchJulia: options.searchJulia,
+          searchBackend: options.searchBackend,
+          searchRustWorkspace: options.searchRustWorkspace,
+          searchRustCommand: options.searchRustCommand,
+          searchFlightBaseUrl: options.searchFlightBaseUrl,
+          searchFlightRepo: options.searchFlightRepo,
+          searchFlightTimeoutSeconds: options.searchFlightTimeoutSeconds,
+        }));
         const agentTrace =
           options.searchAgent === true
             ? await runSearchStrategyFlowAgentTrace({
@@ -466,18 +483,5 @@ function resolveExecutionThinkingLevel(explicitLevel: string | undefined): PiWen
   return raw as PiWendaoThinkingLevel;
 }
 
-function resolveSearchBackend(
-  explicitBackend: string | undefined,
-): "auto" | "rust-julia" | "julia-direct" | undefined {
-  if (explicitBackend === undefined) return undefined;
-  if (
-    explicitBackend === "auto" ||
-    explicitBackend === "rust-julia" ||
-    explicitBackend === "julia-direct"
-  ) {
-    return explicitBackend;
-  }
-  throw new Error('invalid --search-backend; expected "auto", "rust-julia", or "julia-direct"');
-}
 
 program.parse();
