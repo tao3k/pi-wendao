@@ -183,14 +183,14 @@ async function runJuliaStrategyFlow(
 }
 
 function rustBridgeArgs(options: RustStrategyFlowOptions): string[] {
-  const args = [
-    "run",
-    "-q",
-    "-p",
-    "xiuxian-wendao-julia",
-    "--example",
-    "wendaograph_search_strategy_flow",
-    "--",
+    const args = [
+      "run",
+      "-q",
+      "-p",
+      "xiuxian-wendao-julia",
+      "--bin",
+      "wendaograph_search_strategy_flow",
+      "--",
     "--intent",
     options.intent,
     "--search-root",

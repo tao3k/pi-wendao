@@ -93,6 +93,13 @@ function renderSearchStrategyFlowTraceInternal(
     `  materialized_top_candidate: ${formatBool(trace.validation.materializedTopCandidate)}`,
     `  blocked_evidence_pruned: ${formatBool(trace.validation.blockedEvidencePruned)}`,
     `  selected_context_reduced: ${formatBool(trace.validation.selectedContextReduced)}`,
+    ...(trace.validation.requiredEvidenceCovered === undefined
+      ? []
+      : [
+          `  required_evidence_covered: ${formatBool(trace.validation.requiredEvidenceCovered)}`,
+          `  selected_required_evidence: ${formatList(trace.validation.selectedRequiredEvidence)}`,
+          `  missing_required_evidence: ${formatList(trace.validation.missingRequiredEvidence)}`,
+        ]),
     "",
     "candidates:",
     ...trace.candidates.map(
@@ -168,7 +175,24 @@ function renderBranchContext(branch: SearchStrategyFlowBranchContext): string {
   const resolvedGraphNode = branch.resolvedGraphNodeId
     ? ` resolved_graph_node=${branch.resolvedGraphNodeId}`
     : "";
-  return `  - role=${branch.routeRole} selected=${formatBool(branch.selected)} rank=${branch.frontierRank ?? "none"} candidate=${branch.candidateId}${branch.actionKind ? ` action=${branch.actionKind}` : ""}${branch.compareTargetId ? ` compare_target=${branch.compareTargetId}` : ""} purpose=${branch.routePurpose} materialization=${branch.materializationStatus ?? "unknown"}${rows}${resolvedGraphNode}${anchors}`;
+  const derivedHints = renderDerivedHints(branch);
+  return `  - role=${branch.routeRole} selected=${formatBool(branch.selected)} rank=${branch.frontierRank ?? "none"} candidate=${branch.candidateId}${branch.actionKind ? ` action=${branch.actionKind}` : ""}${branch.compareTargetId ? ` compare_target=${branch.compareTargetId}` : ""} purpose=${branch.routePurpose} materialization=${branch.materializationStatus ?? "unknown"}${rows}${resolvedGraphNode}${anchors}${derivedHints}`;
+}
+
+function renderDerivedHints(branch: SearchStrategyFlowBranchContext): string {
+  const parts = [
+    branch.derivedHints.ambiguity.length > 0
+      ? `ambiguity=${branch.derivedHints.ambiguity.join("|")}`
+      : "",
+    branch.derivedHints.structuralGaps.length > 0
+      ? `gaps=${branch.derivedHints.structuralGaps.join("|")}`
+      : "",
+    branch.derivedHints.probeRecommendations.length > 0
+      ? `probes=${branch.derivedHints.probeRecommendations.join("|")}`
+      : "",
+  ].filter(Boolean);
+
+  return parts.length > 0 ? ` derived_hints{${parts.join(" ")}}` : "";
 }
 
 function formatBool(value: boolean): string {
@@ -186,6 +210,10 @@ function formatRatio(value: number): string {
 function formatSnippet(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > 180 ? `${compact.slice(0, 177)}...` : compact;
+}
+
+function formatList(values: string[] | undefined): string {
+  return values && values.length > 0 ? values.join(",") : "none";
 }
 
 function renderAgentOutputs(agentTrace: SearchStrategyFlowAgentTrace): string[] {

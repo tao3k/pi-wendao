@@ -7,11 +7,9 @@ import { validateInstanceId } from "./instance-id.js";
 import { compileSkill, defaultCompileTraceDir } from "../compiler/compiler.js";
 import { createRenderer } from "../ui/renderer.js";
 import { resolveModel, resolvePiWendaoPackageRoot } from "./model-resolver.js";
+import { parseNonNegativeInt, parseNonNegativeNumber } from "./number-options.js";
 import { launchPiWendaoNativeTui } from "./pi-wendao-native-launcher.js";
-import { runSearchStrategyFlowAgentTrace } from "./search/strategy-flow-agent.js";
-import { resolveSearchStrategyFlowCliOptions } from "./search/strategy-flow-cli-options.js";
-import { runSearchStrategyFlow } from "./search/strategy-flow-julia.js";
-import { renderSearchStrategyFlowTrace } from "./search/strategy-flow-renderer.js";
+import { runSearchStrategyFlowCommand } from "./search/strategy-flow-command.js";
 import {
   appendActiveBpmnNodeLabels,
   resolveQianjiCommand,
@@ -56,6 +54,11 @@ interface PiWendaoCliOptions {
   searchFlightRepo?: string;
   searchFlightTimeoutSeconds?: number;
   searchAgent?: boolean;
+  searchAgentAnswerRequest?: string;
+  searchAgentAnswerMode?: string;
+  searchAgentAnswerChunkSize?: number;
+  searchAgentAnswerResume?: boolean;
+  searchAgentAnswerEvidence?: string;
   searchJson?: boolean;
 }
 
@@ -151,6 +154,27 @@ program
     (value) => parseNonNegativeInt(value, "--search-flight-timeout-seconds"),
   )
   .option("--search-agent", "Run a live pi-subagents LLM judgement for LLM planner actions")
+  .option(
+    "--search-agent-answer-request <path>",
+    "Read a materialized SearchStrategyFlow answer request TSV and write answer evidence",
+  )
+  .option(
+    "--search-agent-answer-mode <mode>",
+    "Answer request mode: deterministic or live",
+  )
+  .option(
+    "--search-agent-answer-chunk-size <count>",
+    "Live answer request chunk size",
+    (value) => parseNonNegativeInt(value, "--search-agent-answer-chunk-size"),
+  )
+  .option(
+    "--search-agent-answer-resume",
+    "Resume live request answers from an existing answer-evidence TSV prefix",
+  )
+  .option(
+    "--search-agent-answer-evidence <path>",
+    "Write completed --search-agent output as candidate_id<TAB>answer_text TSV evidence",
+  )
   .option("--search-json", "Print raw SearchStrategyFlow JSON")
   .option(
     "--tui",
@@ -168,9 +192,9 @@ program
       const resolvedEventFixturePath = resolveOptionalCliPath(invocationCwd, options.eventFixture);
       const instanceId = validateInstanceId(options.instanceId);
       const thinkingLevel = resolveExecutionThinkingLevel(options.thinking);
-      if (options.search !== undefined) {
-        const trace = await runSearchStrategyFlow(resolveSearchStrategyFlowCliOptions({
-          intent: options.search,
+      if (options.search !== undefined || options.searchAgentAnswerRequest !== undefined) {
+        await runSearchStrategyFlowCommand({
+          intent: options.search ?? "materialized SearchStrategyFlow answer request",
           cwd: invocationCwd,
           wendaoGraph: options.wendaoGraph,
           searchRoot: options.searchRoot,
@@ -181,24 +205,19 @@ program
           searchFlightBaseUrl: options.searchFlightBaseUrl,
           searchFlightRepo: options.searchFlightRepo,
           searchFlightTimeoutSeconds: options.searchFlightTimeoutSeconds,
-        }));
-        const agentTrace =
-          options.searchAgent === true
-            ? await runSearchStrategyFlowAgentTrace({
-                trace,
-                cwd: invocationCwd,
-                modelPattern: resolveExecutionModelPattern(options.model),
-                provider: options.provider,
-                apiKey: options.apiKey,
-                thinkingLevel,
-                extensionPaths: resolvedExtensionPaths,
-              })
-            : undefined;
-        console.log(
-          options.searchJson
-            ? `${JSON.stringify(agentTrace ? { ...trace, agentTrace } : trace, null, 2)}\n`
-            : renderSearchStrategyFlowTrace(trace, agentTrace),
-        );
+          searchAgent: options.searchAgent,
+          searchAgentAnswerRequest: options.searchAgentAnswerRequest,
+          searchAgentAnswerMode: options.searchAgentAnswerMode,
+          searchAgentAnswerChunkSize: options.searchAgentAnswerChunkSize,
+          searchAgentAnswerResume: options.searchAgentAnswerResume,
+          searchAgentAnswerEvidence: options.searchAgentAnswerEvidence,
+          searchJson: options.searchJson,
+          modelPattern: resolveExecutionModelPattern(options.model),
+          provider: options.provider,
+          apiKey: options.apiKey,
+          thinkingLevel,
+          extensionPaths: resolvedExtensionPaths,
+        });
         process.exit(0);
       }
       if (!workflowPath && options.show !== true && options.tui === true && process.stdin.isTTY) {
@@ -407,22 +426,6 @@ function resolveCliPaths(cwd: string, paths: string[]): string[] {
 
 function resolveOptionalCliPath(cwd: string, path: string | undefined): string | undefined {
   return path ? resolveCliPath(cwd, path) : undefined;
-}
-
-function parseNonNegativeNumber(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error("--trace-frame-ms must be a non-negative number");
-  }
-  return parsed;
-}
-
-function parseNonNegativeInt(value: string | undefined, label: string): number {
-  const parsed = Number.parseInt(value ?? "0", 10);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error(`${label} must be a non-negative integer`);
-  }
-  return parsed;
 }
 
 function replaceExtension(path: string, extension: string): string {

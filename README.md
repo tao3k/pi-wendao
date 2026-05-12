@@ -152,6 +152,13 @@ treat `execute_before_answer=yes` as a hard guard unless Rust has returned
 executed Arrow Flight evidence for the requested section.
 `pi-wendao` forwards endpoint settings to the Rust bridge and renders the
 returned evidence; it does not decode Arrow Flight streams with JS Arrow.
+Required evidence is enforced before live Agent judgement. When Julia infers
+`ownership_boundary`, `validation_path`, `relation_path`, or `page_index_seed`,
+the frontier reserves matching authority, validation, link-graph, or page-index
+branches before score-only filling. The rendered validation block reports
+`required_evidence_covered`, `selected_required_evidence`, and
+`missing_required_evidence`; the Agent receives the same coverage in its compact
+trace.
 
 Options:
 
@@ -165,6 +172,11 @@ Options:
 - `--search-flight-repo <repo>` — Wendao repo id for native Flight route execution
 - `--search-flight-timeout-seconds <seconds>` — Rust bridge Flight request timeout
 - `--search-agent` — run a live pi-subagents LLM judgement for planner actions that require an LLM
+- `--search-agent-answer-request <path>` — read a WendaoGraph materialized answer request TSV and write deterministic packet-contract answer evidence
+- `--search-agent-answer-mode <mode>` — answer request mode, either `deterministic` or `live`
+- `--search-agent-answer-chunk-size <count>` — live answer request chunk size; defaults to a small batch for progress visibility
+- `--search-agent-answer-resume` — continue live request answering from an existing evidence TSV prefix
+- `--search-agent-answer-evidence <path>` — with `--search-agent`, write completed live agent output as `candidate_id<TAB>answer_text` TSV evidence for the WendaoGraph live answer rubric
 - `--search-json` — print the structured trace JSON
 
 The default `auto` backend treats the Rust-to-Julia bridge as the core path. It
@@ -209,6 +221,57 @@ paying the Rust bridge startup and compilation cost on every algorithm smoke.
 It expects `DEEPSEEK_API_KEY` in the worktree `.env` and requires the
 first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
 agents that read candidate documents belong to the next reasoning-tree layer.
+
+To produce an auditable answer-evidence receipt for WendaoGraph validation,
+write the live subagent output to an explicit TSV path:
+
+```bash
+npx --no-install pi-wendao --search "find the relevant knowledge boundary" \
+  --search-agent \
+  --search-agent-answer-evidence ./search-strategy-flow-answer-evidence.tsv \
+  --no-graph
+```
+
+The receipt is written only after the live subagent completes with non-empty
+`intent_understanding`, `branch_decision`, and `judgement` outputs. It emits one
+row per selected frontier candidate using the fixed
+`candidate_id<TAB>answer_text` contract. The receipt is input evidence for the
+WendaoGraph live answer rubric; it is not a production promotion by itself.
+
+For the materialized 128-row scale gate, use a WendaoGraph request TSV as the
+input and write the same evidence shape:
+
+```bash
+npx --no-install pi-wendao \
+  --search-agent-answer-request ./search-strategy-flow-answer-request.tsv \
+  --search-agent-answer-evidence ./search-strategy-flow-answer-evidence.tsv \
+  --no-graph
+```
+
+This mode is deterministic packet-contract evidence, not a live model run. It
+exists so the scale gate can validate row identity and rubric coverage before a
+separate live Agent job spends model budget.
+
+To run the same request surface through a live model, add
+`--search-agent-answer-mode live` and `--search-agent`:
+
+```bash
+npx --no-install pi-wendao \
+  --search-agent \
+  --search-agent-answer-request ./search-strategy-flow-answer-request.tsv \
+  --search-agent-answer-mode live \
+  --search-agent-answer-evidence ./search-strategy-flow-answer-evidence-live.tsv \
+  --no-graph
+```
+
+Live mode rejects missing rows, duplicate candidate ids, empty answers,
+malformed TSV, and answers over the WendaoGraph evidence-size bound. It does
+not fill gaps with deterministic packet evidence. The parser only canonicalizes
+model transport escaping for literal quotes before writing evidence. The live
+request job runs in chunks and prints accepted chunk progress to stderr so long
+runs do not look like a black-box stall. Use `--search-agent-answer-resume`
+after an interrupted run; the existing evidence rows must be a valid prefix of
+the request rows.
 
 Use the slower bridge smoke only when validating the Rust-owned host-process
 proof surface:

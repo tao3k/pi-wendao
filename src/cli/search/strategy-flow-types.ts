@@ -260,4 +260,7 @@ export interface SearchStrategyFlowValidation {
   materializedTopCandidate: boolean;
   blockedEvidencePruned: boolean;
   selectedContextReduced: boolean;
+  requiredEvidenceCovered?: boolean;
+  selectedRequiredEvidence?: string[];
+  missingRequiredEvidence?: string[];
 }

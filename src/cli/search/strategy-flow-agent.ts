@@ -110,7 +110,7 @@ export async function runSearchStrategyFlowAgentTrace(
       },
       variables: {
         intent: options.trace.intent,
-        trace: compactTraceForAgent(options.trace),
+        trace: compactSearchStrategyFlowTraceForAgent(options.trace),
       },
       execution: {
         activityId: SEARCH_STRATEGY_FLOW_AGENT_ACTIVITY_ID,
@@ -167,6 +167,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
     "Use only the compact trace and the graph_query_understanding evidence. Do not request files, tools, or extra context.",
     "Treat retrieval_routes as later-layer Flight/Rust materialization plans; never bypass Rust by reading a full Markdown file directly.",
     "Prefer frontier_branches over raw candidates when judging coverage; each branch includes its route role, purpose, and evidence anchors.",
+    "Use each branch's derivedTraceHints as non-authoritative tactical hints. If the frontier is insufficient, name the exact whitelisted Rust probe recommendation to execute next.",
     "First normalize what the user is really asking for, using Julia's graph evidence as constraints rather than optional suggestions.",
     "Then judge whether the selected frontier branches are sufficient for that intent.",
     "Return concise outputs:",
@@ -179,7 +180,9 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
   ].join("\n");
 }
 
-function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, unknown> {
+export function compactSearchStrategyFlowTraceForAgent(
+  trace: SearchStrategyFlowTrace,
+): Record<string, unknown> {
   const retrievalRoutes = resolveSearchStrategyFlowRetrievalRoutes(trace);
   const branchContexts = buildSearchStrategyFlowBranchContexts(trace);
   return {
@@ -199,6 +202,11 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       summary: stage.summary,
     })),
     validation: trace.validation,
+    requiredEvidenceCoverage: {
+      covered: trace.validation.requiredEvidenceCovered ?? false,
+      selected: trace.validation.selectedRequiredEvidence ?? [],
+      missing: trace.validation.missingRequiredEvidence ?? [],
+    },
     graphQueryUnderstanding: (trace.queryUnderstanding ?? []).map((row) => ({
       kind: row.signalKind,
       value: row.signalValue,
@@ -242,6 +250,7 @@ function compactTraceForAgent(trace: SearchStrategyFlowTrace): Record<string, un
       headingAnchor: branch.headingAnchor,
       resolvedGraphNodeId: branch.resolvedGraphNodeId,
       evidenceAnchors: branch.evidenceAnchors,
+      derivedTraceHints: branch.derivedHints,
     })),
     llmActions: trace.plannerActions
       .filter((action) => action.requiresLlmJudgement)

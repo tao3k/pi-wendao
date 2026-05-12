@@ -137,6 +137,16 @@ candidates = [
         edge_kinds = ("anchor", "search-strategy", "authority", "page-index"),
     ),
     doc_candidate(
+        "docs/30_search_strategy/30.01_search_strategy_flow.md",
+        "ownership-boundary";
+        evidence_coverage = min(1.0, 0.88 + strategy_weight),
+        graph_score = min(1.0, 0.84 + strategy_weight),
+        authority_score = 0.96,
+        structural_score = 0.84,
+        uncertainty = 0.12,
+        edge_kinds = ("anchor", "authority", "ownership", "ssot"),
+    ),
+    doc_candidate(
         "docs/20_page_index/20.01_reasoning_tree_contracts.md",
         "relationship-to-search-strategy";
         evidence_coverage = min(1.0, 0.76 + page_index_weight),
@@ -155,6 +165,16 @@ candidates = [
         structural_score = 0.66,
         uncertainty = 0.34,
         edge_kinds = ("linkography", "graph-compute", "supporting-evidence"),
+    ),
+    doc_candidate(
+        "docs/90_validation/90.01_validation.md",
+        "package-test";
+        evidence_coverage = 0.80,
+        graph_score = 0.72,
+        authority_score = 0.82,
+        structural_score = 0.76,
+        uncertainty = 0.16,
+        edge_kinds = ("validation", "package-test", "proof"),
     ),
     doc_candidate(
         "docs/90_validation/90.01_validation.md",
@@ -184,7 +204,9 @@ frontier = strategy_flow_frontier_rows(
     flow_id = flow_id,
     beam_width = strategy_budget.beam_width,
     context_budget = 1900,
+    query_understanding = query_understanding,
 )
+required_evidence_coverage = strategy_flow_required_evidence_coverage(frontier, query_understanding)
 actions = strategy_flow_planner_action_rows(
     rows,
     transitions,
@@ -353,6 +375,9 @@ validation = json_object((
     "materializedTopCandidate" => any(row.action_kind == "materialize" && row.candidate_id == "docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding" for row in actions),
     "blockedEvidencePruned" => any(row.candidate_id == "docs/90_validation/90.01_validation.md#promotion-boundary" && !row.selected for row in frontier),
     "selectedContextReduced" => selected_context < total_context,
+    "requiredEvidenceCovered" => required_evidence_coverage.required_evidence_covered,
+    "selectedRequiredEvidence" => required_evidence_coverage.selected_required_evidence,
+    "missingRequiredEvidence" => required_evidence_coverage.missing_required_evidence,
 ))
 
 println("{" * join((

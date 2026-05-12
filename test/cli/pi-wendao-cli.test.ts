@@ -1,5 +1,13 @@
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -120,6 +128,10 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("frontier_branches:");
     expect(output).toContain("role=search_strategy");
     expect(output).toContain("purpose=Normalize intent, strategy loop, and first-layer branch policy.");
+    expect(output).toContain("derived_hints{");
+    expect(output).toContain("missing_decoded_evidence_anchors");
+    expect(output).toContain("probes=compare_provenance:");
+    expect(output).toContain("open_adjacent_sections:");
     expect(output).toContain("retrieval_routes:");
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
@@ -189,6 +201,9 @@ describe("pi-wendao CLI", () => {
     expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("frontier_branches:");
     expect(output).toContain("role=search_strategy");
+    expect(output).toContain("derived_hints{");
+    expect(output).toContain("missing_decoded_evidence_anchors");
+    expect(output).toContain("probes=open_adjacent_sections:");
     expect(output).toContain("retrieval_routes:");
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
@@ -198,6 +213,173 @@ describe("pi-wendao CLI", () => {
     expect(output).not.toContain("/analysis/repo-projected-retrieval-context:1");
     expect(output).toContain("direct_file_read=no");
     expect(output).toContain("execute_before_answer=yes");
+  }, 20_000);
+
+  it("requires --search-agent before writing SearchStrategyFlow answer evidence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-agent-evidence-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const fakeJuliaPath = join(dir, "julia");
+    mkdirSync(graphProject);
+    writeFileSync(
+      join(graphProject, "Project.toml"),
+      'name = "WendaoGraph"\nuuid = "764e742e-c622-4247-bda7-f0fdca413869"\n',
+      { encoding: "utf-8", flag: "wx" },
+    );
+    writeFakeJuliaSearch(fakeJuliaPath);
+    chmodSync(fakeJuliaPath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner and validation",
+        "--wendao-graph",
+        graphProject,
+        "--search-root",
+        graphProject,
+        "--search-julia",
+        fakeJuliaPath,
+        "--search-backend",
+        "julia-direct",
+        "--search-agent-answer-evidence",
+        join(dir, "answer-evidence.tsv"),
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain("--search-agent-answer-evidence requires --search-agent");
+  }, 20_000);
+
+  it("writes materialized SearchStrategyFlow answer evidence from a request TSV", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-answer-request-"));
+    tempDirs.push(dir);
+    const requestPath = join(dir, "answer-request.tsv");
+    const evidencePath = join(dir, "answer-evidence.tsv");
+    writeFileSync(requestPath, materializedAnswerRequestTsv(), "utf-8");
+
+    const result = await runPiWendaoCli(
+      [
+        "--search-agent-answer-request",
+        requestPath,
+        "--search-agent-answer-evidence",
+        evidencePath,
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("SearchStrategyFlow materialized answer evidence: wrote 1 row(s)");
+    expect(readFileSync(evidencePath, "utf-8")).toContain(
+      "repos/Pkg.jl/README.md#auto-readme-package-purpose\trepo=Pkg.jl; source=README.md",
+    );
+  }, 20_000);
+
+  it("requires answer evidence output when materialized answer request is provided", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-answer-request-missing-output-"));
+    tempDirs.push(dir);
+    const requestPath = join(dir, "answer-request.tsv");
+    writeFileSync(requestPath, materializedAnswerRequestTsv(), "utf-8");
+
+    const result = await runPiWendaoCli(
+      ["--search-agent-answer-request", requestPath, "--no-graph"],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain("--search-agent-answer-request requires --search-agent-answer-evidence");
+  }, 20_000);
+
+  it("requires --search-agent for live materialized answer request mode", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-live-answer-request-missing-agent-"));
+    tempDirs.push(dir);
+    const requestPath = join(dir, "answer-request.tsv");
+    const evidencePath = join(dir, "answer-evidence.tsv");
+    writeFileSync(requestPath, materializedAnswerRequestTsv(), "utf-8");
+
+    const result = await runPiWendaoCli(
+      [
+        "--search-agent-answer-request",
+        requestPath,
+        "--search-agent-answer-mode",
+        "live",
+        "--search-agent-answer-evidence",
+        evidencePath,
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain("--search-agent-answer-mode live requires --search-agent");
+  }, 20_000);
+
+  it("rejects invalid materialized answer request modes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-answer-request-invalid-mode-"));
+    tempDirs.push(dir);
+    const requestPath = join(dir, "answer-request.tsv");
+    const evidencePath = join(dir, "answer-evidence.tsv");
+    writeFileSync(requestPath, materializedAnswerRequestTsv(), "utf-8");
+
+    const result = await runPiWendaoCli(
+      [
+        "--search-agent-answer-request",
+        requestPath,
+        "--search-agent-answer-mode",
+        "maybe",
+        "--search-agent-answer-evidence",
+        evidencePath,
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain("--search-agent-answer-mode must be deterministic or live");
+  }, 20_000);
+
+  it("resumes a completed live materialized answer evidence prefix without model auth", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-live-answer-request-complete-resume-"));
+    tempDirs.push(dir);
+    const requestPath = join(dir, "answer-request.tsv");
+    const evidencePath = join(dir, "answer-evidence.tsv");
+    writeFileSync(requestPath, materializedAnswerRequestTsv(), "utf-8");
+    writeFileSync(
+      evidencePath,
+      [
+        "candidate_id\tanswer_text",
+        "repos/Pkg.jl/README.md#auto-readme-package-purpose\trepo=Pkg.jl; source=README.md; evidence=auto-readme-package-purpose; term=Pkg; term=Pkg is Julia package manager",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runPiWendaoCli(
+      [
+        "--search-agent",
+        "--search-agent-answer-request",
+        requestPath,
+        "--search-agent-answer-mode",
+        "live",
+        "--search-agent-answer-resume",
+        "--search-agent-answer-evidence",
+        evidencePath,
+        "--no-graph",
+      ],
+      dir,
+      { env: { DEEPSEEK_API_KEY: "", ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_TOKEN: "" } },
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("SearchStrategyFlow live materialized answer evidence: wrote 1 row(s)");
   }, 20_000);
 
   it("forwards Flight endpoint settings to the Rust SearchStrategyFlow bridge", async () => {
@@ -243,6 +425,8 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("frontier_branches:");
     expect(output).toContain("role=search_strategy");
     expect(output).toContain("materialization=executed rows=4");
+    expect(output).toContain("derived_hints{");
+    expect(output).toContain("probes=expand_neighbors:docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md");
     expect(output).toContain(
       "evidence=node-context:node:stage-1-query-understanding|graph-node:docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
     );
@@ -251,6 +435,56 @@ describe("pi-wendao CLI", () => {
       "resolved_graph_node=docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
     );
     expect(output).toContain("route_rows=/search/repos/main:1");
+  }, 20_000);
+
+  it("forwards env Flight endpoint settings to the default Rust SearchStrategyFlow bridge", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-flight-env-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
+    const fakeCargoPath = join(dir, "cargo");
+    writeSearchProjectFixture(graphProject, rustWorkspace);
+    writeFakeCargoSearch(fakeCargoPath);
+    chmodSync(fakeCargoPath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner through env Rust Flight",
+        "--wendao-graph",
+        graphProject,
+        "--search-root",
+        graphProject,
+        "--search-rust-workspace",
+        rustWorkspace,
+        "--search-rust-command",
+        fakeCargoPath,
+        "--no-graph",
+      ],
+      dir,
+      {
+        env: {
+          PI_WENDAO_SEARCH_FLIGHT_BASE_URL: "http://127.0.0.1:50051",
+          PI_WENDAO_SEARCH_FLIGHT_REPO: "docs-fixture",
+        },
+      },
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("requested: auto");
+    expect(output).toContain("fallback: none");
+    expect(output).toContain("candidate_input_source: rust-flight-repo-search");
+    expect(output).toContain(
+      `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=executed`,
+    );
+    expect(output).toContain("materialization=executed rows=4");
+    expect(output).toContain(
+      "resolved_graph_node=docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
+    );
+    expect(output).toContain("route_rows=/search/repos/main:1");
+    expect(output).not.toContain("materialization=planned");
   }, 20_000);
 
   it("fails auto mode when the Rust SearchStrategyFlow bridge is unavailable", async () => {
@@ -806,6 +1040,14 @@ process.exit(101);
 `,
     "utf-8",
   );
+}
+
+function materializedAnswerRequestTsv(): string {
+  return [
+    "candidate_id\tpacket_id\trepo_id\tsource_relative_path\tevidence_kind\trequired_terms\tcompact_packet\tanswer_contract",
+    "repos/Pkg.jl/README.md#auto-readme-package-purpose\tmaterialized-packet-1\tPkg.jl\tREADME.md\tauto-readme-package-purpose\tPkg|Pkg is Julia package manager\trepo=Pkg.jl; source=README.md; evidence=auto-readme-package-purpose; term=Pkg; term=Pkg is Julia package manager\tanswer_text must include repo=Pkg.jl; source=README.md; evidence=auto-readme-package-purpose; term=Pkg; term=Pkg is Julia package manager",
+    "",
+  ].join("\n");
 }
 
 function invalidDynamicChoicesHostFixture(): string {
