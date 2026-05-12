@@ -110,6 +110,11 @@ export interface SearchStrategyFlowRetrievalRoute {
   resolvedPageId?: SearchStrategyFlowPageId;
   resolvedNodeId?: SearchStrategyFlowNodeId;
   resolvedGraphNodeId?: SearchStrategyFlowGraphNodeId;
+  graphMaterializationStatus?:
+    | "resolved"
+    | "missing"
+    | "structured-code-relation-substitute";
+  graphMaterializationWarning?: string;
   flightSteps: SearchStrategyFlowRetrievalStep[];
 }
 

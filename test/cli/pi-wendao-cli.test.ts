@@ -417,7 +417,7 @@ describe("pi-wendao CLI", () => {
     const output = [result.stdout, result.stderr].join("\n");
 
     expect(result.exitCode).toBe(0);
-    expect(output).toContain("candidate_input_source: rust-flight-repo-search");
+    expect(output).toContain("candidate_input_source: rust-code-intelligence-inventory");
     expect(output).toContain("candidate_input_count: 1");
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=executed`,
@@ -475,7 +475,7 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("backend: rust-wendao-julia");
     expect(output).toContain("requested: auto");
     expect(output).toContain("fallback: none");
-    expect(output).toContain("candidate_input_source: rust-flight-repo-search");
+    expect(output).toContain("candidate_input_source: rust-code-intelligence-inventory");
     expect(output).toContain(
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=executed`,
     );
@@ -848,7 +848,7 @@ console.log(JSON.stringify({
   intent: process.argv[process.argv.indexOf("--intent") + 1],
   backend: "rust-wendao-julia",
   controlPlane: "rust",
-  candidateInputSource: hasFlightBaseUrl ? "rust-flight-repo-search" : "rust-markdown-headings",
+  candidateInputSource: hasFlightBaseUrl ? "rust-code-intelligence-inventory" : "rust-markdown-headings",
   candidateInputCount: 1,
   juliaProject: process.env.WENDAOGRAPH_PACKAGE_DIR,
   graphProject: process.env.WENDAOGRAPH_PACKAGE_DIR,

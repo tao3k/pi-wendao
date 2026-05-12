@@ -222,6 +222,20 @@ It expects `DEEPSEEK_API_KEY` in the worktree `.env` and requires the
 first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
 agents that read candidate documents belong to the next reasoning-tree layer.
 
+The precision gate for the search algorithm is exposed from this package as a
+wrapper over WendaoGraph's Julia authority tests:
+
+```bash
+npm run test:search-precision
+```
+
+That command runs materialized precision/recall, real-scenario inventory, and
+stratified live-intent shape gates. `pi-wendao` does not calculate precision in
+TypeScript; it owns the CLI/evidence boundary and delegates the algorithm
+judgement to WendaoGraph. Use `PI_WENDAO_WENDAOGRAPH_DIR` or `--wendao-graph
+<path>` to point at another checkout, and `--gate materialized_precision` for a
+focused precision/recall run.
+
 To produce an auditable answer-evidence receipt for WendaoGraph validation,
 write the live subagent output to an explicit TSV path:
 

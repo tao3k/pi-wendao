@@ -16,9 +16,15 @@ describe("SearchStrategyFlow required evidence trace", () => {
     expect(inferSearchStrategyFlowRouteRole("docs/90_validation/90.01_validation.md#package-test")).toBe(
       "validation",
     );
+    expect(
+      inferSearchStrategyFlowRouteRole(
+        "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
+      ),
+    ).toBe("link_graph");
 
     const contexts = buildSearchStrategyFlowBranchContexts(sampleTrace());
     const authority = contexts.find((branch) => branch.routeRole === "authority");
+    const linkGraph = contexts.find((branch) => branch.routeRole === "link_graph");
 
     expect(authority?.candidateId).toBe(
       "docs/30_search_strategy/30.01_search_strategy_flow.md#ownership-boundary",
@@ -26,6 +32,18 @@ describe("SearchStrategyFlow required evidence trace", () => {
     expect(authority?.routePurpose).toContain("ownership");
     expect(authority?.derivedHints.probeRecommendations).toContain(
       "verify_authority:docs/30_search_strategy/30.01_search_strategy_flow.md#ownership-boundary",
+    );
+    expect(linkGraph?.derivedHints.structuralGaps).not.toContain("missing_link_graph_branch");
+    expect(linkGraph?.derivedHints.structuralGaps).not.toContain("missing_search_strategy_branch");
+    expect(linkGraph?.derivedHints.structuralGaps).not.toContain(
+      "link_graph_branch_without_relation_anchor",
+    );
+    expect(linkGraph?.graphMaterializationStatus).toBe("structured-code-relation-substitute");
+    expect(linkGraph?.evidenceAnchors).toContain(
+      "structured-code-relation:node:search-strategy-flow-link-graph-python-julia-toml",
+    );
+    expect(linkGraph?.derivedHints.probeRecommendations).toContain(
+      "open_structured_relation_context:packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
     );
   });
 
@@ -35,10 +53,16 @@ describe("SearchStrategyFlow required evidence trace", () => {
     expect(compact).toMatchObject({
       requiredEvidenceCoverage: {
         covered: true,
-        selected: ["ownership_boundary", "validation_path"],
+        selected: ["ownership_boundary", "validation_path", "relation_path"],
         missing: [],
       },
     });
+    expect(compact.frontierBranches).toContainEqual(
+      expect.objectContaining({
+        role: "link_graph",
+        graphMaterializationStatus: "structured-code-relation-substitute",
+      }),
+    );
   });
 });
 
@@ -82,6 +106,22 @@ function sampleTrace(): SearchStrategyFlowTrace {
         recommendedBeamWidth: 3,
         reason: "required evidence inferred before LLM judgement",
       },
+      {
+        flowId: "pi-wendao-search-strategy-flow",
+        intentId: "cli-intent-1",
+        signalId: "cli-intent-1-signal-3",
+        signalKind: "required_evidence",
+        signalValue: "relation_path",
+        confidence: 0.82,
+        routeHint: "link_graph",
+        requiredEvidence: "relation_path",
+        ambiguity: 0.5,
+        weight: 0.75,
+        recommendedLoopBudget: 1,
+        recommendedJudgementBudget: 2,
+        recommendedBeamWidth: 3,
+        reason: "required evidence inferred before LLM judgement",
+      },
     ],
     candidates: [],
     frontier: [
@@ -99,6 +139,16 @@ function sampleTrace(): SearchStrategyFlowTrace {
         rank: 2,
         selected: true,
         finalScore: 0.8,
+        action: "keep",
+        contextBudget: 160,
+        judgementKind: "graph_verified_candidate",
+      },
+      {
+        candidateId:
+          "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
+        rank: 3,
+        selected: true,
+        finalScore: 0.79,
         action: "keep",
         contextBudget: 160,
         judgementKind: "graph_verified_candidate",
@@ -130,13 +180,38 @@ function sampleTrace(): SearchStrategyFlowTrace {
         executeBeforeAnswer: true,
         flightSteps: [],
       },
+      {
+        candidateId:
+          "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
+        materializationOwner: "studio-rust",
+        materializationStatus: "executed",
+        receiptSource: "rust-bridge",
+        primaryTransport: "arrow-flight",
+        sourcePath:
+          "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs",
+        headingAnchor: "search-strategy-flow-link-graph-python-julia-toml",
+        directFileReadAllowed: false,
+        executeBeforeAnswer: true,
+        materializedRows: 3,
+        graphMaterializationStatus: "structured-code-relation-substitute",
+        decodedPayloadReceipts: [
+          {
+            route: "/analysis/graph/neighbors",
+            rowCount: 0,
+            decodedColumns: ["rowType"],
+            evidenceAnchor:
+              "structured-code-relation:node:search-strategy-flow-link-graph-python-julia-toml",
+          },
+        ],
+        flightSteps: [],
+      },
     ],
     summary: {
-      candidateCount: 2,
-      selectedCount: 2,
+      candidateCount: 3,
+      selectedCount: 3,
       plannerActionCount: 0,
-      totalContextCost: 320,
-      selectedContextCost: 320,
+      totalContextCost: 480,
+      selectedContextCost: 480,
       contextReductionRatio: 0,
     },
     validation: {
@@ -145,7 +220,7 @@ function sampleTrace(): SearchStrategyFlowTrace {
       blockedEvidencePruned: true,
       selectedContextReduced: false,
       requiredEvidenceCovered: true,
-      selectedRequiredEvidence: ["ownership_boundary", "validation_path"],
+      selectedRequiredEvidence: ["ownership_boundary", "validation_path", "relation_path"],
       missingRequiredEvidence: [],
     },
   };

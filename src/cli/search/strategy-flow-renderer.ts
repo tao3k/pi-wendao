@@ -175,8 +175,11 @@ function renderBranchContext(branch: SearchStrategyFlowBranchContext): string {
   const resolvedGraphNode = branch.resolvedGraphNodeId
     ? ` resolved_graph_node=${branch.resolvedGraphNodeId}`
     : "";
+  const graphStatus = branch.graphMaterializationStatus
+    ? ` graph_materialization=${branch.graphMaterializationStatus}`
+    : "";
   const derivedHints = renderDerivedHints(branch);
-  return `  - role=${branch.routeRole} selected=${formatBool(branch.selected)} rank=${branch.frontierRank ?? "none"} candidate=${branch.candidateId}${branch.actionKind ? ` action=${branch.actionKind}` : ""}${branch.compareTargetId ? ` compare_target=${branch.compareTargetId}` : ""} purpose=${branch.routePurpose} materialization=${branch.materializationStatus ?? "unknown"}${rows}${resolvedGraphNode}${anchors}${derivedHints}`;
+  return `  - role=${branch.routeRole} selected=${formatBool(branch.selected)} rank=${branch.frontierRank ?? "none"} candidate=${branch.candidateId}${branch.actionKind ? ` action=${branch.actionKind}` : ""}${branch.compareTargetId ? ` compare_target=${branch.compareTargetId}` : ""} purpose=${branch.routePurpose} materialization=${branch.materializationStatus ?? "unknown"}${rows}${resolvedGraphNode}${graphStatus}${anchors}${derivedHints}`;
 }
 
 function renderDerivedHints(branch: SearchStrategyFlowBranchContext): string {

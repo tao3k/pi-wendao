@@ -24,8 +24,8 @@ Flight retrieval routes for materialization.
    reserved for pi-local algorithm smoke tests.
 3. Rust builds a candidate input batch before calling WendaoGraph.jl:
    - `rust-markdown-headings` scans Markdown headings for local smoke tests.
-   - `rust-flight-repo-search` queries `/search/repos/main` when a Flight
-     endpoint and repo id are configured.
+   - `rust-code-intelligence-inventory` reads the configured structured
+     candidate inventory for repository-scale search.
 4. WendaoGraph.jl reduces the candidate graph into a compact frontier and
    planner actions. Candidate ids stay at Markdown section granularity, such as
    `docs/path.md#heading-anchor`.
@@ -54,9 +54,10 @@ the agent layer:
 - `rust-markdown-headings` means the bridge used local section extraction. The
   route plan remains Flight-native, but materialization is expected to be
   `planned` unless a live service was configured.
-- `rust-flight-repo-search` means Rust used the repo search Flight route as the
-  candidate source. With a live service, selected routes can be
-  `materialization=executed` and include row receipts.
+- `rust-code-intelligence-inventory` means Rust used the configured
+  code-intelligence structured candidate surface as the candidate source. With
+  a live service, selected routes can still materialize through Flight and
+  include row receipts.
 
 ## Agent Contract
 
@@ -98,6 +99,19 @@ blocked validation trap, implementation support, and registry metadata intents.
 Normal tests validate the deterministic frontier and blocked-candidate contract;
 live model execution remains opt-in and must still write the same
 `candidate_id<TAB>answer_text` evidence shape.
+
+The pi-wendao precision entry point is:
+
+```bash
+npm run test:search-precision
+```
+
+This command is only a wrapper around WendaoGraph's authoritative Julia gates:
+materialized precision/recall, real-scenario inventory, and stratified
+live-intent shape. `pi-wendao` does not compute precision itself; it produces
+and validates agent evidence. Use `PI_WENDAO_WENDAOGRAPH_DIR` or
+`--wendao-graph <path>` for a different checkout, and `--gate
+materialized_precision` for the focused precision/recall gate.
 
 The configured search denominator is the total structured candidate surface,
 not only the local Markdown replay subset. Rust owns that structured search

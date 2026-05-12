@@ -30,6 +30,7 @@ export interface SearchStrategyFlowBranchContext {
   sourcePath?: SearchStrategyFlowSourcePath;
   headingAnchor?: string;
   resolvedGraphNodeId?: SearchStrategyFlowGraphNodeId;
+  graphMaterializationStatus?: SearchStrategyFlowRetrievalRoute["graphMaterializationStatus"];
   evidenceAnchors: string[];
   derivedHints: SearchStrategyFlowDerivedTraceHints;
 }
@@ -79,6 +80,7 @@ export function buildSearchStrategyFlowBranchContexts(
         sourcePath: route?.sourcePath,
         headingAnchor: route?.headingAnchor,
         resolvedGraphNodeId: route?.resolvedGraphNodeId,
+        graphMaterializationStatus: route?.graphMaterializationStatus,
         evidenceAnchors: evidenceAnchors(route),
         derivedHints: {
           ambiguity: ambiguityHints(trace, role, route, action?.targetCandidateId),
@@ -104,12 +106,7 @@ export function inferSearchStrategyFlowRouteRole(value: string): SearchStrategyF
   ) {
     return "authority";
   }
-  if (
-    normalized.includes("docs/30_search_strategy") ||
-    normalized.includes("search_strategy_flow") ||
-    normalized.includes("search-strategy-flow") ||
-    normalized.includes("searchstrategyflow")
-  ) {
+  if (normalized.includes("docs/30_search_strategy")) {
     return "search_strategy";
   }
   if (
@@ -135,11 +132,22 @@ export function inferSearchStrategyFlowRouteRole(value: string): SearchStrategyF
   }
   if (
     normalized.includes("docs/90_validation") ||
+    normalized.includes("docs/testing") ||
     normalized.includes("validation") ||
+    normalized.includes("package-test") ||
     normalized.includes("verify") ||
     normalized.includes("gate")
   ) {
     return "validation";
+  }
+  if (
+    normalized.includes("search_strategy_flow") ||
+    normalized.includes("search-strategy-flow") ||
+    normalized.includes("searchstrategyflow") ||
+    normalized.includes("strategy-flow") ||
+    normalized.includes("strategy flow")
+  ) {
+    return "search_strategy";
   }
 
   return "general";
@@ -223,11 +231,20 @@ function structuralGaps(
   if (!route?.decodedPayloadReceipts || route.decodedPayloadReceipts.length === 0) {
     gaps.push("missing_decoded_evidence_anchors");
   }
+  if (role === "link_graph" && route?.graphMaterializationStatus === "missing") {
+    gaps.push("missing_link_graph_neighbor_receipt");
+  }
   if (role === "page_index" && !route?.headingAnchor?.includes("reasoning")) {
     gaps.push("page_index_branch_without_reasoning_anchor");
   }
-  if (role === "link_graph" && !route?.headingAnchor?.includes("reasoning-tree")) {
-    gaps.push("link_graph_branch_without_reasoning_tree_anchor");
+  if (
+    role === "link_graph" &&
+    !route?.headingAnchor?.includes("link-graph") &&
+    !route?.headingAnchor?.includes("link_graph") &&
+    !route?.headingAnchor?.includes("linkgraph") &&
+    !route?.headingAnchor?.includes("relation")
+  ) {
+    gaps.push("link_graph_branch_without_relation_anchor");
   }
   if (role === "authority" && !route?.headingAnchor?.includes("ownership")) {
     gaps.push("authority_branch_without_ownership_anchor");
@@ -246,12 +263,21 @@ function probeRecommendations(
   }
   if (route?.resolvedGraphNodeId) {
     actions.push(`expand_neighbors:${route.resolvedGraphNodeId}`);
+  } else if (
+    role !== "link_graph" &&
+    route?.graphMaterializationStatus === "structured-code-relation-substitute"
+  ) {
+    actions.push(`open_structured_relation_context:${route.candidateId}`);
   }
   if (role === "page_index") {
     actions.push(`open_parent_child:${route?.candidateId ?? "selected-page-index-branch"}`);
   }
   if (role === "link_graph") {
-    actions.push(`expand_neighbors:${route?.resolvedGraphNodeId ?? "selected-link-graph-branch"}`);
+    actions.push(
+      route?.graphMaterializationStatus === "structured-code-relation-substitute"
+        ? `open_structured_relation_context:${route?.candidateId ?? "selected-link-graph-branch"}`
+        : `expand_neighbors:${route?.resolvedGraphNodeId ?? "selected-link-graph-branch"}`,
+    );
   }
   if (role === "authority") {
     actions.push(`verify_authority:${route?.candidateId ?? "selected-authority-branch"}`);
@@ -265,22 +291,9 @@ function probeRecommendations(
 function requiredRouteRoles(trace: SearchStrategyFlowTrace): Set<SearchStrategyFlowRouteRole> {
   const roles = new Set<SearchStrategyFlowRouteRole>();
   for (const row of trace.queryUnderstanding ?? []) {
-    addRouteRole(roles, row.routeHint);
     addRequiredEvidenceRole(roles, row.requiredEvidence);
   }
   return roles;
-}
-
-function addRouteRole(roles: Set<SearchStrategyFlowRouteRole>, routeHint: string): void {
-  if (
-    routeHint === "search_strategy" ||
-    routeHint === "authority" ||
-    routeHint === "page_index" ||
-    routeHint === "link_graph" ||
-    routeHint === "validation"
-  ) {
-    roles.add(routeHint);
-  }
 }
 
 function addRequiredEvidenceRole(

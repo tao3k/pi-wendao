@@ -15,6 +15,7 @@
     "test": "vitest run && node scripts/harness-agent-gate.mjs",
     "test:search-live": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"live SearchStrategyFlow\"'",
     "test:search-bridge-smoke": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_SMOKE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"Rust bridge SearchStrategyFlow smoke\"'",
+    "test:search-precision": "jiti src/cli/search/strategy-flow-precision-gate.ts",
     "pi-wendao": "node dist/cli/pi-wendao.js"
   },
   "dependencies": {
