@@ -338,6 +338,10 @@ export function resolvePiWendaoAnthropicEnvAuth(options?: {
 }): { apiKey: string; source: string } | undefined {
   const apiKey = readEnv("ANTHROPIC_API_KEY");
   if (apiKey) return { apiKey, source: "env:ANTHROPIC_API_KEY" };
+  if (isOpenRouterAnthropicGateway()) {
+    const openRouterApiKey = readOpenRouterApiKey();
+    if (openRouterApiKey) return openRouterApiKey;
+  }
   const authToken = readEnv("ANTHROPIC_AUTH_TOKEN");
   const deepseekApiKey = readEnv("DEEPSEEK_API_KEY");
   if (
@@ -358,6 +362,19 @@ export function resolvePiWendaoAnthropicEnvAuth(options?: {
   return undefined;
 }
 
+function readOpenRouterApiKey(): { apiKey: string; source: string } | undefined {
+  for (const name of [
+    "OPENROUTER_API_KEY",
+    "OPENROUTE_API_KEY",
+    "WENDAO_OPENROUTER_API_KEY",
+  ]) {
+    const apiKey = readEnv(name);
+    if (apiKey) return { apiKey, source: `env:${name}` };
+  }
+
+  return undefined;
+}
+
 function readEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value ? value : undefined;
@@ -370,6 +387,16 @@ function isDeepSeekAnthropicGateway(): boolean {
     return new URL(baseUrl).hostname === "api.deepseek.com";
   } catch {
     return baseUrl.includes("api.deepseek.com");
+  }
+}
+
+function isOpenRouterAnthropicGateway(): boolean {
+  const baseUrl = readEnv("ANTHROPIC_BASE_URL");
+  if (!baseUrl) return false;
+  try {
+    return new URL(baseUrl).hostname === "openrouter.ai";
+  } catch {
+    return baseUrl.includes("openrouter.ai");
   }
 }
 

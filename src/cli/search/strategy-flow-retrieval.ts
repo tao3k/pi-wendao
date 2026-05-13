@@ -39,12 +39,14 @@ export function buildSearchStrategyFlowRetrievalRoutes(
       const section = parseMarkdownSectionCandidateId(candidate.candidateId);
       return {
         candidateId: candidate.candidateId as SearchStrategyFlowId,
+        ...(trace.candidateInputSource ? { candidateInputSource: trace.candidateInputSource } : {}),
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
         receiptSource: "local-plan",
         primaryTransport: "arrow-flight",
         sourcePath: section.sourcePath as SearchStrategyFlowSourcePath,
         headingAnchor: section.headingAnchor,
+        evidenceKind: evidenceKind(section),
         directFileReadAllowed: false,
         executeBeforeAnswer: true,
         flightSteps: flightSteps(section),
@@ -141,6 +143,27 @@ function flightSteps(section: {
 
 function resolutionRequirement(value: boolean): SearchStrategyFlowResolutionRequirement {
   return value as SearchStrategyFlowResolutionRequirement;
+}
+
+function evidenceKind(section: { sourcePath: string; headingAnchor?: string }): string {
+  const combined = `${section.sourcePath} ${section.headingAnchor ?? ""}`.toLowerCase();
+  if (combined.includes("page_index") || combined.includes("page-index")) {
+    return "page_index_reasoning_tree";
+  }
+  if (
+    combined.includes("graph_compute") ||
+    combined.includes("link_graph") ||
+    combined.includes("link-graph")
+  ) {
+    return "link_graph_dependency_path";
+  }
+  if (combined.includes("validation")) {
+    return "validation_guard";
+  }
+  if (combined.includes("notebook") || combined.includes("pluto")) {
+    return "notebook_validation_surface";
+  }
+  return "search_strategy_flow_authority";
 }
 
 function sectionQuery(section: { sourcePath: string; headingAnchor?: string }): string {

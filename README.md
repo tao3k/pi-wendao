@@ -163,13 +163,13 @@ trace.
 Options:
 
 - `--wendao-graph <path>` — explicit `WendaoGraph.jl` project path
-- `--search-root <path>` — knowledge root used for candidate context-cost evidence
 - `--search-julia <command>` — Julia executable override
 - `--search-backend <mode>` — `auto`, `rust-julia`, or `julia-direct`
 - `--search-rust-workspace <path>` — optional xiuxian Rust workspace for the Rust bridge
 - `--search-rust-command <command>` — Cargo executable override for the Rust bridge
+- `--search-rust-bridge-bin <path>` — prebuilt `wendaograph_search_strategy_flow` binary; this bypasses `cargo run` while keeping the same Rust bridge contract
+- `--search-rust-bridge-session` — run the Rust bridge through its JSONL stdio session protocol; this requires `--search-flight-base-url`
 - `--search-flight-base-url <url>` — Studio Arrow Flight endpoint consumed by the Rust bridge
-- `--search-flight-repo <repo>` — Wendao repo id for native Flight route execution
 - `--search-flight-timeout-seconds <seconds>` — Rust bridge Flight request timeout
 - `--search-agent` — run a live pi-subagents LLM judgement for planner actions that require an LLM
 - `--search-agent-answer-request <path>` — read a WendaoGraph materialized answer request TSV and write deterministic packet-contract answer evidence
@@ -182,17 +182,29 @@ Options:
 The default `auto` backend treats the Rust-to-Julia bridge as the core path. It
 requires a xiuxian Rust workspace and fails if the Rust bridge is unavailable or
 broken, because pi-wendao should not silently bypass the Rust control plane.
+Use `--search-rust-bridge-bin` or `PI_WENDAO_SEARCH_RUST_BRIDGE_BIN` for
+benchmark runs that should execute an already-built
+`wendaograph_search_strategy_flow` binary instead of measuring `cargo run`
+startup. `--search-rust-command` remains cargo-shaped and is only a cargo
+executable override.
+Use `--search-rust-bridge-session` or `PI_WENDAO_SEARCH_RUST_BRIDGE_SESSION=1`
+for Flight-backed runs that should talk to the bridge through its
+`--serve-stdio` JSONL protocol. A single CLI invocation still pays the initial
+Julia host warmup; longer running callers can keep that bridge process alive
+and reuse the warm host for subsequent intent searches.
 Use `--search-backend julia-direct` only for pi-local bridge smoke tests and
 diagnostics.
 
-The production subagent retrieval path should remain Flight/Rust-owned:
-`pi-wendao` receives the intent and agent trace, the Flight service owns stable
-Arrow routes such as `/search/intent`, `/search/knowledge`,
-`/search/repos/main`, `/graph/neighbors`, and
-`/analysis/repo-projected-page-index-tree`, and
+The production subagent retrieval path should remain backend-owned:
+`pi-wendao` receives the user intent, the query-understanding subagent shapes
+the evidence demand, and WendaoGraph.jl turns that demand into selected route
+evidence. Only after that narrowing step should the runtime call Gateway
+REST/Flight data-plane routes such as `/search/repos/main`,
+`/graph/neighbors`, `/analysis/repo-projected-page-index-tree`, and
 `/analysis/repo-projected-retrieval-context`. SearchStrategyFlow section
-candidate ids are therefore routing evidence for Flight retrieval, not a
-license for pi-wendao to bypass the Rust boundary and read full Markdown files.
+candidate ids are therefore routing evidence for backend retrieval, not a
+public Gateway intent endpoint and not a license for pi-wendao to bypass the
+Rust boundary and read full Markdown files.
 
 For the default DeepSeek model through the Anthropic-compatible API:
 
@@ -247,8 +259,10 @@ npx --no-install pi-wendao --search "find the relevant knowledge boundary" \
 ```
 
 The receipt is written only after the live subagent completes with non-empty
-`intent_understanding`, `branch_decision`, and `judgement` outputs. It emits one
-row per selected frontier candidate using the fixed
+`intent_understanding`, `branch_decision`, `judgement`, and valid
+`branch_judgements` outputs. Accepted branch judgements are fed back into
+WendaoGraph as a generic table before the selected frontier is rendered or
+written. It emits one row per selected frontier candidate using the fixed
 `candidate_id<TAB>answer_text` contract. The receipt is input evidence for the
 WendaoGraph live answer rubric; it is not a production promotion by itself.
 
@@ -305,9 +319,12 @@ Rust service side and the Julia compute service, wait for readiness/prewarm, and
 then drive SearchStrategyFlow through the running service boundary. That gate
 belongs with the Rust/Juila service orchestration contract, not with the fast
 algorithm smoke. First-layer query understanding and judgement keep the
-configured reasoning level because route selection is correctness-sensitive;
-latency work must come from orchestration, caching, compact traces, and later
-branch-level parallelism instead of weakening the first decision. The prompt
+configured reasoning level because route selection is correctness-sensitive.
+The first repair is structured branch judgement: the live subagent returns exact
+candidate-scoped `branch_judgements`, `pi-wendao` validates them, and
+WendaoGraph consumes them during frontier selection. Latency work must come from
+orchestration, caching, compact traces, and later concurrent branch judges
+instead of weakening the first decision. The prompt
 receives the `graph_query_understanding` trace section as hard graph evidence:
 route hints, required evidence, ambiguity, and the applied loop/judgement/beam
 budgets.

@@ -15,6 +15,9 @@ describe("resolveModel", () => {
   const originalOAuthToken = process.env.ANTHROPIC_OAUTH_TOKEN;
   const originalApiKey = process.env.ANTHROPIC_API_KEY;
   const originalDeepSeekApiKey = process.env.DEEPSEEK_API_KEY;
+  const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+  const originalOpenRouteApiKey = process.env.OPENROUTE_API_KEY;
+  const originalWendaoOpenRouterApiKey = process.env.WENDAO_OPENROUTER_API_KEY;
 
   afterEach(() => {
     restoreEnv("ANTHROPIC_BASE_URL", originalBaseUrl);
@@ -22,6 +25,9 @@ describe("resolveModel", () => {
     restoreEnv("ANTHROPIC_OAUTH_TOKEN", originalOAuthToken);
     restoreEnv("ANTHROPIC_API_KEY", originalApiKey);
     restoreEnv("DEEPSEEK_API_KEY", originalDeepSeekApiKey);
+    restoreEnv("OPENROUTER_API_KEY", originalOpenRouterApiKey);
+    restoreEnv("OPENROUTE_API_KEY", originalOpenRouteApiKey);
+    restoreEnv("WENDAO_OPENROUTER_API_KEY", originalWendaoOpenRouterApiKey);
   });
 
   it("uses Claude-compatible Anthropic environment overrides", async () => {
@@ -96,6 +102,22 @@ describe("resolveModel", () => {
     expect(resolvePiWendaoAnthropicEnvAuth()).toEqual({
       apiKey: "deepseek-api-key",
       source: "env:DEEPSEEK_API_KEY",
+    });
+  });
+
+  it("accepts OpenRouter API keys for the Anthropic-compatible messages gateway", () => {
+    process.env.ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
+    process.env.OPENROUTE_API_KEY = "openrouter-api-key";
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.WENDAO_OPENROUTER_API_KEY;
+
+    expect(resolvePiWendaoAnthropicEnvAuth()).toEqual({
+      apiKey: "openrouter-api-key",
+      source: "env:OPENROUTE_API_KEY",
     });
   });
 

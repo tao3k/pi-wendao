@@ -1,6 +1,5 @@
 declare const searchStrategyFlowPathBrand: unique symbol;
 declare const searchStrategyFlowFlightBaseUrlBrand: unique symbol;
-declare const searchStrategyFlowFlightRepoBrand: unique symbol;
 declare const searchStrategyFlowFlightTimeoutSecondsBrand: unique symbol;
 declare const searchStrategyFlowSourcePathBrand: unique symbol;
 declare const searchStrategyFlowPageIdBrand: unique symbol;
@@ -16,9 +15,6 @@ export type SearchStrategyFlowPath = string & {
 };
 export type SearchStrategyFlowFlightBaseUrl = string & {
   readonly [searchStrategyFlowFlightBaseUrlBrand]: "SearchStrategyFlowFlightBaseUrl";
-};
-export type SearchStrategyFlowFlightRepo = string & {
-  readonly [searchStrategyFlowFlightRepoBrand]: "SearchStrategyFlowFlightRepo";
 };
 export type SearchStrategyFlowFlightTimeoutSeconds = number & {
   readonly [searchStrategyFlowFlightTimeoutSecondsBrand]: "SearchStrategyFlowFlightTimeoutSeconds";
@@ -53,21 +49,24 @@ export interface SearchStrategyFlowOptions {
   cwd: string;
   wendaoGraphPath?: SearchStrategyFlowPath;
   juliaCommand?: string;
-  searchRoot?: SearchStrategyFlowPath;
   searchBackend?: SearchStrategyFlowBackend;
   rustWorkspace?: SearchStrategyFlowPath;
   rustCommand?: string;
+  rustBridgeBinary?: SearchStrategyFlowPath;
+  rustBridgeSession?: boolean;
   flightBaseUrl?: SearchStrategyFlowFlightBaseUrl;
-  flightRepo?: SearchStrategyFlowFlightRepo;
   flightTimeoutSeconds?: SearchStrategyFlowFlightTimeoutSeconds;
+  branchJudgements?: SearchStrategyFlowBranchJudgementRow[];
 }
 
 export type SearchStrategyFlowBackend = "auto" | "rust-julia" | "julia-direct";
+export type SearchStrategyFlowRustBridgeMode = "cargo" | "direct-binary" | "persistent-stdio";
 
 export interface SearchStrategyFlowBridgeTrace {
   requestedBackend: SearchStrategyFlowBackend;
   attempted: boolean;
   rustWorkspace?: string;
+  mode?: SearchStrategyFlowRustBridgeMode;
   fallback: "none" | "julia-direct";
   error?: string;
 }
@@ -95,12 +94,14 @@ export interface SearchStrategyFlowTrace {
 
 export interface SearchStrategyFlowRetrievalRoute {
   candidateId: SearchStrategyFlowId;
+  candidateInputSource?: string;
   materializationOwner: "studio-rust";
   materializationStatus: "planned" | "executed";
   receiptSource: "local-plan" | "rust-bridge";
   primaryTransport: "arrow-flight";
   sourcePath: SearchStrategyFlowSourcePath;
   headingAnchor?: string;
+  evidenceKind?: string;
   directFileReadAllowed: false;
   executeBeforeAnswer: true;
   materializedRows?: number;
@@ -154,6 +155,40 @@ export interface SearchStrategyFlowAgentTrace {
   reason?: string;
   events: SearchStrategyFlowAgentEvent[];
   output?: Record<string, unknown>;
+  branchJudgements?: SearchStrategyFlowBranchJudgementRow[];
+  branchJudgementValidation?: SearchStrategyFlowBranchJudgementValidation;
+}
+
+export type SearchStrategyFlowBranchJudgementRole =
+  | "search_strategy"
+  | "authority"
+  | "page_index"
+  | "link_graph"
+  | "validation"
+  | "general";
+
+export type SearchStrategyFlowBranchJudgementDecision =
+  | "keep"
+  | "expand"
+  | "reject"
+  | "prune"
+  | "defer";
+
+export interface SearchStrategyFlowBranchJudgementRow {
+  flowId?: SearchStrategyFlowId;
+  candidateId: string;
+  branchRole: SearchStrategyFlowBranchJudgementRole;
+  judgementScore: number;
+  confidence: number;
+  decision: SearchStrategyFlowBranchJudgementDecision;
+  blocked: boolean;
+  reason: string;
+}
+
+export interface SearchStrategyFlowBranchJudgementValidation {
+  valid: boolean;
+  acceptedCount: number;
+  errors: string[];
 }
 
 export type SearchStrategyFlowAgentEvent =

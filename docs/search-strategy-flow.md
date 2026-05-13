@@ -9,6 +9,9 @@ Flight retrieval routes for materialization.
 
 - `pi-wendao` owns the agent-facing CLI, optional live LLM judgement, and
   subagent interaction rendering.
+- The query-understanding subagent owns the intent-to-required-evidence
+  handoff. It decides what the graph must prove before any backend route is
+  worth executing.
 - The xiuxian Rust bridge owns the control plane: candidate-source selection,
   process launch, Flight endpoint configuration, route receipts, and failure
   boundaries.
@@ -33,7 +36,10 @@ Flight retrieval routes for materialization.
    branches before score-only filling. `ownership_boundary` maps to authority,
    `validation_path` maps to validation, `relation_path` maps to link graph,
    and `page_index_seed` maps to page index.
-5. Rust maps selected candidates to Flight-native materialization routes:
+5. Rust maps selected candidates to backend materialization routes. This is the
+   correct place to call Gateway REST/Flight data-plane surfaces: after
+   `pi-wendao` query understanding and WendaoGraph.jl frontier selection, not
+   as a public `/api/search/strategy-flow` intent route.
    `/search/repos/main`,
    `/analysis/repo-projected-page-index-tree`,
    `/analysis/repo-projected-retrieval-context`, and `/graph/neighbors`.
@@ -122,14 +128,18 @@ the full `2818`-candidate inventory.
 
 ## Live Answer Evidence Receipt
 
-The live subagent output is still advisory until WendaoGraph validates it. Use
-`--search-agent-answer-evidence <path>` with `--search-agent` to write the
+The live subagent output is structured before it can affect graph selection.
+`pi-wendao` requires `branch_judgements` rows keyed by exact frontier candidate
+ids, validates each row, and feeds accepted rows back into WendaoGraph as the
+generic `branch_judgements` table for a second frontier pass. Natural-language
+`branch_decision` text is rendered for humans only.
+
+Use `--search-agent-answer-evidence <path>` with `--search-agent` to write the
 receipt boundary explicitly:
 
 ```bash
 npx --no-install pi-wendao --search "query understanding reasoning tree page index search strategy flow" \
   --wendao-graph ../WendaoGraph.jl \
-  --search-root ../WendaoGraph.jl \
   --search-agent \
   --search-agent-answer-evidence ./search-strategy-flow-answer-evidence.tsv \
   --no-graph
@@ -142,10 +152,11 @@ candidate_id	answer_text
 docs/path.md#heading	candidate_id=docs/path.md#heading; ... judgement=...
 ```
 
-`pi-wendao` writes one row per selected frontier candidate. It refuses to write
-the file unless the live subagent completed and returned non-empty
-`intent_understanding`, `branch_decision`, and `judgement` outputs. This keeps
-the evidence path compatible with the WendaoGraph live answer rubric while
+`pi-wendao` writes one row per selected frontier candidate from the graph trace
+after accepted branch judgements have been applied. It refuses to write the file
+unless the live subagent completed with non-empty `intent_understanding`,
+`branch_decision`, `judgement`, and valid `branch_judgements` outputs. This
+keeps the evidence path compatible with the WendaoGraph live answer rubric while
 preserving the rule that the LLM does not own graph truth.
 
 For the materialized scale gate, `pi-wendao` can also consume a request TSV
@@ -199,10 +210,43 @@ Use a local smoke for the Rust bridge without requiring a live Flight service:
 ```bash
 npx --no-install pi-wendao --search "query understanding reasoning tree page index search strategy flow" \
   --wendao-graph ../WendaoGraph.jl \
-  --search-root ../WendaoGraph.jl \
   --search-rust-workspace ../.. \
   --no-graph
 ```
 
 That smoke should report `backend: rust-wendao-julia`,
 `candidate_input_source: rust-markdown-headings`, and planned Flight routes.
+
+For benchmark runs that should exclude cargo startup, build the Rust binary
+once and pass it directly:
+
+```bash
+npx --no-install pi-wendao --search "query understanding reasoning tree page index search strategy flow" \
+  --wendao-graph ../WendaoGraph.jl \
+  --search-rust-workspace ../.. \
+  --search-rust-bridge-bin ../../target/debug/wendaograph_search_strategy_flow \
+  --no-graph
+```
+
+The direct-binary path uses the same Rust bridge and Flight route contract as
+cargo mode. It only changes process launch shape: `pi-wendao` invokes the
+prebuilt bridge with native bridge arguments rather than `cargo run ... --bin
+wendaograph_search_strategy_flow -- ...`.
+
+For Flight-backed sessions that should use the Rust bridge JSONL session
+protocol, enable the explicit session flag and pass a Flight endpoint:
+
+```bash
+npx --no-install pi-wendao --search "query understanding reasoning tree page index search strategy flow" \
+  --wendao-graph ../WendaoGraph.jl \
+  --search-rust-workspace ../.. \
+  --search-rust-bridge-bin ../../target/debug/wendaograph_search_strategy_flow \
+  --search-rust-bridge-session \
+  --search-flight-base-url http://127.0.0.1:50052 \
+  --no-graph
+```
+
+The session flag calls the bridge with `--serve-stdio` and sends the intent as a
+JSONL request. The CLI closes the session after the command completes; longer
+running shells or backend-owned adapters can keep the same process alive and
+avoid repeating the Julia host warmup.

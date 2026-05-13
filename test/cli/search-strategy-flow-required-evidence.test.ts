@@ -59,8 +59,71 @@ describe("SearchStrategyFlow required evidence trace", () => {
     });
     expect(compact.frontierBranches).toContainEqual(
       expect.objectContaining({
+        source: "frontier",
         role: "link_graph",
         graphMaterializationStatus: "structured-code-relation-substitute",
+      }),
+    );
+    expect(compact.frontierBranches).toContainEqual(
+      expect.objectContaining({
+        id: "docs/rfcs/2026-05-04-polyglot-compute-orchestrator-rfc.md#boundary-calibration",
+        source: "candidate_pool",
+        selected: false,
+      }),
+    );
+    expect(compact).not.toHaveProperty("candidates");
+    expect(compact).not.toHaveProperty("retrievalRoutes");
+    expect(compact).toMatchObject({
+      candidateSummary: {
+        candidateInputSource: "rust-code-intelligence-inventory",
+        candidateInputCount: 4,
+        frontierCount: 3,
+        selectedCount: 3,
+      },
+    });
+  });
+
+  it("keeps high-overlap candidate-pool rows visible under the agent cap", () => {
+    const trace = sampleTrace();
+    trace.intent =
+      "Find the Markdown roadmap explaining projected documentation pages, page index, and graph-enhanced retrieval.";
+    trace.candidates = [
+      ...Array.from({ length: 24 }, (_, index) => ({
+        candidateId: `docs/generated/noise-${index}.md#generic-supporting-note`,
+        action: "keep",
+        reason: "candidate pool row not selected by the deterministic frontier",
+        finalScore: 0.9 - index * 0.001,
+        evidenceCoverage: 0.8,
+        graphScore: 0.8,
+        authorityScore: 0.7,
+        semanticScore: 0.7,
+        structuralScore: 0.7,
+        contextCost: 120,
+        blocked: false,
+      })),
+      {
+        candidateId:
+          "packages/rust/crates/xiuxian-wendao/docs/06_roadmap/403_document_projection_and_retrieval_enhancement.md#run-retrieval-over-both-repository-records-and-projected-documentation-pages",
+        action: "keep",
+        reason: "candidate pool row not selected by the deterministic frontier",
+        finalScore: 0.42,
+        evidenceCoverage: 0.5,
+        graphScore: 0.5,
+        authorityScore: 0.4,
+        semanticScore: 0.4,
+        structuralScore: 0.4,
+        contextCost: 120,
+        blocked: false,
+      },
+    ];
+
+    const compact = compactSearchStrategyFlowTraceForAgent(trace);
+    const branches = compact.frontierBranches as Array<Record<string, unknown>>;
+
+    expect(branches).toContainEqual(
+      expect.objectContaining({
+        id: "packages/rust/crates/xiuxian-wendao/docs/06_roadmap/403_document_projection_and_retrieval_enhancement.md#run-retrieval-over-both-repository-records-and-projected-documentation-pages",
+        source: "candidate_pool",
       }),
     );
   });
@@ -72,6 +135,8 @@ function sampleTrace(): SearchStrategyFlowTrace {
     backend: "wendao-graph-julia",
     graphProject: "/tmp/WendaoGraph.jl",
     searchRoot: "/tmp/WendaoGraph.jl",
+    candidateInputSource: "rust-code-intelligence-inventory",
+    candidateInputCount: 4,
     stageReceipts: [],
     queryUnderstanding: [
       {
@@ -123,7 +188,22 @@ function sampleTrace(): SearchStrategyFlowTrace {
         reason: "required evidence inferred before LLM judgement",
       },
     ],
-    candidates: [],
+    candidates: [
+      {
+        candidateId:
+          "docs/rfcs/2026-05-04-polyglot-compute-orchestrator-rfc.md#boundary-calibration",
+        action: "keep",
+        reason: "candidate pool row not selected by the deterministic frontier",
+        finalScore: 0.77,
+        evidenceCoverage: 0.8,
+        graphScore: 0.75,
+        authorityScore: 0.74,
+        semanticScore: 0.7,
+        structuralScore: 0.72,
+        contextCost: 180,
+        blocked: false,
+      },
+    ],
     frontier: [
       {
         candidateId: "docs/30_search_strategy/30.01_search_strategy_flow.md#ownership-boundary",

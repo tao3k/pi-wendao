@@ -3,6 +3,7 @@ using WendaoGraph
 
 intent = ARGS[1]
 search_root = ARGS[2]
+branch_judgements_tsv = length(ARGS) >= 6 ? ARGS[6] : ""
 
 function json_escape(value)
     text = string(value)
@@ -33,6 +34,63 @@ end
 
 function json_pair(name, raw_value)
     "$(json_escape(name)):$(raw_value)"
+end
+
+function unescape_strategy_flow_field(value)
+    buffer = IOBuffer()
+    escaped = false
+    for char in value
+        if escaped
+            if char == 't'
+                print(buffer, '\t')
+            elseif char == 'n'
+                print(buffer, '\n')
+            elseif char == 'r'
+                print(buffer, '\r')
+            elseif char == '\\'
+                print(buffer, '\\')
+            else
+                print(buffer, char)
+            end
+            escaped = false
+        elseif char == '\\'
+            escaped = true
+        else
+            print(buffer, char)
+        end
+    end
+    escaped && print(buffer, '\\')
+    String(take!(buffer))
+end
+
+function parse_strategy_flow_bool(value)
+    normalized = lowercase(strip(value))
+    normalized == "true" && return true
+    normalized == "false" && return false
+    error("invalid SearchStrategyFlow bool: $value")
+end
+
+function parse_branch_judgements(payload)
+    rows = NamedTuple[]
+    isempty(strip(payload)) && return rows
+    for (line_number, line) in enumerate(split(payload, '\n'; keepempty=false))
+        fields = split(line, '\t'; keepempty=true)
+        length(fields) == 8 || error("branch judgement TSV row $line_number expected 8 fields, got $(length(fields))")
+        push!(
+            rows,
+            (
+                flow_id = unescape_strategy_flow_field(fields[1]),
+                candidate_id = unescape_strategy_flow_field(fields[2]),
+                branch_role = unescape_strategy_flow_field(fields[3]),
+                judgement_score = parse(Float64, fields[4]),
+                confidence = parse(Float64, fields[5]),
+                decision = unescape_strategy_flow_field(fields[6]),
+                blocked = parse_strategy_flow_bool(fields[7]),
+                reason = unescape_strategy_flow_field(fields[8]),
+            ),
+        )
+    end
+    rows
 end
 
 function split_candidate_id(candidate_id)
@@ -199,14 +257,16 @@ rows = strategy_flow_candidate_rows(
     query_understanding = query_understanding,
 )
 transitions = strategy_flow_transition_rows(rows; flow_id = flow_id)
+branch_judgements = parse_branch_judgements(branch_judgements_tsv)
 frontier = strategy_flow_frontier_rows(
     rows;
     flow_id = flow_id,
     beam_width = strategy_budget.beam_width,
-    context_budget = 1900,
+    context_budget = 4096,
     query_understanding = query_understanding,
+    branch_judgements = branch_judgements,
 )
-required_evidence_coverage = strategy_flow_required_evidence_coverage(frontier, query_understanding)
+required_evidence_coverage = strategy_flow_required_evidence_coverage(frontier, query_understanding; branch_judgements = branch_judgements)
 actions = strategy_flow_planner_action_rows(
     rows,
     transitions,

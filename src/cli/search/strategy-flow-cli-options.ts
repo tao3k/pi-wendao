@@ -2,7 +2,6 @@ import { resolve as resolvePath } from "node:path";
 import type {
   SearchStrategyFlowBackend,
   SearchStrategyFlowFlightBaseUrl,
-  SearchStrategyFlowFlightRepo,
   SearchStrategyFlowFlightTimeoutSeconds,
   SearchStrategyFlowOptions,
   SearchStrategyFlowPath,
@@ -12,13 +11,13 @@ export interface SearchStrategyFlowCliInput {
   intent: string;
   cwd: string;
   wendaoGraph?: string;
-  searchRoot?: string;
   searchJulia?: string;
   searchBackend?: string;
   searchRustWorkspace?: string;
   searchRustCommand?: string;
+  searchRustBridgeBin?: string;
+  searchRustBridgeSession?: boolean;
   searchFlightBaseUrl?: string;
-  searchFlightRepo?: string;
   searchFlightTimeoutSeconds?: number;
 }
 
@@ -29,13 +28,13 @@ export function resolveSearchStrategyFlowCliOptions(
     intent: input.intent,
     cwd: input.cwd,
     wendaoGraphPath: resolveOptionalSearchStrategyFlowPath(input.cwd, input.wendaoGraph),
-    searchRoot: resolveOptionalSearchStrategyFlowPath(input.cwd, input.searchRoot),
     juliaCommand: input.searchJulia,
     searchBackend: resolveSearchBackend(input.searchBackend),
     rustWorkspace: resolveOptionalSearchStrategyFlowPath(input.cwd, input.searchRustWorkspace),
     rustCommand: input.searchRustCommand,
+    rustBridgeBinary: resolveOptionalSearchStrategyFlowPath(input.cwd, input.searchRustBridgeBin),
+    rustBridgeSession: input.searchRustBridgeSession,
     flightBaseUrl: asSearchStrategyFlowFlightBaseUrl(input.searchFlightBaseUrl),
-    flightRepo: asSearchStrategyFlowFlightRepo(input.searchFlightRepo),
     flightTimeoutSeconds: asSearchStrategyFlowFlightTimeoutSeconds(
       input.searchFlightTimeoutSeconds,
     ),
@@ -53,12 +52,6 @@ function asSearchStrategyFlowFlightBaseUrl(
   value: string | undefined,
 ): SearchStrategyFlowFlightBaseUrl | undefined {
   return value as SearchStrategyFlowFlightBaseUrl | undefined;
-}
-
-function asSearchStrategyFlowFlightRepo(
-  value: string | undefined,
-): SearchStrategyFlowFlightRepo | undefined {
-  return value as SearchStrategyFlowFlightRepo | undefined;
 }
 
 function asSearchStrategyFlowFlightTimeoutSeconds(

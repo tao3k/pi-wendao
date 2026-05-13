@@ -18,6 +18,7 @@ export type SearchStrategyFlowRouteRole =
 
 export interface SearchStrategyFlowBranchContext {
   candidateId: SearchStrategyFlowId;
+  branchSource: "frontier" | "candidate_pool";
   routeRole: SearchStrategyFlowRouteRole;
   routePurpose: string;
   selected: boolean;
@@ -25,6 +26,9 @@ export interface SearchStrategyFlowBranchContext {
   judgementKind?: string;
   actionKind?: string;
   compareTargetId?: SearchStrategyFlowId;
+  finalScore?: number;
+  contextCost?: number;
+  blocked?: boolean;
   materializationStatus?: SearchStrategyFlowRetrievalRoute["materializationStatus"];
   materializedRows?: number;
   sourcePath?: SearchStrategyFlowSourcePath;
@@ -55,8 +59,7 @@ export function buildSearchStrategyFlowBranchContexts(
       .filter((action) => action.actionKind !== "stop")
       .map((action) => [action.candidateId, action]),
   );
-
-  return trace.frontier
+  const contexts: SearchStrategyFlowBranchContext[] = trace.frontier
     .filter((row) => row.selected || actionByCandidate.has(row.candidateId))
     .map((row) => {
       const route = retrievalByCandidate.get(row.candidateId);
@@ -66,6 +69,7 @@ export function buildSearchStrategyFlowBranchContexts(
       );
       return {
         candidateId: row.candidateId as SearchStrategyFlowId,
+        branchSource: "frontier" as const,
         routeRole: role,
         routePurpose: routePurpose(role),
         selected: row.selected,
@@ -75,6 +79,8 @@ export function buildSearchStrategyFlowBranchContexts(
         compareTargetId: (action?.targetCandidateId || undefined) as
           | SearchStrategyFlowId
           | undefined,
+        finalScore: row.finalScore,
+        contextCost: row.contextBudget,
         materializationStatus: route?.materializationStatus,
         materializedRows: route?.materializedRows,
         sourcePath: route?.sourcePath,
@@ -89,6 +95,42 @@ export function buildSearchStrategyFlowBranchContexts(
         },
       };
     });
+  const seen = new Set(contexts.map((context) => context.candidateId));
+  for (const candidate of trace.candidates) {
+    if (seen.has(candidate.candidateId as SearchStrategyFlowId)) continue;
+    const role = inferSearchStrategyFlowRouteRole(candidate.candidateId);
+    const source = splitCandidateId(candidate.candidateId);
+    contexts.push({
+      candidateId: candidate.candidateId as SearchStrategyFlowId,
+      branchSource: "candidate_pool",
+      routeRole: role,
+      routePurpose: routePurpose(role),
+      selected: false,
+      actionKind: candidate.action,
+      finalScore: candidate.finalScore,
+      contextCost: candidate.contextCost,
+      blocked: candidate.blocked,
+      sourcePath: source.sourcePath as SearchStrategyFlowSourcePath,
+      headingAnchor: source.headingAnchor,
+      evidenceAnchors: [],
+      derivedHints: {
+        ambiguity: ambiguityHints(trace, role, undefined, undefined),
+        structuralGaps: structuralGaps(trace, role, undefined),
+        probeRecommendations: probeRecommendations(role, undefined, undefined),
+      },
+    });
+    seen.add(candidate.candidateId as SearchStrategyFlowId);
+  }
+
+  return contexts;
+}
+
+function splitCandidateId(candidateId: string): {
+  sourcePath: string;
+  headingAnchor?: string;
+} {
+  const [sourcePath, headingAnchor] = candidateId.split("#", 2);
+  return { sourcePath: sourcePath ?? candidateId, headingAnchor };
 }
 
 export function inferSearchStrategyFlowRouteRole(value: string): SearchStrategyFlowRouteRole {

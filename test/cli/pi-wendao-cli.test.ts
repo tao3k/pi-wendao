@@ -92,8 +92,6 @@ describe("pi-wendao CLI", () => {
         "find SearchStrategyFlow owner and validation",
         "--wendao-graph",
         graphProject,
-        "--search-root",
-        graphProject,
         "--search-julia",
         fakeJuliaPath,
         "--search-backend",
@@ -176,8 +174,6 @@ describe("pi-wendao CLI", () => {
         "find SearchStrategyFlow owner through Rust",
         "--wendao-graph",
         graphProject,
-        "--search-root",
-        graphProject,
         "--search-rust-workspace",
         rustWorkspace,
         "--search-rust-command",
@@ -215,6 +211,123 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("execute_before_answer=yes");
   }, 20_000);
 
+  it("runs a prebuilt Rust SearchStrategyFlow bridge binary without cargo arguments", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-bin-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
+    const fakeBridgePath = join(dir, "wendaograph_search_strategy_flow");
+    const argsPath = join(dir, "bridge-args.json");
+    writeSearchProjectFixture(graphProject, rustWorkspace);
+    writeFakeCargoSearch(fakeBridgePath, argsPath);
+    chmodSync(fakeBridgePath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner through direct Rust bridge",
+        "--wendao-graph",
+        graphProject,
+        "--search-rust-workspace",
+        rustWorkspace,
+        "--search-rust-bridge-bin",
+        fakeBridgePath,
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+    const bridgeArgs = JSON.parse(readFileSync(argsPath, "utf-8")) as string[];
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("mode: direct-binary");
+    expect(output).toContain("fallback: none");
+    expect(bridgeArgs).toEqual([
+      "--intent",
+      "find SearchStrategyFlow owner through direct Rust bridge",
+    ]);
+    expect(bridgeArgs).not.toContain("run");
+    expect(bridgeArgs).not.toContain("--bin");
+    expect(bridgeArgs).not.toContain("wendaograph_search_strategy_flow");
+  }, 20_000);
+
+  it("runs the Rust SearchStrategyFlow bridge through the stdio session protocol", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-session-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
+    const fakeBridgePath = join(dir, "wendaograph_search_strategy_flow");
+    const argsPath = join(dir, "bridge-args.json");
+    writeSearchProjectFixture(graphProject, rustWorkspace);
+    writeFakeCargoSearch(fakeBridgePath, argsPath);
+    chmodSync(fakeBridgePath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner through Rust bridge session",
+        "--wendao-graph",
+        graphProject,
+        "--search-rust-workspace",
+        rustWorkspace,
+        "--search-rust-bridge-bin",
+        fakeBridgePath,
+        "--search-rust-bridge-session",
+        "--search-flight-base-url",
+        "http://127.0.0.1:50051",
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+    const bridgeArgs = JSON.parse(readFileSync(argsPath, "utf-8")) as string[];
+
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("mode: persistent-stdio");
+    expect(output).toContain("fallback: none");
+    expect(output).toContain("materialization=executed rows=4");
+    expect(bridgeArgs).toEqual([
+      "--flight-base-url",
+      "http://127.0.0.1:50051",
+      "--serve-stdio",
+    ]);
+  }, 20_000);
+
+  it("requires Flight config for the Rust SearchStrategyFlow bridge session", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-session-no-flight-"));
+    tempDirs.push(dir);
+    const graphProject = join(dir, "WendaoGraph.jl");
+    const rustWorkspace = join(dir, "xiuxian-artisan-workshop");
+    const fakeBridgePath = join(dir, "wendaograph_search_strategy_flow");
+    writeSearchProjectFixture(graphProject, rustWorkspace);
+    writeFakeCargoSearch(fakeBridgePath);
+    chmodSync(fakeBridgePath, 0o755);
+
+    const result = await runPiWendaoCli(
+      [
+        "--search",
+        "find SearchStrategyFlow owner through Rust bridge session",
+        "--wendao-graph",
+        graphProject,
+        "--search-rust-workspace",
+        rustWorkspace,
+        "--search-rust-bridge-bin",
+        fakeBridgePath,
+        "--search-rust-bridge-session",
+        "--no-graph",
+      ],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain(
+      "--search-rust-bridge-session requires --search-flight-base-url",
+    );
+  }, 20_000);
+
   it("requires --search-agent before writing SearchStrategyFlow answer evidence", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-agent-evidence-"));
     tempDirs.push(dir);
@@ -234,8 +347,6 @@ describe("pi-wendao CLI", () => {
         "--search",
         "find SearchStrategyFlow owner and validation",
         "--wendao-graph",
-        graphProject,
-        "--search-root",
         graphProject,
         "--search-julia",
         fakeJuliaPath,
@@ -398,16 +509,12 @@ describe("pi-wendao CLI", () => {
         "find SearchStrategyFlow owner through Rust Flight",
         "--wendao-graph",
         graphProject,
-        "--search-root",
-        graphProject,
         "--search-rust-workspace",
         rustWorkspace,
         "--search-rust-command",
         fakeCargoPath,
         "--search-flight-base-url",
         "http://127.0.0.1:50051",
-        "--search-flight-repo",
-        "docs-fixture",
         "--search-flight-timeout-seconds",
         "7",
         "--no-graph",
@@ -453,8 +560,6 @@ describe("pi-wendao CLI", () => {
         "find SearchStrategyFlow owner through env Rust Flight",
         "--wendao-graph",
         graphProject,
-        "--search-root",
-        graphProject,
         "--search-rust-workspace",
         rustWorkspace,
         "--search-rust-command",
@@ -465,7 +570,6 @@ describe("pi-wendao CLI", () => {
       {
         env: {
           PI_WENDAO_SEARCH_FLIGHT_BASE_URL: "http://127.0.0.1:50051",
-          PI_WENDAO_SEARCH_FLIGHT_REPO: "docs-fixture",
         },
       },
     );
@@ -503,8 +607,6 @@ describe("pi-wendao CLI", () => {
         "find SearchStrategyFlow owner through Rust",
         "--wendao-graph",
         graphProject,
-        "--search-root",
-        graphProject,
         "--search-rust-workspace",
         rustWorkspace,
         "--search-rust-command",
@@ -530,8 +632,6 @@ describe("pi-wendao CLI", () => {
         "--search",
         "find the SearchStrategyFlow ownership boundary and validation path",
         "--wendao-graph",
-        liveWendaoGraphProject,
-        "--search-root",
         liveWendaoGraphProject,
         "--search-backend",
         "julia-direct",
@@ -572,8 +672,6 @@ describe("pi-wendao CLI", () => {
         "--search",
         "find the SearchStrategyFlow ownership boundary and validation path",
         "--wendao-graph",
-        liveWendaoGraphProject,
-        "--search-root",
         liveWendaoGraphProject,
         "--search-rust-workspace",
         liveRustWorkspace,
@@ -626,7 +724,7 @@ function runPiWendaoCli(
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
       reject(new Error("pi-wendao CLI test timed out"));
-    }, options.timeoutMs ?? 15_000);
+    }, options.timeoutMs ?? 20_000);
     child.stdout.setEncoding("utf-8");
     child.stderr.setEncoding("utf-8");
     child.stdout.on("data", (chunk) => {
@@ -739,11 +837,13 @@ function writeFakeJuliaSearch(path: string): void {
   writeFileSync(
     path,
     `#!/usr/bin/env node
+const evalIndex = process.argv.indexOf("-e");
+const juliaArgs = evalIndex >= 0 ? process.argv.slice(evalIndex + 2) : process.argv.slice(2);
 console.log(JSON.stringify({
-  intent: process.argv[process.argv.length - 2],
+  intent: juliaArgs[0],
   backend: "wendao-graph-julia",
   graphProject: "fake/WendaoGraph.jl",
-  searchRoot: process.argv[process.argv.length - 1],
+  searchRoot: juliaArgs[1],
   candidates: [
     {
       candidateId: "${searchStrategySectionCandidate}",
@@ -834,25 +934,25 @@ console.log(JSON.stringify({
   );
 }
 
-function writeFakeCargoSearch(path: string): void {
+function writeFakeCargoSearch(path: string, argsRecordPath?: string): void {
   writeFileSync(
     path,
     `#!/usr/bin/env node
-const hasFlightBaseUrl = process.argv.includes("--flight-base-url");
-const hasFlightRepo = process.argv.includes("--flight-repo");
-if (hasFlightBaseUrl !== hasFlightRepo) {
-  console.error("missing paired Flight endpoint configuration");
-  process.exit(64);
+const argsRecordPath = ${JSON.stringify(argsRecordPath ?? "")};
+if (argsRecordPath) {
+  require("node:fs").writeFileSync(argsRecordPath, JSON.stringify(process.argv.slice(2)), "utf-8");
 }
-console.log(JSON.stringify({
-  intent: process.argv[process.argv.indexOf("--intent") + 1],
+const hasFlightBaseUrl = process.argv.includes("--flight-base-url");
+const isStdioSession = process.argv.includes("--serve-stdio");
+const buildTrace = (intent) => ({
+  intent,
   backend: "rust-wendao-julia",
   controlPlane: "rust",
   candidateInputSource: hasFlightBaseUrl ? "rust-code-intelligence-inventory" : "rust-markdown-headings",
   candidateInputCount: 1,
   juliaProject: process.env.WENDAOGRAPH_PACKAGE_DIR,
   graphProject: process.env.WENDAOGRAPH_PACKAGE_DIR,
-  searchRoot: process.argv[process.argv.indexOf("--search-root") + 1],
+  searchRoot: process.cwd(),
   candidates: [
     {
       candidateId: "${searchStrategySectionCandidate}",
@@ -1025,7 +1125,28 @@ console.log(JSON.stringify({
     blockedEvidencePruned: true,
     selectedContextReduced: true
   }
-}));
+});
+if (isStdioSession) {
+  let body = "";
+  process.stdin.setEncoding("utf-8");
+  process.stdin.on("data", (chunk) => {
+    body += chunk;
+  });
+  process.stdin.on("end", () => {
+    for (const line of body.trim().split(/\\r?\\n/).filter(Boolean)) {
+      const request = JSON.parse(line);
+      console.log(JSON.stringify({
+        kind: "xiuxian_wendao.wendaograph.search_strategy_flow.persistent_stdio_response.v1",
+        requestId: request.requestId,
+        ok: true,
+        elapsedMs: 1.5,
+        trace: buildTrace(request.intent)
+      }));
+    }
+  });
+} else {
+  console.log(JSON.stringify(buildTrace(process.argv[process.argv.indexOf("--intent") + 1])));
+}
 `,
     "utf-8",
   );

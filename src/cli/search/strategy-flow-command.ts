@@ -13,13 +13,13 @@ interface SearchStrategyFlowCommandOptions {
   intent: string;
   cwd: string;
   wendaoGraph?: string;
-  searchRoot?: string;
   searchJulia?: string;
   searchBackend?: string;
   searchRustWorkspace?: string;
   searchRustCommand?: string;
+  searchRustBridgeBin?: string;
+  searchRustBridgeSession?: boolean;
   searchFlightBaseUrl?: string;
-  searchFlightRepo?: string;
   searchFlightTimeoutSeconds?: number;
   searchAgent?: boolean;
   searchAgentAnswerRequest?: string;
@@ -126,19 +126,20 @@ async function runLiveRequestAnswer(
 }
 
 async function runSearchTraceCommand(options: SearchStrategyFlowCommandOptions): Promise<void> {
-  const trace = await runSearchStrategyFlow(resolveSearchStrategyFlowCliOptions({
+  const baseOptions = resolveSearchStrategyFlowCliOptions({
     intent: options.intent,
     cwd: options.cwd,
     wendaoGraph: options.wendaoGraph,
-    searchRoot: options.searchRoot,
     searchJulia: options.searchJulia,
     searchBackend: options.searchBackend,
     searchRustWorkspace: options.searchRustWorkspace,
     searchRustCommand: options.searchRustCommand,
+    searchRustBridgeBin: options.searchRustBridgeBin,
+    searchRustBridgeSession: options.searchRustBridgeSession,
     searchFlightBaseUrl: options.searchFlightBaseUrl,
-    searchFlightRepo: options.searchFlightRepo,
     searchFlightTimeoutSeconds: options.searchFlightTimeoutSeconds,
-  }));
+  });
+  const trace = await runSearchStrategyFlow(baseOptions);
   const agentTrace =
     options.searchAgent === true
       ? await runSearchStrategyFlowAgentTrace({
@@ -151,14 +152,24 @@ async function runSearchTraceCommand(options: SearchStrategyFlowCommandOptions):
           extensionPaths: options.extensionPaths,
         })
       : undefined;
+  const renderedTrace =
+    agentTrace?.status === "completed" &&
+    agentTrace.branchJudgements &&
+    agentTrace.branchJudgements.length > 0
+      ? await runSearchStrategyFlow({
+          ...baseOptions,
+          branchJudgements: agentTrace.branchJudgements,
+        })
+      : trace;
   if (options.searchAgentAnswerEvidence) {
     if (options.searchAgent !== true) {
       throw new Error("--search-agent-answer-evidence requires --search-agent");
     }
     const evidence = writeSearchStrategyFlowAgentAnswerEvidence(
       resolvePath(options.cwd, options.searchAgentAnswerEvidence),
-      trace,
+      renderedTrace,
       agentTrace,
+      trace,
     );
     if (!options.searchJson) {
       console.error(
@@ -166,9 +177,16 @@ async function runSearchTraceCommand(options: SearchStrategyFlowCommandOptions):
       );
     }
   }
-  console.log(
+  await writeSearchStrategyFlowCommandStdout(
     options.searchJson
-      ? `${JSON.stringify(agentTrace ? { ...trace, agentTrace } : trace, null, 2)}\n`
-      : renderSearchStrategyFlowTrace(trace, agentTrace),
+      ? `${JSON.stringify(agentTrace ? { ...renderedTrace, agentTrace } : renderedTrace, null, 2)}\n`
+      : `${renderSearchStrategyFlowTrace(renderedTrace, agentTrace)}\n`,
   );
+}
+
+async function writeSearchStrategyFlowCommandStdout(text: string): Promise<void> {
+  if (process.stdout.write(text)) return;
+  await new Promise<void>((resolve) => {
+    process.stdout.once("drain", resolve);
+  });
 }

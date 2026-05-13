@@ -1,6 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type { SearchStrategyFlowOptions } from "./strategy-flow-types.js";
+import type {
+  SearchStrategyFlowOptions,
+  SearchStrategyFlowRustBridgeMode,
+} from "./strategy-flow-types.js";
 
 export function resolveWendaoGraphProject(options: SearchStrategyFlowOptions): string {
   const explicit = options.wendaoGraphPath ?? process.env.WENDAO_GRAPH_JL_PATH;
@@ -32,12 +35,20 @@ export function resolveWendaoRustWorkspace(options: SearchStrategyFlowOptions): 
 export function resolveRustBridgeCommand(
   rustWorkspace: string,
   cargoCommand: string | undefined,
-): { command: string; prefixArgs: string[] } {
-  if (cargoCommand) return { command: cargoCommand, prefixArgs: [] };
-  if (existsSync(join(rustWorkspace, ".envrc"))) {
-    return { command: "direnv", prefixArgs: ["exec", rustWorkspace, "cargo"] };
+  bridgeBinaryPath: string | undefined,
+): { command: string; prefixArgs: string[]; mode: SearchStrategyFlowRustBridgeMode } {
+  if (bridgeBinaryPath) {
+    return {
+      command: requireRustBridgeBinary(resolve(bridgeBinaryPath)),
+      prefixArgs: [],
+      mode: "direct-binary",
+    };
   }
-  return { command: "cargo", prefixArgs: [] };
+  if (cargoCommand) return { command: cargoCommand, prefixArgs: [], mode: "cargo" };
+  if (existsSync(join(rustWorkspace, ".envrc"))) {
+    return { command: "direnv", prefixArgs: ["exec", rustWorkspace, "cargo"], mode: "cargo" };
+  }
+  return { command: "cargo", prefixArgs: [], mode: "cargo" };
 }
 
 function requireWendaoGraphProject(path: string): string {
@@ -54,6 +65,15 @@ function isWendaoGraphProject(path: string): boolean {
 function requireWendaoRustWorkspace(path: string): string {
   if (isWendaoRustWorkspace(path)) return path;
   throw new Error(`not a xiuxian Rust workspace: ${path}`);
+}
+
+function requireRustBridgeBinary(path: string): string {
+  try {
+    if (statSync(path).isFile()) return path;
+  } catch {
+    // Fall through to the explicit bridge error below.
+  }
+  throw new Error(`not a SearchStrategyFlow Rust bridge binary: ${path}`);
 }
 
 function isWendaoRustWorkspace(path: string): boolean {

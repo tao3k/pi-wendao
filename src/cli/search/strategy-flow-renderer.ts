@@ -46,6 +46,7 @@ function renderSearchStrategyFlowTraceInternal(
           ...(trace.rustBridge.rustWorkspace
             ? [`  workspace: ${trace.rustBridge.rustWorkspace}`]
             : []),
+          ...(trace.rustBridge.mode ? [`  mode: ${trace.rustBridge.mode}`] : []),
           `  fallback: ${trace.rustBridge.fallback}`,
           ...(trace.rustBridge.error ? [`  error: ${trace.rustBridge.error}`] : []),
         ]
@@ -143,6 +144,7 @@ function renderSearchStrategyFlowTraceInternal(
       ? [
           `  - live status=${agentTrace.status}${agentTrace.model ? ` model=${agentTrace.model}` : ""}${agentTrace.durationMs === undefined ? "" : ` duration_ms=${agentTrace.durationMs}`}${agentTrace.cached === undefined ? "" : ` cached=${formatBool(agentTrace.cached)}`}${agentTrace.reason ? ` reason=${agentTrace.reason}` : ""}`,
           ...renderAgentOutputs(agentTrace),
+          ...renderAgentBranchJudgements(agentTrace),
         ]
       : []),
     "",
@@ -235,6 +237,22 @@ function renderAgentOutput(
   return typeof value === "string" && value.trim().length > 0
     ? `  - live ${key}=${formatSnippet(value)}`
     : undefined;
+}
+
+function renderAgentBranchJudgements(agentTrace: SearchStrategyFlowAgentTrace): string[] {
+  const rows = agentTrace.branchJudgements ?? [];
+  const validation = agentTrace.branchJudgementValidation;
+  return [
+    ...(validation && validation.valid === false
+      ? [
+          `  - live branch_judgements invalid accepted=${validation.acceptedCount} errors=${validation.errors.map(formatSnippet).join("|")}`,
+        ]
+      : []),
+    ...rows.map(
+      (row) =>
+        `  - live branch_judgement candidate=${row.candidateId} role=${row.branchRole} decision=${row.decision} score=${formatScore(row.judgementScore)} confidence=${formatScore(row.confidence)} blocked=${formatBool(row.blocked)} reason=${formatSnippet(row.reason)}`,
+    ),
+  ];
 }
 
 function formatRouteSteps(steps: { step: string; route: string }[]): string {

@@ -10,6 +10,7 @@ import { resolveModel, resolvePiWendaoPackageRoot } from "./model-resolver.js";
 import { parseNonNegativeInt, parseNonNegativeNumber } from "./number-options.js";
 import { launchPiWendaoNativeTui } from "./pi-wendao-native-launcher.js";
 import { runSearchStrategyFlowCommand } from "./search/strategy-flow-command.js";
+import { registerSearchStrategyFlowOptions } from "./search/strategy-flow-options.js";
 import {
   appendActiveBpmnNodeLabels,
   resolveQianjiCommand,
@@ -45,13 +46,13 @@ interface PiWendaoCliOptions {
   tui?: boolean;
   search?: string;
   wendaoGraph?: string;
-  searchRoot?: string;
   searchJulia?: string;
   searchBackend?: string;
   searchRustWorkspace?: string;
   searchRustCommand?: string;
+  searchRustBridgeBin?: string;
+  searchRustBridgeSession?: boolean;
   searchFlightBaseUrl?: string;
-  searchFlightRepo?: string;
   searchFlightTimeoutSeconds?: number;
   searchAgent?: boolean;
   searchAgentAnswerRequest?: string;
@@ -98,7 +99,8 @@ program
     }
   });
 
-program
+registerSearchStrategyFlowOptions(
+  program
   .name("pi-wendao")
   .description("Execute a compiled BPMN workflow through the qianji CLI")
   .argument("[workflow]", "Path to .bpmn workflow file")
@@ -132,50 +134,8 @@ program
     [],
   )
   .option("--var <pairs...>", "Variables as key=value pairs")
-  .option("--show", "Show qianji BPMN instances, or status for --instance-id, without executing")
-  .option("--search <intent>", "Run Wendao SearchStrategyFlow for a natural-language intent")
-  .option("--wendao-graph <path>", "WendaoGraph.jl project path for --search")
-  .option("--search-root <path>", "Knowledge root for --search candidates")
-  .option("--search-julia <command>", "Julia executable for --search")
-  .option(
-    "--search-backend <mode>",
-    "SearchStrategyFlow backend: auto, rust-julia, or julia-direct",
-  )
-  .option("--search-rust-workspace <path>", "xiuxian Rust workspace for --search")
-  .option("--search-rust-command <command>", "Cargo executable for the Rust search bridge")
-  .option(
-    "--search-flight-base-url <url>",
-    "Studio Arrow Flight endpoint for Rust SearchStrategyFlow materialization",
-  )
-  .option("--search-flight-repo <repo>", "Wendao repo id for Rust SearchStrategyFlow Flight routes")
-  .option(
-    "--search-flight-timeout-seconds <seconds>",
-    "Rust SearchStrategyFlow Flight request timeout",
-    (value) => parseNonNegativeInt(value, "--search-flight-timeout-seconds"),
-  )
-  .option("--search-agent", "Run a live pi-subagents LLM judgement for LLM planner actions")
-  .option(
-    "--search-agent-answer-request <path>",
-    "Read a materialized SearchStrategyFlow answer request TSV and write answer evidence",
-  )
-  .option(
-    "--search-agent-answer-mode <mode>",
-    "Answer request mode: deterministic or live",
-  )
-  .option(
-    "--search-agent-answer-chunk-size <count>",
-    "Live answer request chunk size",
-    (value) => parseNonNegativeInt(value, "--search-agent-answer-chunk-size"),
-  )
-  .option(
-    "--search-agent-answer-resume",
-    "Resume live request answers from an existing answer-evidence TSV prefix",
-  )
-  .option(
-    "--search-agent-answer-evidence <path>",
-    "Write completed --search-agent output as candidate_id<TAB>answer_text TSV evidence",
-  )
-  .option("--search-json", "Print raw SearchStrategyFlow JSON")
+  .option("--show", "Show qianji BPMN instances, or status for --instance-id, without executing"),
+)
   .option(
     "--tui",
     "Enable interactive graph TUI visualization (default); without workflow, open native pi chat",
@@ -197,13 +157,13 @@ program
           intent: options.search ?? "materialized SearchStrategyFlow answer request",
           cwd: invocationCwd,
           wendaoGraph: options.wendaoGraph,
-          searchRoot: options.searchRoot,
           searchJulia: options.searchJulia,
           searchBackend: options.searchBackend,
           searchRustWorkspace: options.searchRustWorkspace,
           searchRustCommand: options.searchRustCommand,
+          searchRustBridgeBin: options.searchRustBridgeBin,
+          searchRustBridgeSession: options.searchRustBridgeSession,
           searchFlightBaseUrl: options.searchFlightBaseUrl,
-          searchFlightRepo: options.searchFlightRepo,
           searchFlightTimeoutSeconds: options.searchFlightTimeoutSeconds,
           searchAgent: options.searchAgent,
           searchAgentAnswerRequest: options.searchAgentAnswerRequest,

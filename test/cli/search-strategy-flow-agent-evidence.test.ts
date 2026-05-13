@@ -49,6 +49,34 @@ describe("SearchStrategyFlow live answer evidence", () => {
     );
   });
 
+  it("retains deterministic selected rows when live branch judgement drops them", () => {
+    const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(
+      {
+        ...sampleTrace(),
+        frontier: [
+          {
+            candidateId: "docs/b.md#validation",
+            rank: 1,
+            selected: true,
+            finalScore: 0.95,
+            action: "keep",
+            contextBudget: 120,
+            judgementKind: "subagent_branch_judgement",
+          },
+        ],
+      },
+      completedAgentTrace(),
+      sampleTrace(),
+    );
+
+    expect(rows.map((row) => row.candidateId)).toEqual([
+      "docs/b.md#validation",
+      "docs/a.md#owner",
+    ]);
+    expect(rows[1]?.answerText).toContain("frontier_rank=1");
+    expect(rows[1]?.answerText).toContain("judgement=The selected frontier is sufficient.");
+  });
+
   it("writes explicit evidence files only for completed live traces", () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-wendao-answer-evidence-"));
     tempDirs.push(dir);
@@ -100,6 +128,14 @@ describe("SearchStrategyFlow live answer evidence", () => {
         events: [],
       }),
     ).toThrow("requires completed agent trace");
+    expect(() =>
+      buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
+        mode: "live-subagent",
+        status: "failed",
+        reason: "provider timed out",
+        events: [],
+      }),
+    ).toThrow("provider timed out");
 
     expect(() =>
       buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {

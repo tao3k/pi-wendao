@@ -1,16 +1,17 @@
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
 import {
   resolveRustBridgeCommand,
   resolveWendaoGraphProject,
   resolveWendaoRustWorkspace,
 } from "./strategy-flow-discovery.js";
+import { renderSearchStrategyFlowBranchJudgementTsv } from "./strategy-flow-branch-judgement.js";
 import { collectProcessOutput } from "./strategy-flow-process.js";
 import { JULIA_STRATEGY_FLOW_SCRIPT } from "./strategy-flow-script.js";
 import { parseStrategyFlowTrace } from "./strategy-flow-trace.js";
 import type {
   SearchStrategyFlowBackend,
   SearchStrategyFlowOptions,
+  SearchStrategyFlowRustBridgeMode,
   SearchStrategyFlowTrace,
 } from "./strategy-flow-types.js";
 
@@ -24,21 +25,26 @@ interface SearchStrategyFlowContext {
   options: SearchStrategyFlowOptions;
   intent: string;
   graphProject: string;
-  searchRoot: string;
   juliaCommand: string;
   searchBackend: SearchStrategyFlowBackend;
 }
 
 interface RustStrategyFlowOptions {
   cargoCommand?: string;
+  bridgeBinary?: string;
   rustWorkspace: string;
   graphProject: string;
   intent: string;
-  searchRoot: string;
   juliaCommand?: string;
+  rustBridgeSession?: boolean;
   flightBaseUrl?: string;
-  flightRepo?: string;
   flightTimeoutSeconds?: number;
+  branchJudgementsTsv?: string;
+}
+
+interface RustStrategyFlowOutput {
+  stdout: string;
+  bridgeMode: SearchStrategyFlowRustBridgeMode;
 }
 
 async function runResolvedStrategyFlow(
@@ -60,10 +66,9 @@ function resolveSearchStrategyFlowContext(
   if (!intent) throw new Error("--search intent must not be blank");
 
   const graphProject = resolveWendaoGraphProject(options);
-  const searchRoot = resolve(options.searchRoot ?? graphProject);
   const juliaCommand = options.juliaCommand ?? process.env.JULIA ?? "julia";
   const searchBackend: SearchStrategyFlowBackend = options.searchBackend ?? "auto";
-  return { options, intent, graphProject, searchRoot, juliaCommand, searchBackend };
+  return { options, intent, graphProject, juliaCommand, searchBackend };
 }
 
 async function runWithoutRustWorkspace(
@@ -86,15 +91,17 @@ async function runRustBridgeOrFallback(
       rustWorkspace,
       await runRustStrategyFlow({
         cargoCommand: context.options.rustCommand ?? process.env.CARGO,
+        bridgeBinary:
+          context.options.rustBridgeBinary ?? process.env.PI_WENDAO_SEARCH_RUST_BRIDGE_BIN,
         rustWorkspace,
         graphProject: context.graphProject,
         intent: context.intent,
-        searchRoot: context.searchRoot,
         juliaCommand: context.options.juliaCommand,
+        rustBridgeSession: resolveRustBridgeSessionMode(context.options.rustBridgeSession),
         flightBaseUrl:
           context.options.flightBaseUrl ?? process.env.PI_WENDAO_SEARCH_FLIGHT_BASE_URL,
-        flightRepo: context.options.flightRepo ?? process.env.PI_WENDAO_SEARCH_FLIGHT_REPO,
         flightTimeoutSeconds: context.options.flightTimeoutSeconds,
+        branchJudgementsTsv: renderOptionalBranchJudgementsTsv(context.options),
       }),
     );
   } catch (error) {
@@ -107,14 +114,15 @@ async function runRustBridgeOrFallback(
 function attachSuccessfulRustBridge(
   context: SearchStrategyFlowContext,
   rustWorkspace: string,
-  stdout: string,
+  output: RustStrategyFlowOutput,
 ): SearchStrategyFlowTrace {
   return {
-    ...parseStrategyFlowTrace(stdout),
+    ...parseStrategyFlowTrace(output.stdout),
     rustBridge: {
       requestedBackend: context.searchBackend,
       attempted: true,
       rustWorkspace,
+      mode: output.bridgeMode,
       fallback: "none",
     },
   };
@@ -130,7 +138,8 @@ async function runJuliaDirectStrategyFlow(
     context.juliaCommand,
     context.graphProject,
     context.intent,
-    context.searchRoot,
+    context.graphProject,
+    renderOptionalBranchJudgementsTsv(context.options),
   );
   return {
     ...parseStrategyFlowTrace(stdout),
@@ -144,19 +153,73 @@ async function runJuliaDirectStrategyFlow(
   };
 }
 
-async function runRustStrategyFlow(options: RustStrategyFlowOptions): Promise<string> {
-  return new Promise((resolveOutput, reject) => {
-    const command = resolveRustBridgeCommand(options.rustWorkspace, options.cargoCommand);
-    const child = spawn(command.command, [...command.prefixArgs, ...rustBridgeArgs(options)], {
-      cwd: options.rustWorkspace,
-      env: {
-        ...process.env,
-        WENDAOGRAPH_PACKAGE_DIR: options.graphProject,
-        ...(options.juliaCommand ? { JULIA: options.juliaCommand } : {}),
+async function runRustStrategyFlow(
+  options: RustStrategyFlowOptions,
+): Promise<RustStrategyFlowOutput> {
+  const command = resolveRustBridgeCommand(
+    options.rustWorkspace,
+    options.cargoCommand,
+    options.bridgeBinary,
+  );
+  if (options.rustBridgeSession) {
+    return runRustStrategyFlowStdioSession(options, command);
+  }
+  const stdout = await new Promise<string>((resolveOutput, reject) => {
+    const child = spawn(
+      command.command,
+      [...command.prefixArgs, ...rustBridgeArgs(options, command.mode)],
+      {
+        cwd: options.rustWorkspace,
+        env: {
+          ...process.env,
+          WENDAOGRAPH_PACKAGE_DIR: options.graphProject,
+          ...(options.juliaCommand ? { JULIA: options.juliaCommand } : {}),
+        },
       },
-    });
+    );
     collectProcessOutput(child, resolveOutput, reject, "Rust SearchStrategyFlow bridge");
   });
+  return { stdout, bridgeMode: command.mode };
+}
+
+async function runRustStrategyFlowStdioSession(
+  options: RustStrategyFlowOptions,
+  command: ReturnType<typeof resolveRustBridgeCommand>,
+): Promise<RustStrategyFlowOutput> {
+  if (!options.flightBaseUrl) {
+    throw new Error(
+      "--search-rust-bridge-session requires --search-flight-base-url",
+    );
+  }
+  const stdout = await new Promise<string>((resolveOutput, reject) => {
+    const child = spawn(
+      command.command,
+      [...command.prefixArgs, ...rustBridgeSessionArgs(options, command.mode)],
+      {
+        cwd: options.rustWorkspace,
+        env: {
+          ...process.env,
+          WENDAOGRAPH_PACKAGE_DIR: options.graphProject,
+          ...(options.juliaCommand ? { JULIA: options.juliaCommand } : {}),
+        },
+      },
+    );
+    collectProcessOutput(child, resolveOutput, reject, "Rust SearchStrategyFlow bridge session");
+    child.stdin.write(
+      `${JSON.stringify({
+        requestId: "pi-wendao-search",
+        intent: options.intent,
+        ...(options.branchJudgementsTsv
+          ? { branchJudgementsTsv: options.branchJudgementsTsv }
+          : {}),
+      })}\n`,
+    );
+    child.stdin.end();
+  });
+  return {
+    stdout: parseRustBridgeStdioSessionTrace(stdout),
+    bridgeMode: "persistent-stdio",
+  };
 }
 
 async function runJuliaStrategyFlow(
@@ -164,6 +227,7 @@ async function runJuliaStrategyFlow(
   graphProject: string,
   intent: string,
   searchRoot: string,
+  branchJudgementsTsv: string | undefined,
 ): Promise<string> {
   return new Promise((resolveOutput, reject) => {
     const child = spawn(
@@ -175,6 +239,10 @@ async function runJuliaStrategyFlow(
         JULIA_STRATEGY_FLOW_SCRIPT,
         intent,
         searchRoot,
+        "",
+        "",
+        "null",
+        branchJudgementsTsv ?? "",
       ],
       { env: process.env },
     );
@@ -182,26 +250,99 @@ async function runJuliaStrategyFlow(
   });
 }
 
-function rustBridgeArgs(options: RustStrategyFlowOptions): string[] {
-    const args = [
-      "run",
-      "-q",
-      "-p",
-      "xiuxian-wendao-julia",
-      "--bin",
-      "wendaograph_search_strategy_flow",
-      "--",
-    "--intent",
-    options.intent,
-    "--search-root",
-    options.searchRoot,
-  ];
+function rustBridgeArgs(
+  options: RustStrategyFlowOptions,
+  mode: SearchStrategyFlowRustBridgeMode,
+): string[] {
+  const args =
+    mode === "cargo"
+      ? [
+          "run",
+          "-q",
+          "-p",
+          "xiuxian-wendao-julia",
+          "--bin",
+          "wendaograph_search_strategy_flow",
+          "--",
+        ]
+      : [];
+  args.push("--intent", options.intent);
+  if (options.branchJudgementsTsv) {
+    args.push("--branch-judgements-tsv", options.branchJudgementsTsv);
+  }
   if (options.flightBaseUrl) args.push("--flight-base-url", options.flightBaseUrl);
-  if (options.flightRepo) args.push("--flight-repo", options.flightRepo);
   if (options.flightTimeoutSeconds !== undefined) {
     args.push("--flight-timeout-seconds", String(options.flightTimeoutSeconds));
   }
   return args;
+}
+
+function rustBridgeSessionArgs(
+  options: RustStrategyFlowOptions,
+  mode: SearchStrategyFlowRustBridgeMode,
+): string[] {
+  const args =
+    mode === "cargo"
+      ? [
+          "run",
+          "-q",
+          "-p",
+          "xiuxian-wendao-julia",
+          "--bin",
+          "wendaograph_search_strategy_flow",
+          "--",
+        ]
+      : [];
+  args.push("--flight-base-url", options.flightBaseUrl ?? "");
+  if (options.flightTimeoutSeconds !== undefined) {
+    args.push("--flight-timeout-seconds", String(options.flightTimeoutSeconds));
+  }
+  args.push("--serve-stdio");
+  return args;
+}
+
+function renderOptionalBranchJudgementsTsv(
+  options: SearchStrategyFlowOptions,
+): string | undefined {
+  return options.branchJudgements && options.branchJudgements.length > 0
+    ? renderSearchStrategyFlowBranchJudgementTsv(options.branchJudgements)
+    : undefined;
+}
+
+function parseRustBridgeStdioSessionTrace(stdout: string): string {
+  const responses = stdout
+    .trim()
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as {
+          ok?: unknown;
+          error?: unknown;
+          trace?: unknown;
+        };
+      } catch (error) {
+        throw new Error(`invalid Rust SearchStrategyFlow bridge session JSONL: ${error}`);
+      }
+    });
+  if (responses.length !== 1) {
+    throw new Error(
+      `Rust SearchStrategyFlow bridge session expected one response, got ${responses.length}`,
+    );
+  }
+  const [response] = responses;
+  if (response.ok !== true) {
+    throw new Error(`Rust SearchStrategyFlow bridge session failed: ${String(response.error)}`);
+  }
+  if (response.trace === undefined) {
+    throw new Error("Rust SearchStrategyFlow bridge session response is missing trace");
+  }
+  return JSON.stringify(response.trace);
+}
+
+function resolveRustBridgeSessionMode(explicit: boolean | undefined): boolean {
+  if (explicit !== undefined) return explicit;
+  return process.env.PI_WENDAO_SEARCH_RUST_BRIDGE_SESSION === "1";
 }
 
 function summarizeBridgeError(error: unknown): string {

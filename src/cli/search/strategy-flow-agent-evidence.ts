@@ -31,8 +31,9 @@ export function writeSearchStrategyFlowAgentAnswerEvidence(
   path: string,
   trace: SearchStrategyFlowTrace,
   agentTrace: SearchStrategyFlowAgentTrace | undefined,
+  deterministicTrace?: SearchStrategyFlowTrace,
 ): SearchStrategyFlowAnswerEvidenceResult {
-  const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(trace, agentTrace);
+  const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(trace, agentTrace, deterministicTrace);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, renderSearchStrategyFlowAnswerEvidenceTsv(rows), "utf-8");
   return { path, rowCount: rows.length };
@@ -52,9 +53,10 @@ export function writeSearchStrategyFlowRequestAnswerEvidence(
 export function buildSearchStrategyFlowAgentAnswerEvidenceRows(
   trace: SearchStrategyFlowTrace,
   agentTrace: SearchStrategyFlowAgentTrace | undefined,
+  deterministicTrace?: SearchStrategyFlowTrace,
 ): SearchStrategyFlowAnswerEvidenceRow[] {
   assertCompletedAgentTrace(agentTrace);
-  const selectedFrontier = trace.frontier.filter((row) => row.selected);
+  const selectedFrontier = selectedFrontierRowsWithDeterministicBaseline(trace, deterministicTrace);
   if (selectedFrontier.length === 0) {
     throw new Error("SearchStrategyFlow live answer evidence requires at least one selected frontier row.");
   }
@@ -72,6 +74,25 @@ export function buildSearchStrategyFlowAgentAnswerEvidenceRows(
     candidateId: row.candidateId,
     answerText: renderCandidateScopedAnswerText(row, answerText),
   }));
+}
+
+function selectedFrontierRowsWithDeterministicBaseline(
+  trace: SearchStrategyFlowTrace,
+  deterministicTrace: SearchStrategyFlowTrace | undefined,
+): SearchStrategyFlowFrontierRow[] {
+  const selectedRows: SearchStrategyFlowFrontierRow[] = [];
+  const selectedIds = new Set<string>();
+  for (const row of trace.frontier) {
+    if (!row.selected || selectedIds.has(row.candidateId)) continue;
+    selectedRows.push(row);
+    selectedIds.add(row.candidateId);
+  }
+  for (const row of deterministicTrace?.frontier ?? []) {
+    if (!row.selected || selectedIds.has(row.candidateId)) continue;
+    selectedRows.push(row);
+    selectedIds.add(row.candidateId);
+  }
+  return selectedRows;
 }
 
 export function loadSearchStrategyFlowAnswerRequestRows(
@@ -224,8 +245,9 @@ function assertCompletedAgentTrace(
     throw new Error("--search-agent-answer-evidence requires --search-agent.");
   }
   if (agentTrace.status !== "completed") {
+    const reason = agentTrace.reason?.trim();
     throw new Error(
-      `SearchStrategyFlow live answer evidence requires completed agent trace; got ${agentTrace.status}.`,
+      `SearchStrategyFlow live answer evidence requires completed agent trace; got ${agentTrace.status}${reason ? `: ${reason}` : ""}.`,
     );
   }
 }
