@@ -251,6 +251,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
     "Prefer frontier_branches over raw candidates when judging coverage; each branch includes its source, route role, purpose, and evidence anchors.",
     "frontier_branches may include selected frontier rows and compact candidate_pool rows. Use candidate_pool rows to rescue relevant documents already retrieved but not selected.",
     "Return at most 8 branch_judgements. Always cover selected frontier rows first, then add only candidate_pool rows that materially improve source relevance.",
+    "Candidate_pool rows are promotion candidates, not selected evidence. Use decision=expand only for high-confidence candidate_pool rows that must be added; decision=keep on candidate_pool rows will not promote them.",
     "Use decision=expand for candidate_pool rows that should be promoted into the next frontier; use decision=keep for rows that are already sufficient in the selected frontier.",
     "judgement_score is semantic intent relevance from your judgement, not the numeric finalScore copied from the trace.",
     "Use branch_role=general only when no specific role applies. RFCs, audits, package docs, or boundary docs that establish ownership/provenance should normally be authority.",

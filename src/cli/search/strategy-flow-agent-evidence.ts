@@ -55,20 +55,16 @@ export function buildSearchStrategyFlowAgentAnswerEvidenceRows(
   agentTrace: SearchStrategyFlowAgentTrace | undefined,
   deterministicTrace?: SearchStrategyFlowTrace,
 ): SearchStrategyFlowAnswerEvidenceRow[] {
-  assertCompletedAgentTrace(agentTrace);
-  const selectedFrontier = selectedFrontierRowsWithDeterministicBaseline(trace, deterministicTrace);
+  const selectedFrontier = selectedFrontierRowsWithDeterministicBaseline(
+    trace,
+    deterministicTrace,
+    agentTrace,
+  );
   if (selectedFrontier.length === 0) {
     throw new Error("SearchStrategyFlow live answer evidence requires at least one selected frontier row.");
   }
 
-  const intentUnderstanding = readOutput(agentTrace, "intent_understanding");
-  const branchDecision = readOutput(agentTrace, "branch_decision");
-  const judgement = readOutput(agentTrace, "judgement");
-  const answerText = [
-    `intent_understanding=${intentUnderstanding}`,
-    `branch_decision=${branchDecision}`,
-    `judgement=${judgement}`,
-  ].join("; ");
+  const answerText = renderAgentAnswerText(agentTrace);
 
   return selectedFrontier.map((row) => ({
     candidateId: row.candidateId,
@@ -79,16 +75,38 @@ export function buildSearchStrategyFlowAgentAnswerEvidenceRows(
 function selectedFrontierRowsWithDeterministicBaseline(
   trace: SearchStrategyFlowTrace,
   deterministicTrace: SearchStrategyFlowTrace | undefined,
+  agentTrace?: SearchStrategyFlowAgentTrace,
 ): SearchStrategyFlowFrontierRow[] {
   const selectedRows: SearchStrategyFlowFrontierRow[] = [];
   const selectedIds = new Set<string>();
-  for (const row of trace.frontier) {
+  const deterministicRows = deterministicTrace?.frontier ?? trace.frontier;
+  for (const row of deterministicRows) {
     if (!row.selected || selectedIds.has(row.candidateId)) continue;
     selectedRows.push(row);
     selectedIds.add(row.candidateId);
   }
-  for (const row of deterministicTrace?.frontier ?? []) {
-    if (!row.selected || selectedIds.has(row.candidateId)) continue;
+  if (selectedRows.length > 0 && deterministicTrace?.validation?.requiredEvidenceCovered === true) {
+    return selectedRows;
+  }
+
+  const acceptedExpansionIds = new Set(
+    (agentTrace?.branchJudgements ?? [])
+      .filter((row) =>
+        row.decision === "expand" &&
+        row.blocked === false &&
+        row.judgementScore >= 0.86 &&
+        row.confidence >= 0.72,
+      )
+      .map((row) => row.candidateId),
+  );
+  for (const row of trace.frontier) {
+    if (
+      !row.selected ||
+      selectedIds.has(row.candidateId) ||
+      !acceptedExpansionIds.has(row.candidateId)
+    ) {
+      continue;
+    }
     selectedRows.push(row);
     selectedIds.add(row.candidateId);
   }
@@ -238,18 +256,28 @@ export function renderSearchStrategyFlowAnswerEvidenceTsv(
   ].join("\n") + "\n";
 }
 
-function assertCompletedAgentTrace(
-  agentTrace: SearchStrategyFlowAgentTrace | undefined,
-): asserts agentTrace is SearchStrategyFlowAgentTrace {
-  if (!agentTrace) {
-    throw new Error("--search-agent-answer-evidence requires --search-agent.");
+function renderAgentAnswerText(agentTrace: SearchStrategyFlowAgentTrace | undefined): string {
+  if (agentTrace?.status === "completed") {
+    const intentUnderstanding = readOutput(agentTrace, "intent_understanding");
+    const branchDecision = readOutput(agentTrace, "branch_decision");
+    const judgement = readOutput(agentTrace, "judgement");
+    return [
+      `intent_understanding=${intentUnderstanding}`,
+      `branch_decision=${branchDecision}`,
+      `judgement=${judgement}`,
+    ].join("; ");
   }
-  if (agentTrace.status !== "completed") {
-    const reason = agentTrace.reason?.trim();
-    throw new Error(
-      `SearchStrategyFlow live answer evidence requires completed agent trace; got ${agentTrace.status}${reason ? `: ${reason}` : ""}.`,
-    );
-  }
+
+  const status = agentTrace?.status ?? "unavailable";
+  const reason = normalizeWhitespace(agentTrace?.reason ?? "");
+  const judgement = reason.length > 0
+    ? `Live agent ${status}: ${reason}; deterministic frontier evidence retained.`
+    : `Live agent ${status}; deterministic frontier evidence retained.`;
+  return [
+    "intent_understanding=Deterministic SearchStrategyFlow frontier selected the evidence rows.",
+    "branch_decision=Retain deterministic selected frontier baseline.",
+    `judgement=${judgement}`,
+  ].join("; ");
 }
 
 function readOutput(

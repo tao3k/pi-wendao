@@ -1,4 +1,7 @@
-import { buildSearchStrategyFlowBranchContexts } from "./strategy-flow-branch-context.js";
+import {
+  buildSearchStrategyFlowBranchContexts,
+  type SearchStrategyFlowBranchContext,
+} from "./strategy-flow-branch-context.js";
 import type {
   SearchStrategyFlowBranchJudgementDecision,
   SearchStrategyFlowBranchJudgementRole,
@@ -15,8 +18,17 @@ export interface SearchStrategyFlowBranchJudgementParseResult {
 interface SearchStrategyFlowBranchJudgementParseContext {
   parsed: unknown;
   allowedCandidateIds: Set<string>;
+  branchesByCandidateId: Map<string, SearchStrategyFlowBranchContext>;
   flowId?: SearchStrategyFlowId;
 }
+
+interface SearchStrategyFlowCandidatePoolPromotionGate {
+  promotable: boolean;
+  suppressed: boolean;
+}
+
+const CANDIDATE_POOL_EXPAND_MIN_SCORE = 0.86;
+const CANDIDATE_POOL_EXPAND_MIN_CONFIDENCE = 0.72;
 
 const BRANCH_ROLES: readonly SearchStrategyFlowBranchJudgementRole[] = [
   "search_strategy",
@@ -52,10 +64,12 @@ function buildBranchJudgementParseContext(
   value: unknown,
   trace: SearchStrategyFlowTrace,
 ): SearchStrategyFlowBranchJudgementParseContext {
+  const branchContexts = buildSearchStrategyFlowBranchContexts(trace);
   return {
     parsed: parseBranchJudgementPayload(value),
-    allowedCandidateIds: new Set(
-      buildSearchStrategyFlowBranchContexts(trace).map((branch) => String(branch.candidateId)),
+    allowedCandidateIds: new Set(branchContexts.map((branch) => String(branch.candidateId))),
+    branchesByCandidateId: new Map(
+      branchContexts.map((branch) => [String(branch.candidateId), branch]),
     ),
     flowId: trace.queryUnderstanding?.[0]?.flowId as SearchStrategyFlowId | undefined,
   };
@@ -77,6 +91,7 @@ function parseBranchJudgementRows(
 
   const errors: string[] = [];
   const rows: SearchStrategyFlowBranchJudgementRow[] = [];
+  let suppressedCandidatePoolRows = 0;
 
   context.parsed.forEach((rawRow, index) => {
     const rowNumber = index + 1;
@@ -134,6 +149,17 @@ function parseBranchJudgementRows(
       reason &&
       context.allowedCandidateIds.has(candidateId)
     ) {
+      const promotionGate = candidatePoolPromotionGate(
+        context.branchesByCandidateId.get(candidateId),
+        judgementScore,
+        confidence,
+        decision,
+        blocked,
+      );
+      if (!promotionGate.promotable) {
+        suppressedCandidatePoolRows += promotionGate.suppressed ? 1 : 0;
+        return;
+      }
       rows.push({
         ...(context.flowId ? { flowId: context.flowId } : {}),
         candidateId,
@@ -147,11 +173,34 @@ function parseBranchJudgementRows(
     }
   });
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && suppressedCandidatePoolRows === 0) {
     errors.push("branch_judgements must include at least one accepted row.");
   }
 
   return errors.length > 0 ? { rows: [], errors } : { rows, errors: [] };
+}
+
+function candidatePoolPromotionGate(
+  branch: SearchStrategyFlowBranchContext | undefined,
+  judgementScore: number,
+  confidence: number,
+  decision: SearchStrategyFlowBranchJudgementDecision,
+  blocked: boolean,
+): SearchStrategyFlowCandidatePoolPromotionGate {
+  if (branch?.branchSource !== "candidate_pool") {
+    return { promotable: true, suppressed: false };
+  }
+  if (blocked || decision !== "expand") {
+    return { promotable: false, suppressed: true };
+  }
+  if (
+    judgementScore < CANDIDATE_POOL_EXPAND_MIN_SCORE ||
+    confidence < CANDIDATE_POOL_EXPAND_MIN_CONFIDENCE
+  ) {
+    return { promotable: false, suppressed: true };
+  }
+
+  return { promotable: true, suppressed: false };
 }
 
 function parseBranchJudgementPayload(value: unknown): unknown {

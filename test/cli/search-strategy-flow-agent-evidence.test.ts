@@ -70,11 +70,123 @@ describe("SearchStrategyFlow live answer evidence", () => {
     );
 
     expect(rows.map((row) => row.candidateId)).toEqual([
-      "docs/b.md#validation",
       "docs/a.md#owner",
+      "docs/b.md#validation",
     ]);
-    expect(rows[1]?.answerText).toContain("frontier_rank=1");
-    expect(rows[1]?.answerText).toContain("judgement=The selected frontier is sufficient.");
+    expect(rows[0]?.answerText).toContain("frontier_rank=1");
+    expect(rows[0]?.answerText).toContain("judgement=The selected frontier is sufficient.");
+  });
+
+  it("appends only high-confidence live expansion rows beyond deterministic evidence", () => {
+    const deterministicTrace = {
+      ...sampleTrace(),
+      validation: {
+        ...sampleTrace().validation,
+        requiredEvidenceCovered: false,
+      },
+    };
+    const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(
+      {
+        ...sampleTrace(),
+        frontier: [
+          ...sampleTrace().frontier,
+          {
+            candidateId: "docs/d.md#rescued",
+            rank: 4,
+            selected: true,
+            finalScore: 0.95,
+            action: "keep",
+            contextBudget: 120,
+            judgementKind: "subagent_branch_judgement",
+          },
+          {
+            candidateId: "docs/e.md#weak",
+            rank: 5,
+            selected: true,
+            finalScore: 0.94,
+            action: "keep",
+            contextBudget: 120,
+            judgementKind: "subagent_branch_judgement",
+          },
+        ],
+      },
+      {
+        ...completedAgentTrace(),
+        branchJudgements: [
+          {
+            candidateId: "docs/d.md#rescued",
+            branchRole: "authority",
+            judgementScore: 0.91,
+            confidence: 0.88,
+            decision: "expand",
+            blocked: false,
+            reason: "High confidence rescue.",
+          },
+          {
+            candidateId: "docs/e.md#weak",
+            branchRole: "authority",
+            judgementScore: 0.8,
+            confidence: 0.88,
+            decision: "expand",
+            blocked: false,
+            reason: "Below score gate.",
+          },
+        ],
+      },
+      deterministicTrace,
+    );
+
+    expect(rows.map((row) => row.candidateId)).toEqual([
+      "docs/a.md#owner",
+      "docs/b.md#validation",
+      "docs/d.md#rescued",
+    ]);
+  });
+
+  it("does not append live expansions when deterministic required evidence is already covered", () => {
+    const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(
+      {
+        ...sampleTrace(),
+        frontier: [
+          ...sampleTrace().frontier,
+          {
+            candidateId: "docs/d.md#rescued",
+            rank: 4,
+            selected: true,
+            finalScore: 0.95,
+            action: "keep",
+            contextBudget: 120,
+            judgementKind: "subagent_branch_judgement",
+          },
+        ],
+      },
+      {
+        ...completedAgentTrace(),
+        branchJudgements: [
+          {
+            candidateId: "docs/d.md#rescued",
+            branchRole: "authority",
+            judgementScore: 0.91,
+            confidence: 0.88,
+            decision: "expand",
+            blocked: false,
+            reason: "High confidence rescue.",
+          },
+        ],
+      },
+      {
+        ...sampleTrace(),
+        validation: {
+          ...sampleTrace().validation,
+          requiredEvidenceCovered: true,
+        },
+      },
+    );
+
+    expect(rows.map((row) => row.candidateId)).toEqual([
+      "docs/a.md#owner",
+      "docs/b.md#validation",
+    ]);
   });
 
   it("writes explicit evidence files only for completed live traces", () => {
@@ -120,23 +232,29 @@ describe("SearchStrategyFlow live answer evidence", () => {
     );
   });
 
-  it("rejects skipped or incomplete live traces before writing evidence", () => {
-    expect(() =>
-      buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
-        mode: "live-subagent",
-        status: "skipped",
-        events: [],
-      }),
-    ).toThrow("requires completed agent trace");
-    expect(() =>
-      buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
-        mode: "live-subagent",
-        status: "failed",
-        reason: "provider timed out",
-        events: [],
-      }),
-    ).toThrow("provider timed out");
+  it("falls back to deterministic selected rows for skipped or failed live traces", () => {
+    const skippedRows = buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
+      mode: "live-subagent",
+      status: "skipped",
+      reason: "SearchStrategyFlow did not request an LLM judgement.",
+      events: [],
+    });
+    const failedRows = buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
+      mode: "live-subagent",
+      status: "failed",
+      reason: "provider timed out",
+      events: [],
+    });
 
+    expect(skippedRows.map((row) => row.candidateId)).toEqual([
+      "docs/a.md#owner",
+      "docs/b.md#validation",
+    ]);
+    expect(skippedRows[0]?.answerText).toContain("Live agent skipped");
+    expect(failedRows[0]?.answerText).toContain("provider timed out");
+  });
+
+  it("rejects incomplete completed live traces before writing evidence", () => {
     expect(() =>
       buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
         ...completedAgentTrace(),

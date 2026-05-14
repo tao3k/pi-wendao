@@ -85,6 +85,69 @@ describe("SearchStrategyFlow branch judgement contract", () => {
     ]);
   });
 
+  it("only accepts high-confidence expand rows for candidate-pool promotion", () => {
+    const result = parseSearchStrategyFlowBranchJudgements(
+      [
+        {
+          candidate_id: "docs/candidate.md#extra",
+          branch_role: "authority",
+          judgement_score: 0.98,
+          confidence: 0.93,
+          decision: "keep",
+          blocked: false,
+          reason: "Relevant but keep does not promote candidate-pool rows.",
+        },
+        {
+          candidate_id: "docs/weak.md#extra",
+          branch_role: "authority",
+          judgement_score: 0.8,
+          confidence: 0.93,
+          decision: "expand",
+          blocked: false,
+          reason: "Relevant but below the candidate-pool score gate.",
+        },
+        {
+          candidate_id: "docs/candidate.md#extra",
+          branch_role: "authority",
+          judgement_score: 0.91,
+          confidence: 0.88,
+          decision: "expand",
+          blocked: false,
+          reason: "High confidence rescue candidate.",
+        },
+      ],
+      sampleTraceWithCandidatePool(),
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        candidateId: "docs/candidate.md#extra",
+        decision: "expand",
+      }),
+    ]);
+  });
+
+  it("treats candidate-pool-only non-promotions as an empty accepted judgement set", () => {
+    const result = parseSearchStrategyFlowBranchJudgements(
+      [
+        {
+          candidate_id: "docs/candidate.md#extra",
+          branch_role: "authority",
+          judgement_score: 0.98,
+          confidence: 0.93,
+          decision: "keep",
+          blocked: false,
+          reason: "Relevant but already covered by selected rows.",
+        },
+      ],
+      sampleTraceWithCandidatePool(),
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toEqual([]);
+  });
+
   it("rejects unknown, malformed, or over-range branch judgement rows", () => {
     const result = parseSearchStrategyFlowBranchJudgements(
       [
@@ -266,5 +329,39 @@ function sampleTrace(): SearchStrategyFlowTrace {
       blockedEvidencePruned: true,
       selectedContextReduced: false,
     },
+  };
+}
+
+function sampleTraceWithCandidatePool(): SearchStrategyFlowTrace {
+  return {
+    ...sampleTrace(),
+    candidates: [
+      {
+        candidateId: "docs/candidate.md#extra",
+        action: "keep",
+        reason: "candidate-pool branch",
+        finalScore: 0.72,
+        evidenceCoverage: 0.7,
+        graphScore: 0.6,
+        authorityScore: 0.6,
+        semanticScore: 0.7,
+        structuralScore: 0.5,
+        contextCost: 100,
+        blocked: false,
+      },
+      {
+        candidateId: "docs/weak.md#extra",
+        action: "keep",
+        reason: "weak candidate-pool branch",
+        finalScore: 0.62,
+        evidenceCoverage: 0.5,
+        graphScore: 0.4,
+        authorityScore: 0.4,
+        semanticScore: 0.6,
+        structuralScore: 0.4,
+        contextCost: 100,
+        blocked: false,
+      },
+    ],
   };
 }
