@@ -1,6 +1,11 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import type {
+  ActivityId,
+  AgentId,
+  InstanceId,
+  NodeIndex,
+  RunRecordKey,
+  TokenId,
+} from "../types/domain.js";
 import {
   buildPiWendaoAgentPrompt,
   extractOutputVariablesFromText,
@@ -9,6 +14,7 @@ import {
   type PiWendaoAgentRequest,
 } from "./agent-host.js";
 import { validateOutputSchemas } from "./human-task.js";
+import { buildRunKey, resolveSubagentType } from "./pi-subagents-routing.js";
 import { throwIfWorkflowInterrupted, waitForWorkflowInterrupt } from "./interrupt.js";
 
 export interface PiSubagentsSpawnRequest {
@@ -57,12 +63,12 @@ export interface PiSubagentsClientCallbacks {
 }
 
 export interface PiSubagentsRunRecord {
-  key: string;
-  agentId: string;
-  activityId: string;
-  instanceId?: string;
-  tokenId?: number;
-  nodeIndex?: number;
+  key: RunRecordKey;
+  agentId: AgentId;
+  activityId: ActivityId;
+  instanceId?: InstanceId;
+  tokenId?: TokenId;
+  nodeIndex?: NodeIndex;
   status: "spawned" | "completed" | "failed";
   spawnRequest: PiSubagentsSpawnRequest;
   output?: Record<string, unknown>;
@@ -138,11 +144,6 @@ export interface PiSubagentsHostOptions {
   onToolEvent?: (event: PiSubagentsHostToolEvent) => void;
 }
 
-const PI_WENDAO_OUTPUT_ONLY_SUBAGENT = "pi-wendao-output-only";
-const PI_WENDAO_OUTPUT_WRITER_SUBAGENT = "pi-wendao-output-writer";
-const PI_WENDAO_READ_ONLY_SUBAGENT = "pi-wendao-readonly";
-const PI_WENDAO_READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
-
 export function createPiSubagentsClientFromTools(tools: PiSubagentsToolSurface): PiSubagentsClient {
   if (!tools.Agent || !tools.get_subagent_result) {
     throw new Error("pi-subagents tools Agent and get_subagent_result are required");
@@ -153,45 +154,7 @@ export function createPiSubagentsClientFromTools(tools: PiSubagentsToolSurface):
   };
 }
 
-export function createInMemoryPiSubagentsRunStore(
-  initialRecords: PiSubagentsRunRecord[] = [],
-): PiSubagentsRunStore {
-  const records = new Map(initialRecords.map((record) => [record.key, record]));
-  return {
-    async get(key) {
-      return records.get(key);
-    },
-    async put(record) {
-      records.set(record.key, record);
-    },
-  };
-}
-
-export function createJsonFilePiSubagentsRunStore(path: string): PiSubagentsRunStore {
-  let queue = Promise.resolve();
-  const withLock = async <T>(operation: () => Promise<T>): Promise<T> => {
-    const next = queue.then(operation, operation);
-    queue = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
-  };
-  return {
-    get: (key) =>
-      withLock(async () => {
-        const records = await readStoreFile(path);
-        return records[key];
-      }),
-    put: (record) =>
-      withLock(async () => {
-        const records = await readStoreFile(path);
-        records[record.key] = record;
-        await writeStoreFile(path, records);
-      }),
-  };
-}
-
+export { createInMemoryPiSubagentsRunStore, createJsonFilePiSubagentsRunStore } from "./pi-subagents-run-store.js";
 export function createPiSubagentsHost(options: PiSubagentsHostOptions): PiWendaoAgentHost {
   return {
     run: async (request) => runPiSubagentTask(options, request),
@@ -403,111 +366,6 @@ function buildSpawnRequest(
   };
 }
 
-function resolveSubagentType(
-  options: PiSubagentsHostOptions,
-  config: PiWendaoConfig,
-): string {
-  const tools = normalizedToolNames(config.tools);
-  if (tools.length === 0) {
-    return PI_WENDAO_OUTPUT_ONLY_SUBAGENT;
-  }
-  if (isWriteOnlyToolScope(tools)) {
-    return PI_WENDAO_OUTPUT_WRITER_SUBAGENT;
-  }
-  if (isReadOnlyToolScope(tools)) {
-    return PI_WENDAO_READ_ONLY_SUBAGENT;
-  }
-
-  return (
-    normalizedName(config.subagent?.type) ??
-    normalizedName(options.defaultSubagentType) ??
-    "general-purpose"
-  );
-}
-
-function normalizedName(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
-}
-
-function normalizedToolNames(tools: readonly string[]): string[] {
-  return Array.from(
-    new Set(
-      tools
-        .map((tool) => tool.trim())
-        .filter((tool) => tool.length > 0)
-        .map((tool) => tool.toLowerCase()),
-    ),
-  ).sort();
-}
-
-function isWriteOnlyToolScope(tools: readonly string[]): boolean {
-  return tools.length === 1 && tools[0] === "write";
-}
-
-function isReadOnlyToolScope(tools: readonly string[]): boolean {
-  return tools.length > 0 && tools.every((tool) => PI_WENDAO_READ_ONLY_TOOLS.has(tool));
-}
-
-function buildRunKey(request: PiWendaoAgentRequest): string | undefined {
-  const instanceId = request.execution?.instanceId;
-  if (!instanceId) return undefined;
-  return JSON.stringify({
-    instanceId,
-    activityId: request.activityId,
-    tokenId: request.execution?.tokenId ?? null,
-    contract: buildRunContractFingerprint(request.config),
-    inputs: buildRunInputSnapshot(request),
-  });
-}
-
-function buildRunContractFingerprint(config: PiWendaoConfig): string {
-  return createHash("sha256")
-    .update(
-      stableJson({
-        prompt: config.prompt,
-        tools: config.tools,
-        toolScopes: config.toolScopes ?? [],
-        outputs: config.outputs,
-        outputSchemas: config.outputSchemas ?? {},
-        subagent: config.subagent ?? {},
-      }),
-    )
-    .digest("hex")
-    .slice(0, 16);
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableJson(item)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-function buildRunInputSnapshot(request: PiWendaoAgentRequest): Array<[string, unknown]> {
-  const inputNames =
-    request.config.inputs.length > 0
-      ? request.config.inputs
-      : Object.keys(request.variables).sort();
-  const seen = new Set<string>();
-  const snapshot: Array<[string, unknown]> = [];
-  for (const name of inputNames) {
-    if (seen.has(name)) continue;
-    seen.add(name);
-    if (Object.prototype.hasOwnProperty.call(request.variables, name)) {
-      snapshot.push([name, request.variables[name]]);
-    }
-  }
-  return snapshot;
-}
-
 function parseAgentId(result: PiSubagentsSpawnResult): string {
   if (typeof result === "string" && result.trim()) {
     const match = result.match(/^Agent ID:\s*(\S+)/m);
@@ -573,47 +431,4 @@ function summarizeResultText(resultText: string): string {
   const compact = resultText.replace(/\s+/g, " ").trim();
   if (compact.length <= 500) return compact;
   return `${compact.slice(0, 497)}...`;
-}
-
-interface PiSubagentsRunStoreFile {
-  version: 1;
-  records: Record<string, PiSubagentsRunRecord>;
-}
-
-async function readStoreFile(path: string): Promise<Record<string, PiSubagentsRunRecord>> {
-  try {
-    const parsed = JSON.parse(await readFile(path, "utf-8")) as unknown;
-    if (!isRunStoreFile(parsed)) return {};
-    return parsed.records;
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") return {};
-    throw error;
-  }
-}
-
-async function writeStoreFile(
-  path: string,
-  records: Record<string, PiSubagentsRunRecord>,
-): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tempPath = `${path}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const file: PiSubagentsRunStoreFile = { version: 1, records };
-  await writeFile(tempPath, `${JSON.stringify(file, null, 2)}\n`, "utf-8");
-  await rename(tempPath, path);
-}
-
-function isRunStoreFile(value: unknown): value is PiSubagentsRunStoreFile {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    (value as { version?: unknown }).version === 1 &&
-    typeof (value as { records?: unknown }).records === "object" &&
-    (value as { records?: unknown }).records !== null &&
-    !Array.isArray((value as { records?: unknown }).records)
-  );
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return typeof error === "object" && error !== null && "code" in error;
 }

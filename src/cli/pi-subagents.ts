@@ -74,6 +74,12 @@ function installGlobalToolEventBridge(
 export function createCliExtensionContext(
   options: CreateCliExtensionContextOptions,
 ): ExtensionContext {
+  return createCliExtensionContextInternal(options);
+}
+
+function createCliExtensionContextInternal(
+  options: CreateCliExtensionContextOptions,
+): ExtensionContext {
   let currentModel: Model<any> | undefined = options.model;
   let runner: ExtensionRunner;
   const session = options.session;

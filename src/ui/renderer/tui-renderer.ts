@@ -27,6 +27,10 @@ interface ActivePlannerInput extends QueuedPlannerInput {
 }
 
 export function createTuiRenderer(): Renderer {
+  return createTuiRendererInternal();
+}
+
+function createTuiRendererInternal(): Renderer {
   const terminal = new ProcessTerminal();
   const tui = new TUI(terminal);
 

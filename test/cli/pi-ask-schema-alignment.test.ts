@@ -148,14 +148,13 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
       };
 
       const answer = await withTimeout(
-        requestNativeWorkflowInputReply(
-          fakePi() as never,
-          fakeWorkflowContext() as never,
-          "/tmp/pi-ask-interactions.bpmn",
-          testCase.request,
-          undefined,
-          askFlow,
-        ),
+        requestNativeWorkflowInputReply({
+        pi: fakePi() as never,
+        ctx: fakeWorkflowContext() as never,
+        workflowPath: "/tmp/pi-ask-interactions.bpmn",
+        request: testCase.request,
+        askFlow: askFlow,
+      }),
       );
 
       expect(answer).toBe(testCase.expectedAnswer);
@@ -193,11 +192,11 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
     };
 
     const answer = await withTimeout(
-      requestNativeWorkflowInputReply(
-        fakePi() as never,
-        fakeWorkflowContext("write the next investigation step") as never,
-        "/tmp/pi-ask-interactions.bpmn",
-        workflowRequest({
+      requestNativeWorkflowInputReply({
+        pi: fakePi() as never,
+        ctx: fakeWorkflowContext("write the next investigation step") as never,
+        workflowPath: "/tmp/pi-ask-interactions.bpmn",
+        request: workflowRequest({
           interaction: {
             type: "input",
             question: "Describe the next investigation step.",
@@ -207,9 +206,8 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
             },
           },
         }),
-        undefined,
-        askFlow,
-      ),
+        askFlow: askFlow,
+      }),
     );
 
     expect(answer).toBe("write the next investigation step");

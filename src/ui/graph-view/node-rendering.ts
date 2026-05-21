@@ -41,14 +41,23 @@ export function nodeBoxWidth(node: GraphNode, maxLabelWidth = 20): number {
   );
 }
 
-export function drawNodeOnGrid(
-  grid: string[][],
-  pos: { x: number; y: number; width: number; height: number },
-  node: GraphNode,
-  gridW: number,
-  gridH: number,
+export interface DrawNodeOnGridRequest {
+  grid: string[][];
+  pos: { x: number; y: number; width: number; height: number };
+  node: GraphNode;
+  gridW: number;
+  gridH: number;
+  maxLabelWidth?: number;
+}
+
+export function drawNodeOnGrid({
+  grid,
+  pos,
+  node,
+  gridW,
+  gridH,
   maxLabelWidth = 20,
-): void {
+}: DrawNodeOnGridRequest): void {
   const label = formatNodeLabel(node, maxLabelWidth);
   const details = formatNodeDetails(node, maxLabelWidth);
   const boxW = nodeBoxWidth(node, maxLabelWidth);
@@ -58,7 +67,7 @@ export function drawNodeOnGrid(
 
   const isSmall = node.type === "start" || node.type === "end";
   if (isSmall) {
-    writeAt(grid, startY + 1, startX + 1, styleLabel(label, node), gridW, gridH);
+    writeAt({ grid, row: startY + 1, col: startX + 1, text: styleLabel(label, node), gridW, gridH });
     return;
   }
 
@@ -67,12 +76,19 @@ export function drawNodeOnGrid(
   const mid = boxLine(label, boxW, border, (text) => styleLabel(text, node));
   const bot = border("└" + "─".repeat(boxW - 2) + "┘");
 
-  writeAt(grid, startY, startX, top, gridW, gridH);
-  writeAt(grid, startY + 1, startX, mid, gridW, gridH);
+  writeAt({ grid, row: startY, col: startX, text: top, gridW, gridH });
+  writeAt({ grid, row: startY + 1, col: startX, text: mid, gridW, gridH });
   for (let i = 0; i < details.length; i++) {
-    writeAt(grid, startY + 2 + i, startX, boxLine(details[i]!, boxW, border, dim), gridW, gridH);
+    writeAt({
+      grid,
+      row: startY + 2 + i,
+      col: startX,
+      text: boxLine(details[i]!, boxW, border, dim),
+      gridW,
+      gridH,
+    });
   }
-  writeAt(grid, startY + boxH - 1, startX, bot, gridW, gridH);
+  writeAt({ grid, row: startY + boxH - 1, col: startX, text: bot, gridW, gridH });
 }
 
 function boxLine(

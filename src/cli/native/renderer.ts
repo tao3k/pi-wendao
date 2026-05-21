@@ -204,7 +204,13 @@ export class PiWendaoNativeWorkflowRenderer implements Renderer {
     const next = this.plannerInputQueue.shift();
     if (!next) return;
     this.plannerInputActive = true;
-    requestNativeWorkflowInputReply(this.pi, this.ctx, this.workflowPath, next.request, next.signal)
+    requestNativeWorkflowInputReply({
+      pi: this.pi,
+      ctx: this.ctx,
+      workflowPath: this.workflowPath,
+      request: next.request,
+      signal: next.signal,
+    })
       .then((answer) => {
         const reply = answer.trim() || defaultReply(next.request);
         next.resolve(reply);

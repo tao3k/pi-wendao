@@ -1,3 +1,5 @@
+import type { ActivityId, InstanceId, NodeIndex, ProcessId, TokenId } from "../types/domain.js";
+
 export interface PiWendaoConfig {
   hostKind?: PiWendaoHostWorkKind;
   prompt: string;
@@ -95,11 +97,11 @@ export interface PiWendaoQianjiCheckpointFeedback {
 }
 
 export interface PiWendaoAgentExecutionMetadata {
-  activityId?: string;
-  processId?: string;
-  instanceId?: string;
-  nodeIndex?: number;
-  tokenId?: number;
+  activityId?: ActivityId;
+  processId?: ProcessId;
+  instanceId?: InstanceId;
+  nodeIndex?: NodeIndex;
+  tokenId?: TokenId;
   repeat?: unknown;
   checkpoint?: PiWendaoQianjiCheckpointFeedback;
 }

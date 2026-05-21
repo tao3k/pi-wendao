@@ -11,7 +11,7 @@ pi_wendao := "npx --no-install pi-wendao"
 default:
     @just --list
 
-# Typecheck pi-wendao.
+# Typecheck pi-wendao and enforce TypeScript harness agent policy.
 check:
     npm run check
 
@@ -19,9 +19,21 @@ check:
 build:
     npm run build
 
-# Run the Vitest suite.
+# Run the Vitest suite and enforce TypeScript harness agent policy.
 test:
     npm test
+
+# Run the TypeScript project harness policy gate.
+harness:
+    npm run harness
+
+# Print the compact harness snapshot intended for agent repair loops.
+harness-agent:
+    npm run harness:agent
+
+# Fail on agent-facing harness advice and print the repair snapshot.
+harness-agent-gate:
+    npm run harness:agent-gate
 
 # Check whitespace in the pi-wendao nested repo.
 diff-check:

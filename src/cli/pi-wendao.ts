@@ -8,6 +8,9 @@ import { compileSkill, defaultCompileTraceDir } from "../compiler/compiler.js";
 import { createRenderer } from "../ui/renderer.js";
 import { resolveModel, resolvePiWendaoPackageRoot } from "./model-resolver.js";
 import { launchPiWendaoNativeTui } from "./pi-wendao-native-launcher.js";
+import { runSearchStrategyFlowAgentTrace } from "./search/strategy-flow-agent.js";
+import { runSearchStrategyFlow } from "./search/strategy-flow-julia.js";
+import { renderSearchStrategyFlowTrace } from "./search/strategy-flow-renderer.js";
 import {
   appendActiveBpmnNodeLabels,
   resolveQianjiCommand,
@@ -16,7 +19,7 @@ import {
   runWorkflowInRenderer,
 } from "./workflow-runner.js";
 
-const DEFAULT_EXECUTION_MODEL = "anthropic/claude-sonnet-4-20250514";
+const DEFAULT_EXECUTION_MODEL = "anthropic/deepseek-v4-pro";
 const DEFAULT_THINKING_LEVEL: PiWendaoThinkingLevel = "medium";
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
@@ -41,6 +44,15 @@ interface PiWendaoCliOptions {
   show?: boolean;
   graph?: boolean;
   tui?: boolean;
+  search?: string;
+  wendaoGraph?: string;
+  searchRoot?: string;
+  searchJulia?: string;
+  searchBackend?: string;
+  searchRustWorkspace?: string;
+  searchRustCommand?: string;
+  searchAgent?: boolean;
+  searchJson?: boolean;
 }
 
 interface PiWendaoCompileOptions {
@@ -114,6 +126,18 @@ program
   )
   .option("--var <pairs...>", "Variables as key=value pairs")
   .option("--show", "Show qianji BPMN instances, or status for --instance-id, without executing")
+  .option("--search <intent>", "Run Wendao SearchStrategyFlow for a natural-language intent")
+  .option("--wendao-graph <path>", "WendaoGraph.jl project path for --search")
+  .option("--search-root <path>", "Knowledge root for --search candidates")
+  .option("--search-julia <command>", "Julia executable for --search")
+  .option(
+    "--search-backend <mode>",
+    "SearchStrategyFlow backend: auto, rust-julia, or julia-direct",
+  )
+  .option("--search-rust-workspace <path>", "xiuxian Rust workspace for --search")
+  .option("--search-rust-command <command>", "Cargo executable for the Rust search bridge")
+  .option("--search-agent", "Run a live pi-subagents LLM judgement for LLM planner actions")
+  .option("--search-json", "Print raw SearchStrategyFlow JSON")
   .option(
     "--tui",
     "Enable interactive graph TUI visualization (default); without workflow, open native pi chat",
@@ -130,6 +154,36 @@ program
       const resolvedEventFixturePath = resolveOptionalCliPath(invocationCwd, options.eventFixture);
       const instanceId = validateInstanceId(options.instanceId);
       const thinkingLevel = resolveExecutionThinkingLevel(options.thinking);
+      if (options.search !== undefined) {
+        const trace = await runSearchStrategyFlow({
+          intent: options.search,
+          cwd: invocationCwd,
+          wendaoGraphPath: resolveOptionalCliPath(invocationCwd, options.wendaoGraph),
+          searchRoot: resolveOptionalCliPath(invocationCwd, options.searchRoot),
+          juliaCommand: options.searchJulia,
+          searchBackend: resolveSearchBackend(options.searchBackend),
+          rustWorkspace: resolveOptionalCliPath(invocationCwd, options.searchRustWorkspace),
+          rustCommand: options.searchRustCommand,
+        });
+        const agentTrace =
+          options.searchAgent === true
+            ? await runSearchStrategyFlowAgentTrace({
+                trace,
+                cwd: invocationCwd,
+                modelPattern: resolveExecutionModelPattern(options.model),
+                provider: options.provider,
+                apiKey: options.apiKey,
+                thinkingLevel,
+                extensionPaths: resolvedExtensionPaths,
+              })
+            : undefined;
+        console.log(
+          options.searchJson
+            ? `${JSON.stringify(agentTrace ? { ...trace, agentTrace } : trace, null, 2)}\n`
+            : renderSearchStrategyFlowTrace(trace, agentTrace),
+        );
+        process.exit(0);
+      }
       if (!workflowPath && options.show !== true && options.tui === true && process.stdin.isTTY) {
         await launchPiWendaoNativeTui({
           modelPattern: resolveExecutionModelPattern(options.model),
@@ -410,6 +464,20 @@ function resolveExecutionThinkingLevel(explicitLevel: string | undefined): PiWen
     );
   }
   return raw as PiWendaoThinkingLevel;
+}
+
+function resolveSearchBackend(
+  explicitBackend: string | undefined,
+): "auto" | "rust-julia" | "julia-direct" | undefined {
+  if (explicitBackend === undefined) return undefined;
+  if (
+    explicitBackend === "auto" ||
+    explicitBackend === "rust-julia" ||
+    explicitBackend === "julia-direct"
+  ) {
+    return explicitBackend;
+  }
+  throw new Error('invalid --search-backend; expected "auto", "rust-julia", or "julia-direct"');
 }
 
 program.parse();

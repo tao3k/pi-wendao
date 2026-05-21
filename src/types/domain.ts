@@ -1,0 +1,17 @@
+export type ActivityId = string;
+export type AgentId = string;
+export type ApiKey = string;
+export type DmnPath = string;
+export type EventFixturePath = string;
+export type HostFixturePath = string;
+export type InstanceId = string;
+export type NodeId = string;
+export type NodeIndex = number;
+export type ProcessId = string;
+export type QianjiCommand = string;
+export type RunRecordKey = string;
+export type RunStorePath = string;
+export type SourcePath = string;
+export type TokenId = number;
+export type TraceFrameDelayMs = number;
+export type WorkflowPath = string;

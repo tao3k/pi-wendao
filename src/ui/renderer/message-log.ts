@@ -18,6 +18,10 @@ export class AgentEventLogBuffer {
   private thinkingText = "";
 
   handle(event: PiWendaoAgentEvent): string[] {
+    return this.handleEvent(event);
+  }
+
+  private handleEvent(event: PiWendaoAgentEvent): string[] {
     switch (event.type) {
       case "message_start": {
         if (event.message.role === "assistant") {

@@ -18,14 +18,23 @@ import { defaultReply, promptLabel, stripAnsi } from "./text.js";
 
 const PLANNER_REPLY_QUESTION_ID = "planner_reply";
 
-export async function requestNativeWorkflowInputReply(
-  pi: ExtensionAPI,
-  ctx: ExtensionCommandContext,
-  workflowPath: string,
-  request: PlannerReplyRequest,
-  signal?: AbortSignal,
-  askFlow: NativeAskFlow = runNativeWorkflowPiAskFlow,
-): Promise<string> {
+export interface NativeWorkflowInputReplyRequest {
+  pi: ExtensionAPI;
+  ctx: ExtensionCommandContext;
+  workflowPath: string;
+  request: PlannerReplyRequest;
+  signal?: AbortSignal;
+  askFlow?: NativeAskFlow;
+}
+
+export async function requestNativeWorkflowInputReply({
+  pi,
+  ctx,
+  workflowPath,
+  request,
+  signal,
+  askFlow = runNativeWorkflowPiAskFlow,
+}: NativeWorkflowInputReplyRequest): Promise<string> {
   if (!ctx.hasUI) {
     if (isWorkflowHumanInput(request)) {
       throw new WorkflowInterruptedError("Workflow input requires native UI; checkpoint preserved.");

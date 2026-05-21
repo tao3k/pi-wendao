@@ -1,4 +1,13 @@
 import { readFile } from "node:fs/promises";
+import type {
+  DmnPath,
+  EventFixturePath,
+  InstanceId,
+  ProcessId,
+  QianjiCommand,
+  RunStorePath,
+  WorkflowPath,
+} from "../types/domain.js";
 import type { PiSubagentsHostUpdateEvent, PiSubagentsRunStore } from "./pi-subagents-host.js";
 import {
   createPiSubagentsHostFromLoadedExtensions,
@@ -8,23 +17,23 @@ import { execute, type ExecuteOptions, type ExecuteResult } from "./executor.js"
 
 export interface ExecuteBpmnWithPiSubagentsOptions {
   /** BPMN source path passed to qianji. */
-  workflowPath: string;
+  workflowPath: WorkflowPath;
   /** Optional already-loaded BPMN source. When omitted, workflowPath is read. */
   source?: string;
   /** Loaded pi extensions containing pi-subagents Agent and get_subagent_result tools. */
   loadResult: PiLoadedExtensionsLike;
   /** Active pi ExtensionContext passed to registered pi-subagents tools. */
   ctx: unknown;
-  processId?: string;
-  instanceId?: string;
-  qianjiCommand?: string;
-  dmnPaths?: string[];
-  eventFixturePath?: string;
+  processId?: ProcessId;
+  instanceId?: InstanceId;
+  qianjiCommand?: QianjiCommand;
+  dmnPaths?: DmnPath[];
+  eventFixturePath?: EventFixturePath;
   context?: Record<string, unknown>;
   variables?: string[];
   cwd?: string;
   runStore?: PiSubagentsRunStore;
-  runStorePath?: string;
+  runStorePath?: RunStorePath;
   defaultSubagentType?: string;
   defaultRunInBackground?: boolean;
   verboseResult?: boolean;
@@ -44,6 +53,12 @@ export interface ExecuteBpmnWithPiSubagentsOptions {
 }
 
 export async function executeBpmnWithPiSubagents(
+  options: ExecuteBpmnWithPiSubagentsOptions,
+): Promise<ExecuteResult> {
+  return executeBpmnWithPiSubagentsInternal(options);
+}
+
+async function executeBpmnWithPiSubagentsInternal(
   options: ExecuteBpmnWithPiSubagentsOptions,
 ): Promise<ExecuteResult> {
   const cwd = options.cwd ?? inferCwdFromCtx(options.ctx);

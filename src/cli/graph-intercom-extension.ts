@@ -25,6 +25,10 @@ interface GraphIntercomToolResult {
 }
 
 export default function registerPiWendaoPiIntercom(pi: GraphIntercomExtensionApi): void {
+  registerPiWendaoPiIntercomInternal(pi);
+}
+
+function registerPiWendaoPiIntercomInternal(pi: GraphIntercomExtensionApi): void {
   pi.registerTool({
     name: "intercom",
     label: "Intercom",

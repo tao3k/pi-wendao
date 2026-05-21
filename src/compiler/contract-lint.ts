@@ -5,12 +5,21 @@ import type {
   CompileTargetDecision,
   QianjiGatewayCondition,
 } from "./types.js";
-import { asArray, firstObject, isObject, readString, readText } from "./json.js";
+import { asArray, isObject, readString } from "./json.js";
+import {
+  CHOICE_INTERACTION_TYPES,
+  INTERACTION_TYPES,
+  nativeInputSources,
+  nativeInteractiveRepairPlan,
+  nativeOutputTargets,
+  readDocumentation,
+  readElements,
+  readNativeInteraction,
+  serviceTaskAppearsToCollectHumanInput,
+} from "./contract-lint-native-io.js";
 
 const SERVICE_TASK_IMPLEMENTATION = "${environment.services.runAgent}";
 const PI_WENDAO_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const INTERACTION_TYPES = new Set(["input", "confirm", "choice", "choice_input"]);
-const CHOICE_INTERACTION_TYPES = new Set(["choice", "choice_input"]);
 const LEGACY_CUSTOM_LOCAL_NAMES = new Set([
   "config",
   "interaction",
@@ -77,6 +86,17 @@ export function createCompileLintRunner(
 }
 
 export function lintPiWendaoWorkflowContract(
+  xml: string,
+  options: {
+    cwd: string;
+    gatewayConditions?: QianjiGatewayCondition[];
+    targetDecision?: CompileTargetDecision;
+  },
+): BpmnLintResult {
+  return lintPiWendaoWorkflowContractInternal(xml, options);
+}
+
+function lintPiWendaoWorkflowContractInternal(
   xml: string,
   options: {
     cwd: string;
@@ -203,13 +223,6 @@ interface NativeOutputProducer {
 interface DynamicChoiceRef {
   taskId: string;
   choicesRef: string;
-}
-
-interface NativeInteraction {
-  type?: string;
-  choicesRef?: string;
-  choices?: unknown[];
-  resultOutput?: string;
 }
 
 function failed(issues: PiWendaoCompileContractIssue[]): BpmnLintResult {
@@ -429,120 +442,3 @@ function collectSequenceFlows(processes: unknown): Record<string, unknown>[] {
   return flows;
 }
 
-function readNativeInteraction(task: Record<string, unknown>): NativeInteraction | undefined {
-  const type = readInputAssignment(task, "interactionType");
-  const choicesRef = readInputSource(task, "choices");
-  const choicesLiteral = readInputAssignment(task, "choices");
-  const choices = choicesLiteral ? parseJsonArray(choicesLiteral) : undefined;
-  const resultOutput = readAnswerTarget(task);
-  if (!type && !choicesRef && !choices?.length && !resultOutput) return undefined;
-  return { type, choicesRef, choices, resultOutput };
-}
-
-function readInputAssignment(task: Record<string, unknown>, inputName: string): string | undefined {
-  const inputIds = inputIdsByName(task, inputName);
-  const assignment = readElements(task, "dataInputAssociation")
-    .map((association) => firstElement(association, "assignment"))
-    .filter(isObject)
-    .find((candidate) => inputIds.has(readText(firstElementValue(candidate, "to")).trim()));
-  const value = assignment ? readText(firstElementValue(assignment, "from")).trim() : "";
-  return value || undefined;
-}
-
-function readInputSource(task: Record<string, unknown>, inputName: string): string | undefined {
-  const inputIds = inputIdsByName(task, inputName);
-  const association = readElements(task, "dataInputAssociation").find((candidate) =>
-    inputIds.has(readText(firstElementValue(candidate, "targetRef")).trim()),
-  );
-  const value = association ? readText(firstElementValue(association, "sourceRef")).trim() : "";
-  return value || undefined;
-}
-
-function readAnswerTarget(task: Record<string, unknown>): string | undefined {
-  const outputIds = outputIdsByName(task, "answer");
-  const association = readElements(task, "dataOutputAssociation").find((candidate) =>
-    outputIds.has(readText(firstElementValue(candidate, "sourceRef")).trim()),
-  );
-  const value = association ? readText(firstElementValue(association, "targetRef")).trim() : "";
-  return value || undefined;
-}
-
-function nativeInputSources(task: Record<string, unknown>): string[] {
-  return readElements(task, "dataInputAssociation")
-    .map((association) => readText(firstElementValue(association, "sourceRef")).trim())
-    .filter(Boolean);
-}
-
-function nativeOutputTargets(task: Record<string, unknown>): string[] {
-  return readElements(task, "dataOutputAssociation")
-    .map((association) => readText(firstElementValue(association, "targetRef")).trim())
-    .filter(Boolean);
-}
-
-function inputIdsByName(task: Record<string, unknown>, name: string): Set<string> {
-  const io = firstElement(task, "ioSpecification");
-  return new Set(readElements(io ?? {}, "dataInput").filter((input) => readString(input.name) === name).map((input) => readString(input.id)));
-}
-
-function outputIdsByName(task: Record<string, unknown>, name: string): Set<string> {
-  const io = firstElement(task, "ioSpecification");
-  return new Set(readElements(io ?? {}, "dataOutput").filter((output) => readString(output.name) === name).map((output) => readString(output.id)));
-}
-
-function parseJsonArray(value: string): unknown[] {
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function readDocumentation(task: Record<string, unknown>): string {
-  return readText(firstElementValue(task, "documentation")).trim();
-}
-
-function serviceTaskAppearsToCollectHumanInput(prompt: string): boolean {
-  const normalized = prompt.toLowerCase();
-  return [
-    "ask the user",
-    "ask user",
-    "ask the patient",
-    "ask patient",
-    "ask the human",
-    "one question at a time",
-    "collect both answers",
-    "collect all answers",
-    "free-form answer",
-  ].some((needle) => normalized.includes(needle));
-}
-
-function nativeInteractiveRepairPlan(): string {
-  return [
-    "Use a serviceTask producer for dynamic question data when needed, then a userTask with native IO metadata.",
-    '<serviceTask id="Task_PrepareQuestion" implementation="${environment.services.runAgent}">',
-    "  <documentation>Return currentQuestion and currentChoices.</documentation>",
-    "  <ioSpecification>... dataOutput name=\"currentQuestion\" and dataOutput name=\"currentChoices\" ...</ioSpecification>",
-    "</serviceTask>",
-    '<userTask id="Task_AnswerQuestion">',
-    "  <documentation>Answer the generated question.</documentation>",
-    "  <ioSpecification>... dataInput name=\"interactionType\", dataInput name=\"question\", dataInput name=\"choices\", dataOutput name=\"answer\" ...</ioSpecification>",
-    "  <dataInputAssociation><assignment><from>choice_input</from><to>Task_AnswerQuestion_input_interactionType</to></assignment></dataInputAssociation>",
-    "  <dataInputAssociation><sourceRef>currentQuestion</sourceRef><targetRef>Task_AnswerQuestion_input_question</targetRef></dataInputAssociation>",
-    "  <dataInputAssociation><sourceRef>currentChoices</sourceRef><targetRef>Task_AnswerQuestion_input_choices</targetRef></dataInputAssociation>",
-    "  <dataOutputAssociation><sourceRef>Task_AnswerQuestion_output_answer</sourceRef><targetRef>answer</targetRef></dataOutputAssociation>",
-    "</userTask>",
-  ].join("\n");
-}
-
-function readElements(parent: Record<string, unknown>, localName: string): Record<string, unknown>[] {
-  return asArray(firstElementValue(parent, localName)).filter(isObject);
-}
-
-function firstElement(parent: Record<string, unknown>, localName: string): Record<string, unknown> | undefined {
-  return firstObject(firstElementValue(parent, localName));
-}
-
-function firstElementValue(parent: Record<string, unknown>, localName: string): unknown {
-  return parent[localName] ?? parent[`bpmn:${localName}`];
-}

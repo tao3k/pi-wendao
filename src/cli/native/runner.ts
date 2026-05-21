@@ -28,6 +28,16 @@ export async function runNativeWorkflow(
   command: NativeRunCommand,
   signal?: AbortSignal,
 ): Promise<void> {
+  return runNativeWorkflowInternal(pi, ctx, options, command, signal);
+}
+
+async function runNativeWorkflowInternal(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  options: PiWendaoNativeExtensionOptions,
+  command: NativeRunCommand,
+  signal?: AbortSignal,
+): Promise<void> {
   let resolvedModel: ResolvedModel | undefined;
   const resolveRunModel = async (): Promise<ResolvedModel> => {
     resolvedModel ??= await resolveNativeRunModel(ctx, options);

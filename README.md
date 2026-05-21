@@ -14,6 +14,31 @@ exposes one `pi-wendao` CLI. Use `pi-wendao compile` to compile skills and
 npm install -g pi-wendao
 ```
 
+## Local Policy Checks
+
+`pi-wendao` uses `typescript-lang-project-harness` as its TypeScript policy
+gate. The policy is part of the normal check and test commands:
+
+```bash
+npm run check
+npm test
+```
+
+Both commands run the TypeScript compiler or Vitest first, then enforce the
+harness agent gate. Agent-facing findings are treated as required repair work,
+and failures include the compact parser-owned owner map and finding groups.
+
+To inspect the same surfaces directly:
+
+```bash
+npm run harness
+npm run harness:agent
+npm run harness:agent-gate
+```
+
+The package `Justfile` routes `just check` and `just test` through the same
+policy-enforced commands, so `just verify-local` inherits the harness gate.
+
 ## Usage
 
 ### Compile a skill
@@ -59,7 +84,7 @@ Options:
 - `--event-fixture <path>` — qianji event fixture JSON
 - `--context-json <json>` — merge a JSON object after `--var` pairs
 - `--trace-frame-ms <ms>` — optional delay between streamed graph trace frames
-- `--model <model>` — accepted compatibility option for real host execution (defaults through `PI_WENDAO_MODEL` or Anthropic model environment variables when set)
+- `--model <model>` — accepted compatibility option for real host execution (defaults to `anthropic/deepseek-v4-pro`, with `PI_WENDAO_MODEL` and Anthropic-compatible environment variables overriding it)
 - `--provider <provider>` — accepted compatibility option for model resolution
 - `--api-key <key>` — accepted compatibility option for model resolution
 - `--thinking <level>` — LLM thinking level for real host execution
@@ -69,6 +94,136 @@ Options:
 - `--tui` — enable interactive graph TUI visualization (default); without a workflow argument, open the native pi chat TUI
 - `--no-tui` — disable interactive graph TUI visualization
 - `--no-graph` — disable graph visualization (legacy alias for `--no-tui`)
+
+### SearchStrategyFlow
+
+```bash
+npx --no-install pi-wendao --search "find the SearchStrategyFlow ownership boundary" --no-graph
+```
+
+`--search` is a pi-wendao CLI entry point for WendaoGraph SearchStrategyFlow
+traces. The CLI discovers `WendaoGraph.jl`, asks Julia to score and prune graph
+candidates, and prints Julia's graph-guided query-understanding evidence, the
+frontier, planner actions, validation flags, and the planned LLM/subagent
+judgement points. This path lives in this package so the agent-facing command
+can evolve with pi-subagents instead of requiring users to call a Rust example
+directly.
+The rendered trace includes `strategy_budget`, which shows whether loop,
+judgement, and beam budgets came from Julia query-understanding evidence or
+from defaults.
+It also includes `strategy_flow_stages`, a compact five-stage receipt aligned
+with the WendaoGraph Pluto notebooks:
+
+1. query understanding
+2. candidate scoring
+3. transition inference
+4. frontier selection
+5. planner actions
+
+Those stage receipts make the CLI trace match the research notebooks and give
+pi-subagents a bounded reasoning-tree surface instead of a flat search result.
+Candidate ids use Markdown section granularity, for example
+`docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding`,
+so the first materialization layer can reveal the content under the selected
+heading instead of handing the agent a whole Markdown file.
+The rendered trace also includes `retrieval_routes`, a derived route plan that
+maps selected section candidates to Rust-owned materialization surfaces and
+marks direct file reads as disallowed. The primary route plan is Arrow
+Flight-native: first search through `/search/repos/main`, then resolve the
+heading through `/analysis/repo-projected-page-index-tree`, then open the
+section retrieval context through
+`/analysis/repo-projected-retrieval-context`, then expand extra relations
+through `/graph/neighbors`. There is no Studio HTTP fallback in this plan: if
+the Flight path cannot materialize the section, the retrieval layer must report
+a Flight/Rust failure instead of bypassing the primary contract. The heading
+anchor is not treated as a stable `node_id`; Rust owns that resolution.
+Route entries are marked `materialization=planned` when `pi-wendao` derives
+the route plan locally, which is the expected `julia-direct` smoke-test shape.
+When the Rust bridge includes service-owned route receipts, `pi-wendao` renders
+those entries as `materialization=executed` with row counts while preserving
+`direct_file_read=no`. Agent answer generation must treat
+`execute_before_answer=yes` as a hard guard unless Rust has returned executed
+Arrow Flight evidence for the requested section.
+
+Options:
+
+- `--wendao-graph <path>` — explicit `WendaoGraph.jl` project path
+- `--search-root <path>` — knowledge root used for candidate context-cost evidence
+- `--search-julia <command>` — Julia executable override
+- `--search-backend <mode>` — `auto`, `rust-julia`, or `julia-direct`
+- `--search-rust-workspace <path>` — optional xiuxian Rust workspace for the Rust bridge
+- `--search-rust-command <command>` — Cargo executable override for the Rust bridge
+- `--search-agent` — run a live pi-subagents LLM judgement for planner actions that require an LLM
+- `--search-json` — print the structured trace JSON
+
+The default `auto` backend treats the Rust-to-Julia bridge as the core path. It
+requires a xiuxian Rust workspace and fails if the Rust bridge is unavailable or
+broken, because pi-wendao should not silently bypass the Rust control plane.
+Use `--search-backend julia-direct` only for pi-local bridge smoke tests and
+diagnostics.
+
+The production subagent retrieval path should remain Flight/Rust-owned:
+`pi-wendao` receives the intent and agent trace, the Flight service owns stable
+Arrow routes such as `/search/intent`, `/search/knowledge`,
+`/search/repos/main`, `/graph/neighbors`, and
+`/analysis/repo-projected-page-index-tree`, and
+`/analysis/repo-projected-retrieval-context`. SearchStrategyFlow section
+candidate ids are therefore routing evidence for Flight retrieval, not a
+license for pi-wendao to bypass the Rust boundary and read full Markdown files.
+
+For the default DeepSeek model through the Anthropic-compatible API:
+
+```bash
+export DEEPSEEK_API_KEY=...
+npx --no-install pi-wendao --search "find the relevant knowledge boundary" --search-agent --no-graph
+```
+
+`pi-wendao` defaults SearchStrategyFlow agent calls to
+`anthropic/deepseek-v4-pro` and uses DeepSeek's Anthropic-compatible endpoint
+for that model. It also honors the documented gateway variables when set:
+`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` plus
+`ANTHROPIC_AUTH_TOKEN=$DEEPSEEK_API_KEY`.
+
+The live DeepSeek algorithm smoke is opt-in so regular CI does not depend on
+network or paid model access:
+
+```bash
+npm run test:search-live
+```
+
+That test uses `--search-backend julia-direct` intentionally: it validates that
+the graph-owned SearchStrategyFlow algorithm trace and the first-layer
+`SearchStrategyFlow_QueryUnderstanding` LLM judgement are complete without
+paying the Rust bridge startup and compilation cost on every algorithm smoke.
+It expects `DEEPSEEK_API_KEY` in the worktree `.env` and requires the
+first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
+agents that read candidate documents belong to the next reasoning-tree layer.
+
+Use the slower bridge smoke only when validating the Rust-owned host-process
+proof surface:
+
+```bash
+npm run test:search-bridge-smoke
+```
+
+That smoke verifies `pi-wendao -> Rust bridge CLI proof -> WendaoGraph.jl` and
+requires the default backend to report `rust-wendao-julia` with no fallback.
+When the Rust bridge trace carries retrieval-route receipts, the CLI surfaces
+the executed route rows instead of rebuilding a local planned route list. It
+does not claim to be the full service-backed production chain unless those
+receipts are produced by the running Rust service boundary.
+
+The full bridge integration gate is a separate, slower layer: it must start the
+Rust service side and the Julia compute service, wait for readiness/prewarm, and
+then drive SearchStrategyFlow through the running service boundary. That gate
+belongs with the Rust/Juila service orchestration contract, not with the fast
+algorithm smoke. First-layer query understanding and judgement keep the
+configured reasoning level because route selection is correctness-sensitive;
+latency work must come from orchestration, caching, compact traces, and later
+branch-level parallelism instead of weakening the first decision. The prompt
+receives the `graph_query_understanding` trace section as hard graph evidence:
+route hints, required evidence, ambiguity, and the applied loop/judgement/beam
+budgets.
 
 Running `pi-wendao --tui` without a workflow enters pi's native interactive
 session for the current working directory. Type normally to talk with the

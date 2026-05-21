@@ -4,15 +4,16 @@ import { dirname, join } from "node:path";
 import type { Model } from "@mariozechner/pi-ai";
 import { compileSkill, defaultCompileTraceDir, type CompileResult } from "../compiler/compiler.js";
 import { resolvePiWendaoNamedWorkflowSeedPath } from "../pi-resources.js";
+import type { DmnPath, SourcePath, WorkflowPath } from "../types/domain.js";
 
 export type PiWendaoNamedWorkflow = "brainstorm";
 
 export interface ResolvedNamedWorkflow {
   kind: "cached" | "compiled" | "seeded";
   name: PiWendaoNamedWorkflow;
-  sourcePath: string;
-  workflowPath: string;
-  dmnPath?: string;
+  sourcePath: SourcePath;
+  workflowPath: WorkflowPath;
+  dmnPath?: DmnPath;
 }
 
 export interface NamedWorkflowCompilerContext {
@@ -70,6 +71,12 @@ export function namedWorkflowSeedPath(name: PiWendaoNamedWorkflow): string {
 }
 
 export async function ensureNamedWorkflow(
+  options: EnsureNamedWorkflowOptions,
+): Promise<ResolvedNamedWorkflow> {
+  return ensureNamedWorkflowInternal(options);
+}
+
+async function ensureNamedWorkflowInternal(
   options: EnsureNamedWorkflowOptions,
 ): Promise<ResolvedNamedWorkflow> {
   const sourcePath = options.sourcePath ?? namedWorkflowSourcePath(options.name);
