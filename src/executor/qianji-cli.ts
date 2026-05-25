@@ -18,6 +18,7 @@ import {
   shellQuote,
   type QianjiHostSessionResult,
 } from "./qianji-stream.js";
+import { resolveDefaultQianjiCommand } from "../qianji-command-resolution.js";
 
 export function buildQianjiArgs(options: {
   sourcePath: string;
@@ -158,27 +159,30 @@ export function buildQianjiStatusArgs(options: {
   return args;
 }
 
-export function runQianjiCli(
-  command: string,
-  args: string[],
-  cwd: string,
-  onTraceEvent: (event: QianjiTraceEvent) => void | Promise<void>,
-  signal?: AbortSignal,
-): Promise<QianjiCliResult> {
-  throwIfWorkflowInterrupted(signal);
-  const commandLine = [command, ...args.map(shellQuote)].join(" ");
+export interface RunQianjiCliOptions {
+  command: string;
+  args: string[];
+  cwd: string;
+  onTraceEvent: (event: QianjiTraceEvent) => void | Promise<void>;
+  signal?: AbortSignal;
+  env?: NodeJS.ProcessEnv;
+}
+
+export function runQianjiCli(options: RunQianjiCliOptions): Promise<QianjiCliResult> {
+  throwIfWorkflowInterrupted(options.signal);
+  const commandLine = [options.command, ...options.args.map(shellQuote)].join(" ");
   return new Promise((resolvePromise, reject) => {
     const child = spawn(commandLine, {
-      cwd,
+      cwd: options.cwd,
       shell: true,
-      env: process.env,
+      env: options.env ?? process.env,
     });
     let closed = false;
     const abort = () => {
       terminateChild(child, () => closed);
     };
-    signal?.addEventListener("abort", abort, { once: true });
-    if (signal?.aborted) abort();
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) abort();
     let stdout = "";
     let stderr = "";
     let stdoutLineBuffer = "";
@@ -190,7 +194,7 @@ export function runQianjiCli(
       traceQueue = traceQueue
         .then(async () => {
           if (traceError) return;
-          await onTraceEvent(event);
+          await options.onTraceEvent(event);
         })
         .catch((err: unknown) => {
           traceError = err;
@@ -210,14 +214,14 @@ export function runQianjiCli(
       stderr += chunk;
     });
     child.on("error", (error) => {
-      signal?.removeEventListener("abort", abort);
-      reject(signal?.aborted ? new WorkflowInterruptedError() : error);
+      options.signal?.removeEventListener("abort", abort);
+      reject(options.signal?.aborted ? new WorkflowInterruptedError() : error);
     });
     child.on("close", async (exitCode) => {
       closed = true;
-      signal?.removeEventListener("abort", abort);
+      options.signal?.removeEventListener("abort", abort);
       try {
-        if (signal?.aborted) {
+        if (options.signal?.aborted) {
           reject(new WorkflowInterruptedError());
           return;
         }
@@ -264,6 +268,7 @@ export class QianjiHostSession {
     cwd: string,
     private readonly onTraceEvent: (event: QianjiTraceEvent) => void | Promise<void>,
     signal?: AbortSignal,
+    env?: NodeJS.ProcessEnv,
   ) {
     throwIfWorkflowInterrupted(signal);
     this.signal = signal;
@@ -271,7 +276,7 @@ export class QianjiHostSession {
     this.child = spawn(commandLine, {
       cwd,
       shell: true,
-      env: process.env,
+      env: env ?? process.env,
     });
     this.child.stdout.setEncoding("utf-8");
     this.child.stdout.on("data", (chunk: string) => this.consumeStdout(chunk));
@@ -435,10 +440,6 @@ function terminateChild(child: ChildProcessWithoutNullStreams, isClosed: () => b
   killTimer.unref?.();
 }
 
-export function defaultQianjiCommand(_cwd: string): string {
-  const envCommand = process.env.QIANJI_CLI?.trim();
-  if (envCommand) return envCommand;
-
-  return "qianji";
+export function defaultQianjiCommand(cwd: string): string {
+  return resolveDefaultQianjiCommand(cwd);
 }
-

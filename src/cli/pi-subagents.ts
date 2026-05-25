@@ -37,6 +37,9 @@ export interface CreateCliPiSubagentsHostOptions extends CreateCliExtensionConte
   runStorePath?: string;
   defaultSubagentType?: string;
   defaultRunInBackground?: boolean;
+  defaultModel?: string;
+  defaultThinking?: string;
+  defaultMaxTurns?: number;
   onUpdate?: (event: PiSubagentsHostUpdateEvent) => void;
   onEvent?: (event: PiSubagentsHostEvent) => void;
   onToolEvent?: (event: PiSubagentsHostToolEvent) => void;
@@ -55,6 +58,9 @@ export function createCliPiSubagentsHost(
     ...(options.defaultRunInBackground === undefined
       ? {}
       : { defaultRunInBackground: options.defaultRunInBackground }),
+    ...(options.defaultModel ? { defaultModel: options.defaultModel } : {}),
+    ...(options.defaultThinking ? { defaultThinking: options.defaultThinking } : {}),
+    ...(options.defaultMaxTurns === undefined ? {} : { defaultMaxTurns: options.defaultMaxTurns }),
     toolCallIdPrefix: "pi-wendao",
     verboseResult: true,
     ...(options.signal ? { signal: options.signal } : {}),

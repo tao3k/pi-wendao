@@ -8,7 +8,12 @@ import type {
   RunStorePath,
   WorkflowPath,
 } from "../types/domain.js";
-import type { PiSubagentsHostUpdateEvent, PiSubagentsRunStore } from "./pi-subagents-host.js";
+import type {
+  PiSubagentsHostEvent,
+  PiSubagentsHostToolEvent,
+  PiSubagentsHostUpdateEvent,
+  PiSubagentsRunStore,
+} from "./pi-subagents-host.js";
 import {
   createPiSubagentsHostFromLoadedExtensions,
   type PiLoadedExtensionsLike,
@@ -36,10 +41,15 @@ export interface ExecuteBpmnWithPiSubagentsOptions {
   runStorePath?: RunStorePath;
   defaultSubagentType?: string;
   defaultRunInBackground?: boolean;
+  defaultModel?: string;
+  defaultThinking?: string;
+  defaultMaxTurns?: number;
   verboseResult?: boolean;
   toolCallIdPrefix?: string;
   signal?: AbortSignal;
+  onEvent?: (event: PiSubagentsHostEvent) => void;
   onUpdate?: (event: PiSubagentsHostUpdateEvent) => void;
+  onToolEvent?: (event: PiSubagentsHostToolEvent) => void;
   onCliOutput?: ExecuteOptions["onCliOutput"];
   onActivityStart?: ExecuteOptions["onActivityStart"];
   onActivityEnd?: ExecuteOptions["onActivityEnd"];
@@ -68,13 +78,18 @@ async function executeBpmnWithPiSubagentsInternal(
     ctx: options.ctx,
     ...(options.signal ? { signal: options.signal } : {}),
     ...(options.toolCallIdPrefix ? { toolCallIdPrefix: options.toolCallIdPrefix } : {}),
+    ...(options.onEvent ? { onEvent: options.onEvent } : {}),
     ...(options.onUpdate === undefined ? {} : { onUpdate: options.onUpdate }),
+    ...(options.onToolEvent ? { onToolEvent: options.onToolEvent } : {}),
     ...(options.runStore ? { runStore: options.runStore } : {}),
     ...(options.runStorePath ? { runStorePath: options.runStorePath } : {}),
     ...(options.defaultSubagentType ? { defaultSubagentType: options.defaultSubagentType } : {}),
     ...(options.defaultRunInBackground === undefined
       ? {}
       : { defaultRunInBackground: options.defaultRunInBackground }),
+    ...(options.defaultModel ? { defaultModel: options.defaultModel } : {}),
+    ...(options.defaultThinking ? { defaultThinking: options.defaultThinking } : {}),
+    ...(options.defaultMaxTurns === undefined ? {} : { defaultMaxTurns: options.defaultMaxTurns }),
     ...(options.verboseResult === undefined ? {} : { verboseResult: options.verboseResult }),
   });
 

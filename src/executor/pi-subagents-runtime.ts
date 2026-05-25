@@ -70,6 +70,9 @@ export interface PiSubagentsRuntimeHostOptions extends PiSubagentsRegisteredTool
   runStorePath?: string;
   defaultSubagentType?: string;
   defaultRunInBackground?: boolean;
+  defaultModel?: string;
+  defaultThinking?: string;
+  defaultMaxTurns?: number;
   verboseResult?: boolean;
   onUpdate?: PiSubagentsHostOptions["onUpdate"];
   onEvent?: PiSubagentsHostOptions["onEvent"];
@@ -195,6 +198,9 @@ function buildRuntimeHostOptions(options: PiSubagentsRuntimeHostOptions): PiSuba
     ...(options.defaultRunInBackground === undefined
       ? {}
       : { defaultRunInBackground: options.defaultRunInBackground }),
+    ...(options.defaultModel ? { defaultModel: options.defaultModel } : {}),
+    ...(options.defaultThinking ? { defaultThinking: options.defaultThinking } : {}),
+    ...(options.defaultMaxTurns === undefined ? {} : { defaultMaxTurns: options.defaultMaxTurns }),
     ...(options.verboseResult === undefined ? {} : { verboseResult: options.verboseResult }),
     ...(options.onUpdate ? { onUpdate: options.onUpdate } : {}),
     ...(options.onEvent ? { onEvent: options.onEvent } : {}),

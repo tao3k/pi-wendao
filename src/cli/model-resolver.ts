@@ -133,9 +133,11 @@ async function resolveModelInternal(
   }
 
   const skipStoredAuth = shouldSkipStoredAuth(model, apiKeyOverride, envAuth);
-  const auth = skipStoredAuth
-    ? ({ ok: false, error: "DeepSeek gateway model requires explicit DeepSeek auth" } as const)
-    : await modelRegistry.getApiKeyAndHeaders(model);
+  const auth = envAuth
+    ? ({ ok: true, apiKey: envAuth.apiKey, headers: undefined } as const)
+    : skipStoredAuth
+      ? ({ ok: false, error: "DeepSeek gateway model requires explicit DeepSeek auth" } as const)
+      : await modelRegistry.getApiKeyAndHeaders(model);
   let apiKey: string | undefined;
   let headers: Record<string, string> | undefined;
   if (auth.ok) {
@@ -317,14 +319,14 @@ function resolvePackageRoot(packageName: string): string | undefined {
 
 function applyAnthropicEnvOverrides(model: Model<Api>): Model<Api> {
   if (model.provider !== "anthropic") return model;
-
-  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim() ?? undefined;
-  if (!baseUrl && isDeepSeekAnthropicModelId(model.id)) {
+  if (isDeepSeekAnthropicModelId(model.id)) {
     return {
       ...model,
       baseUrl: DEEPSEEK_ANTHROPIC_BASE_URL,
     };
   }
+
+  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim() ?? undefined;
   if (!baseUrl) return model;
 
   return {
@@ -336,13 +338,6 @@ function applyAnthropicEnvOverrides(model: Model<Api>): Model<Api> {
 export function resolvePiWendaoAnthropicEnvAuth(options?: {
   modelId?: string;
 }): { apiKey: string; source: string } | undefined {
-  const apiKey = readEnv("ANTHROPIC_API_KEY");
-  if (apiKey) return { apiKey, source: "env:ANTHROPIC_API_KEY" };
-  if (isOpenRouterAnthropicGateway()) {
-    const openRouterApiKey = readOpenRouterApiKey();
-    if (openRouterApiKey) return openRouterApiKey;
-  }
-  const authToken = readEnv("ANTHROPIC_AUTH_TOKEN");
   const deepseekApiKey = readEnv("DEEPSEEK_API_KEY");
   if (
     deepseekApiKey &&
@@ -350,6 +345,13 @@ export function resolvePiWendaoAnthropicEnvAuth(options?: {
   ) {
     return { apiKey: deepseekApiKey, source: "env:DEEPSEEK_API_KEY" };
   }
+  const apiKey = readEnv("ANTHROPIC_API_KEY");
+  if (apiKey) return { apiKey, source: "env:ANTHROPIC_API_KEY" };
+  if (isOpenRouterAnthropicGateway()) {
+    const openRouterApiKey = readOpenRouterApiKey();
+    if (openRouterApiKey) return openRouterApiKey;
+  }
+  const authToken = readEnv("ANTHROPIC_AUTH_TOKEN");
   const oauthToken = readEnv("ANTHROPIC_OAUTH_TOKEN");
   if (oauthToken?.includes("sk-ant-oat"))
     return { apiKey: oauthToken, source: "env:ANTHROPIC_OAUTH_TOKEN" };

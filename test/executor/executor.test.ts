@@ -93,13 +93,13 @@ describe("executor", () => {
 
   it("interrupts a running qianji CLI process", async () => {
     const controller = new AbortController();
-    const run = runQianjiCli(
-      process.execPath,
-      ["-e", "setTimeout(() => {}, 10000)"],
-      process.cwd(),
-      () => undefined,
-      controller.signal,
-    );
+    const run = runQianjiCli({
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 10000)"],
+      cwd: process.cwd(),
+      onTraceEvent: () => undefined,
+      signal: controller.signal,
+    });
 
     setTimeout(() => controller.abort(), 25);
 
@@ -319,6 +319,7 @@ setTimeout(() => {}, 200);
 
       const result = await execute({
         source,
+        cwd: binDir,
         instanceId: "wf_path",
       });
 

@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   resolveRustBridgeCommand,
   resolveWendaoGraphProject,
   resolveWendaoRustWorkspace,
 } from "./strategy-flow-discovery.js";
+import { encodeSearchStrategyFlowBranchJudgementsArrowIpc } from "./strategy-flow-branch-judgement-arrow.js";
 import { renderSearchStrategyFlowBranchJudgementTsv } from "./strategy-flow-branch-judgement.js";
+import { encodeSearchStrategyFlowQueryUnderstandingArrowIpc } from "./strategy-flow-query-understanding-arrow.js";
 import { collectProcessOutput } from "./strategy-flow-process.js";
 import { JULIA_STRATEGY_FLOW_SCRIPT } from "./strategy-flow-script.js";
 import { parseStrategyFlowTrace } from "./strategy-flow-trace.js";
@@ -39,7 +44,10 @@ interface RustStrategyFlowOptions {
   rustBridgeSession?: boolean;
   flightBaseUrl?: string;
   flightTimeoutSeconds?: number;
-  branchJudgementsTsv?: string;
+  strategyFlowServiceBaseUrl?: string;
+  strategyFlowServiceTimeoutSeconds?: number;
+  queryUnderstandingArrowIpcPath?: string;
+  branchJudgementsArrowIpcPath?: string;
 }
 
 interface RustStrategyFlowOutput {
@@ -85,12 +93,16 @@ async function runRustBridgeOrFallback(
   context: SearchStrategyFlowContext,
   rustWorkspace: string,
 ): Promise<SearchStrategyFlowTrace> {
+  const queryUnderstandingIpcFile = await writeOptionalQueryUnderstandingArrowIpcFile(
+    context.options,
+  );
+  const branchJudgementIpcFile = await writeOptionalBranchJudgementsArrowIpcFile(context.options);
   try {
     return attachSuccessfulRustBridge(
       context,
       rustWorkspace,
       await runRustStrategyFlow({
-        cargoCommand: context.options.rustCommand ?? process.env.CARGO,
+        cargoCommand: resolveSearchStrategyFlowRustCommandOverride(context.options),
         bridgeBinary:
           context.options.rustBridgeBinary ?? process.env.PI_WENDAO_SEARCH_RUST_BRIDGE_BIN,
         rustWorkspace,
@@ -101,14 +113,28 @@ async function runRustBridgeOrFallback(
         flightBaseUrl:
           context.options.flightBaseUrl ?? process.env.PI_WENDAO_SEARCH_FLIGHT_BASE_URL,
         flightTimeoutSeconds: context.options.flightTimeoutSeconds,
-        branchJudgementsTsv: renderOptionalBranchJudgementsTsv(context.options),
+        strategyFlowServiceBaseUrl:
+          context.options.strategyFlowServiceBaseUrl ??
+          process.env.PI_WENDAO_SEARCH_STRATEGY_FLOW_SERVICE_BASE_URL,
+        strategyFlowServiceTimeoutSeconds: context.options.strategyFlowServiceTimeoutSeconds,
+        queryUnderstandingArrowIpcPath: queryUnderstandingIpcFile?.path,
+        branchJudgementsArrowIpcPath: branchJudgementIpcFile?.path,
       }),
     );
   } catch (error) {
     throw new Error(
       `${summarizeBridgeError(error)}\nSearchStrategyFlow auto mode treats the Rust bridge as the core path. Use --search-backend julia-direct only for pi-local bridge smoke tests.`,
     );
+  } finally {
+    await queryUnderstandingIpcFile?.cleanup();
+    await branchJudgementIpcFile?.cleanup();
   }
+}
+
+export function resolveSearchStrategyFlowRustCommandOverride(
+  options: Pick<SearchStrategyFlowOptions, "rustCommand">,
+): string | undefined {
+  return options.rustCommand ?? process.env.PI_WENDAO_SEARCH_RUST_COMMAND;
 }
 
 function attachSuccessfulRustBridge(
@@ -162,6 +188,11 @@ async function runRustStrategyFlow(
     options.bridgeBinary,
   );
   if (options.rustBridgeSession) {
+    if (options.strategyFlowServiceBaseUrl) {
+      throw new Error(
+        "Rust SearchStrategyFlow bridge session cannot be combined with --search-strategy-flow-service-base-url; use process-args control for the production Arrow Flight service path.",
+      );
+    }
     return runRustStrategyFlowStdioSession(options, command);
   }
   const stdout = await new Promise<string>((resolveOutput, reject) => {
@@ -186,11 +217,6 @@ async function runRustStrategyFlowStdioSession(
   options: RustStrategyFlowOptions,
   command: ReturnType<typeof resolveRustBridgeCommand>,
 ): Promise<RustStrategyFlowOutput> {
-  if (!options.flightBaseUrl) {
-    throw new Error(
-      "--search-rust-bridge-session requires --search-flight-base-url",
-    );
-  }
   const stdout = await new Promise<string>((resolveOutput, reject) => {
     const child = spawn(
       command.command,
@@ -209,8 +235,11 @@ async function runRustStrategyFlowStdioSession(
       `${JSON.stringify({
         requestId: "pi-wendao-search",
         intent: options.intent,
-        ...(options.branchJudgementsTsv
-          ? { branchJudgementsTsv: options.branchJudgementsTsv }
+        ...(options.queryUnderstandingArrowIpcPath
+          ? { queryUnderstandingArrowIpcPath: options.queryUnderstandingArrowIpcPath }
+          : {}),
+        ...(options.branchJudgementsArrowIpcPath
+          ? { branchJudgementsArrowIpcPath: options.branchJudgementsArrowIpcPath }
           : {}),
       })}\n`,
     );
@@ -227,7 +256,7 @@ async function runJuliaStrategyFlow(
   graphProject: string,
   intent: string,
   searchRoot: string,
-  branchJudgementsTsv: string | undefined,
+  branchJudgementsLocalPayload: string | undefined,
 ): Promise<string> {
   return new Promise((resolveOutput, reject) => {
     const child = spawn(
@@ -242,7 +271,7 @@ async function runJuliaStrategyFlow(
         "",
         "",
         "null",
-        branchJudgementsTsv ?? "",
+        branchJudgementsLocalPayload ?? "",
       ],
       { env: process.env },
     );
@@ -267,12 +296,24 @@ function rustBridgeArgs(
         ]
       : [];
   args.push("--intent", options.intent);
-  if (options.branchJudgementsTsv) {
-    args.push("--branch-judgements-tsv", options.branchJudgementsTsv);
+  if (options.queryUnderstandingArrowIpcPath) {
+    args.push("--query-understanding-arrow-ipc", options.queryUnderstandingArrowIpcPath);
+  }
+  if (options.branchJudgementsArrowIpcPath) {
+    args.push("--branch-judgements-arrow-ipc", options.branchJudgementsArrowIpcPath);
   }
   if (options.flightBaseUrl) args.push("--flight-base-url", options.flightBaseUrl);
   if (options.flightTimeoutSeconds !== undefined) {
     args.push("--flight-timeout-seconds", String(options.flightTimeoutSeconds));
+  }
+  if (options.strategyFlowServiceBaseUrl) {
+    args.push("--strategy-flow-service-base-url", options.strategyFlowServiceBaseUrl);
+  }
+  if (options.strategyFlowServiceTimeoutSeconds !== undefined) {
+    args.push(
+      "--strategy-flow-service-timeout-seconds",
+      String(options.strategyFlowServiceTimeoutSeconds),
+    );
   }
   return args;
 }
@@ -293,7 +334,7 @@ function rustBridgeSessionArgs(
           "--",
         ]
       : [];
-  args.push("--flight-base-url", options.flightBaseUrl ?? "");
+  if (options.flightBaseUrl) args.push("--flight-base-url", options.flightBaseUrl);
   if (options.flightTimeoutSeconds !== undefined) {
     args.push("--flight-timeout-seconds", String(options.flightTimeoutSeconds));
   }
@@ -307,6 +348,34 @@ function renderOptionalBranchJudgementsTsv(
   return options.branchJudgements && options.branchJudgements.length > 0
     ? renderSearchStrategyFlowBranchJudgementTsv(options.branchJudgements)
     : undefined;
+}
+
+async function writeOptionalQueryUnderstandingArrowIpcFile(
+  options: SearchStrategyFlowOptions,
+): Promise<{ path: string; cleanup: () => Promise<void> } | undefined> {
+  if (!options.queryUnderstanding || options.queryUnderstanding.length === 0) return undefined;
+
+  const dir = await mkdtemp(join(tmpdir(), "pi-wendao-search-query-understanding-"));
+  const path = join(dir, "query-understanding.arrow");
+  await writeFile(path, encodeSearchStrategyFlowQueryUnderstandingArrowIpc(options.queryUnderstanding));
+  return {
+    path,
+    cleanup: () => rm(dir, { force: true, recursive: true }),
+  };
+}
+
+async function writeOptionalBranchJudgementsArrowIpcFile(
+  options: SearchStrategyFlowOptions,
+): Promise<{ path: string; cleanup: () => Promise<void> } | undefined> {
+  if (!options.branchJudgements || options.branchJudgements.length === 0) return undefined;
+
+  const dir = await mkdtemp(join(tmpdir(), "pi-wendao-search-branch-judgements-"));
+  const path = join(dir, "branch-judgements.arrow");
+  await writeFile(path, encodeSearchStrategyFlowBranchJudgementsArrowIpc(options.branchJudgements));
+  return {
+    path,
+    cleanup: () => rm(dir, { force: true, recursive: true }),
+  };
 }
 
 function parseRustBridgeStdioSessionTrace(stdout: string): string {

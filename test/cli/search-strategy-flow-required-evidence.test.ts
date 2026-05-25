@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { WENDAO_ARROW_FLIGHT_DATA_PLANE } from "../../src/arrow/boundary.js";
 import { compactSearchStrategyFlowTraceForAgent } from "../../src/cli/search/strategy-flow-agent.js";
 import {
   buildSearchStrategyFlowBranchContexts,
@@ -79,6 +80,40 @@ describe("SearchStrategyFlow required evidence trace", () => {
         candidateInputCount: 4,
         frontierCount: 3,
         selectedCount: 3,
+      },
+    });
+  });
+
+  it("omits candidate-pool rows from selected-only compact traces", () => {
+    const compact = compactSearchStrategyFlowTraceForAgent(sampleTrace(), {
+      candidatePoolMode: "selected-only",
+    });
+    const branches = compact.frontierBranches as Array<Record<string, unknown>>;
+
+    expect(branches.every((branch) => branch.source === "frontier")).toBe(true);
+    expect(compact).toMatchObject({
+      candidateSummary: {
+        agentCandidatePoolMode: "selected-only",
+        agentCandidatePoolVisibleCount: 0,
+      },
+    });
+  });
+
+  it("keeps candidate-pool rows in auto compact traces when required evidence is missing", () => {
+    const trace = sampleTrace();
+    trace.validation.requiredEvidenceCovered = false;
+    trace.validation.missingRequiredEvidence = ["validation_path"];
+
+    const compact = compactSearchStrategyFlowTraceForAgent(trace, {
+      candidatePoolMode: "auto",
+    });
+    const branches = compact.frontierBranches as Array<Record<string, unknown>>;
+
+    expect(branches.some((branch) => branch.source === "candidate_pool")).toBe(true);
+    expect(compact).toMatchObject({
+      candidateSummary: {
+        agentCandidatePoolMode: "auto",
+        agentCandidatePoolVisibleCount: expect.any(Number),
       },
     });
   });
@@ -241,7 +276,7 @@ function sampleTrace(): SearchStrategyFlowTrace {
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
         receiptSource: "local-plan",
-        primaryTransport: "arrow-flight",
+        primaryTransport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
         sourcePath: "docs/30_search_strategy/30.01_search_strategy_flow.md",
         headingAnchor: "ownership-boundary",
         directFileReadAllowed: false,
@@ -253,7 +288,7 @@ function sampleTrace(): SearchStrategyFlowTrace {
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
         receiptSource: "local-plan",
-        primaryTransport: "arrow-flight",
+        primaryTransport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
         sourcePath: "docs/90_validation/90.01_validation.md",
         headingAnchor: "package-test",
         directFileReadAllowed: false,
@@ -266,7 +301,7 @@ function sampleTrace(): SearchStrategyFlowTrace {
         materializationOwner: "studio-rust",
         materializationStatus: "executed",
         receiptSource: "rust-bridge",
-        primaryTransport: "arrow-flight",
+        primaryTransport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
         sourcePath:
           "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs",
         headingAnchor: "search-strategy-flow-link-graph-python-julia-toml",

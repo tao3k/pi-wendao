@@ -27,7 +27,7 @@ describe("SearchStrategyFlow live answer evidence", () => {
     }
   });
 
-  it("renders completed live subagent output as candidate-scoped TSV evidence", () => {
+  it("renders completed live Qianji service-agent output as candidate-scoped TSV evidence", () => {
     const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(
       sampleTrace(),
       completedAgentTrace(),
@@ -234,13 +234,13 @@ describe("SearchStrategyFlow live answer evidence", () => {
 
   it("falls back to deterministic selected rows for skipped or failed live traces", () => {
     const skippedRows = buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
-      mode: "live-subagent",
+      mode: "qianji-service-agent",
       status: "skipped",
       reason: "SearchStrategyFlow did not request an LLM judgement.",
       events: [],
     });
     const failedRows = buildSearchStrategyFlowAgentAnswerEvidenceRows(sampleTrace(), {
-      mode: "live-subagent",
+      mode: "qianji-service-agent",
       status: "failed",
       reason: "provider timed out",
       events: [],
@@ -385,7 +385,7 @@ describe("SearchStrategyFlow live answer evidence", () => {
 
 function completedAgentTrace(): SearchStrategyFlowAgentTrace {
   return {
-    mode: "live-subagent",
+    mode: "qianji-service-agent",
     status: "completed",
     model: "anthropic/deepseek-v4-pro",
     durationMs: 100,

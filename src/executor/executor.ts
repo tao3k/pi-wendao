@@ -11,6 +11,7 @@ import type {
   InstanceId,
   ProcessId,
   QianjiCommand,
+  QianjiWorkflowStateDuckdbPath,
   SourcePath,
   TraceFrameDelayMs,
 } from "../types/domain.js";
@@ -70,8 +71,10 @@ export interface ExecuteOptions {
   instanceId?: InstanceId;
   /** Start a fresh qianji BPMN instance at a specific host-bound node. */
   startAtNode?: string;
-  /** Qianji CLI command. Defaults to QIANJI_CLI or qianji on PATH. */
+  /** Qianji CLI command. Defaults to QIANJI_CLI, workspace target/debug/qianji, or qianji on PATH. */
   qianjiCommand?: QianjiCommand;
+  /** Optional local DuckDB workflow-state path for this qianji process. */
+  qianjiWorkflowStateDuckdbPath?: QianjiWorkflowStateDuckdbPath;
   /** Additional DMN files passed through as repeated --dmn args. */
   dmnPaths?: DmnPath[];
   /** Optional qianji host fixture. */
@@ -169,6 +172,10 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const useRealHost =
       Boolean(options.model) || Boolean(options.agentHost) || Boolean(options.humanTaskHandler);
     const command = options.qianjiCommand ?? defaultQianjiCommand(cwd);
+    const qianjiEnvironment = await buildQianjiProcessEnvironment(
+      options.qianjiWorkflowStateDuckdbPath,
+      tempDirs,
+    );
     if (options.graphView) {
       populateGraphViewFromBpmn(options.source, processId, options.graphView);
       if (options.instanceId) {
@@ -178,6 +185,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
           instanceId,
           dmnPaths: options.dmnPaths ?? [],
           cwd,
+          qianjiEnvironment,
           options,
         });
       }
@@ -219,11 +227,19 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
           source: options.source,
           startAtNode: options.startAtNode,
           options,
+          qianjiEnvironment,
           completionFixture,
           onTraceEvent,
           tempDirs,
         })
-      : await runQianjiCli(command, args, cwd, onTraceEvent, options.signal);
+      : await runQianjiCli({
+          command,
+          args,
+          cwd,
+          onTraceEvent,
+          signal: options.signal,
+          env: qianjiEnvironment,
+        });
     const rawOutput = [cli.stdout, cli.stderr].filter(Boolean).join("\n");
     options.onCliOutput?.(rawOutput);
     if (!cli.streamedTrace) {
@@ -272,6 +288,26 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       await rm(tempDir, { recursive: true, force: true });
     }
   }
+}
+
+async function buildQianjiProcessEnvironment(
+  workflowStateDuckdbPath: QianjiWorkflowStateDuckdbPath | undefined,
+  tempDirs: string[],
+): Promise<NodeJS.ProcessEnv | undefined> {
+  if (!workflowStateDuckdbPath) return undefined;
+  const configDir = await mkdtemp(join(tmpdir(), "pi-wendao-qianji-config-"));
+  tempDirs.push(configDir);
+  const qianjiConfigPath = join(configDir, "qianji.toml");
+  await writeFile(
+    qianjiConfigPath,
+    `[workflow_state]\nlocal_duckdb_path = ${JSON.stringify(workflowStateDuckdbPath)}\n`,
+    "utf-8",
+  );
+  return {
+    ...process.env,
+    QIANJI_CONFIG_PATH: qianjiConfigPath,
+    QIANJI_WORKFLOW_STATE_DUCKDB_PATH: workflowStateDuckdbPath,
+  };
 }
 
 async function writeTempBpmnSource(source: string): Promise<{ dir: string; path: string }> {

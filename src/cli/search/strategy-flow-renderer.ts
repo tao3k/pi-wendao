@@ -28,6 +28,18 @@ function renderSearchStrategyFlowTraceInternal(
     `intent: ${trace.intent}`,
     `backend: ${trace.backend}`,
     ...(trace.controlPlane ? [`control_plane: ${trace.controlPlane}`] : []),
+    ...(trace.strategyFlowDataPlane
+      ? [`strategy_flow_data_plane: ${trace.strategyFlowDataPlane}`]
+      : []),
+    ...(trace.strategyFlowService
+      ? [
+          "strategy_flow_service:",
+          `  data_plane: ${trace.strategyFlowService.dataPlane}`,
+          `  base_url: ${trace.strategyFlowService.baseUrl}`,
+          `  flight_route: ${trace.strategyFlowService.flightRoute}`,
+          `  timeout_seconds: ${trace.strategyFlowService.timeoutSeconds}`,
+        ]
+      : []),
     ...(trace.candidateInputSource
       ? [`candidate_input_source: ${trace.candidateInputSource}`]
       : []),
@@ -148,11 +160,11 @@ function renderSearchStrategyFlowTraceInternal(
         ]
       : []),
     "",
-    "subagent_interactions:",
+    "qianji_service_agent_interactions:",
     ...(llmActions.length > 0
       ? llmActions.map(
           (row) =>
-            `  - planned type=pi-wendao-output-only activity=SearchStrategyFlow_QueryUnderstanding action=${row.actionKind} candidate=${row.candidateId}`,
+            `  - planned runtime=qianji-local-cli service_task=SearchStrategyFlow_QueryUnderstanding action=${row.actionKind} candidate=${row.candidateId}`,
         )
       : ["  - none"]),
     ...(agentTrace?.events ?? []).map((event) => {

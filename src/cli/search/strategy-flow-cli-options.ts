@@ -5,9 +5,11 @@ import type {
   SearchStrategyFlowFlightTimeoutSeconds,
   SearchStrategyFlowOptions,
   SearchStrategyFlowPath,
+  SearchStrategyFlowQueryUnderstandingRow,
+  SearchStrategyFlowServiceBaseUrl,
 } from "./strategy-flow-types.js";
 
-export interface SearchStrategyFlowCliInput {
+interface SearchStrategyFlowCliRawInput {
   intent: string;
   cwd: string;
   wendaoGraph?: string;
@@ -19,10 +21,13 @@ export interface SearchStrategyFlowCliInput {
   searchRustBridgeSession?: boolean;
   searchFlightBaseUrl?: string;
   searchFlightTimeoutSeconds?: number;
+  searchStrategyFlowServiceBaseUrl?: string;
+  searchStrategyFlowServiceTimeoutSeconds?: number;
+  queryUnderstanding?: SearchStrategyFlowQueryUnderstandingRow[];
 }
 
 export function resolveSearchStrategyFlowCliOptions(
-  input: SearchStrategyFlowCliInput,
+  input: SearchStrategyFlowCliRawInput,
 ): SearchStrategyFlowOptions {
   return {
     intent: input.intent,
@@ -38,6 +43,13 @@ export function resolveSearchStrategyFlowCliOptions(
     flightTimeoutSeconds: asSearchStrategyFlowFlightTimeoutSeconds(
       input.searchFlightTimeoutSeconds,
     ),
+    strategyFlowServiceBaseUrl: asSearchStrategyFlowServiceBaseUrl(
+      input.searchStrategyFlowServiceBaseUrl,
+    ),
+    strategyFlowServiceTimeoutSeconds: asSearchStrategyFlowFlightTimeoutSeconds(
+      input.searchStrategyFlowServiceTimeoutSeconds,
+    ),
+    queryUnderstanding: input.queryUnderstanding,
   };
 }
 
@@ -52,6 +64,12 @@ function asSearchStrategyFlowFlightBaseUrl(
   value: string | undefined,
 ): SearchStrategyFlowFlightBaseUrl | undefined {
   return value as SearchStrategyFlowFlightBaseUrl | undefined;
+}
+
+function asSearchStrategyFlowServiceBaseUrl(
+  value: string | undefined,
+): SearchStrategyFlowServiceBaseUrl | undefined {
+  return value as SearchStrategyFlowServiceBaseUrl | undefined;
 }
 
 function asSearchStrategyFlowFlightTimeoutSeconds(

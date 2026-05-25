@@ -236,66 +236,103 @@ async function runPiAiToolLoop(options: {
   getToolScopeViolation?: () => Error | undefined;
 }): Promise<PiWendaoAgentMessage[]> {
   throwIfWorkflowInterrupted(options.signal);
+  const restoreProviderAuthEnv = applyRequestScopedProviderAuthEnv(options.model, options.apiKey);
   const customTools = options.tools.map(toPiCodingAgentTool);
-  const services = await createAgentSessionServices({
-    cwd: options.cwd,
-    resourceLoaderOptions: {
-      systemPrompt: options.systemPrompt,
-      noExtensions: true,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
-    },
-  });
-  if (options.apiKey) {
-    services.authStorage.setRuntimeApiKey(options.model.provider, options.apiKey);
-  }
-  const { session } = await createAgentSessionFromServices({
-    services,
-    sessionManager: SessionManager.inMemory(options.cwd),
-    model: options.model,
-    thinkingLevel: options.thinkingLevel,
-    customTools,
-    tools: customTools.map((tool) => tool.name),
-  });
-  const unsubscribe = session.subscribe((event) => {
-    const piWendaoEvent = toPiWendaoAgentEvent(event);
-    if (piWendaoEvent) options.onEvent?.(piWendaoEvent);
-    if (options.getToolScopeViolation?.() && event.type === "tool_execution_end") {
-      void session.abort();
-    }
-  });
-  const abort = () => {
-    void session.abort();
-  };
-  options.signal?.addEventListener("abort", abort, { once: true });
   try {
+    const services = await createAgentSessionServices({
+      cwd: options.cwd,
+      resourceLoaderOptions: {
+        systemPrompt: options.systemPrompt,
+        noExtensions: true,
+        noSkills: true,
+        noPromptTemplates: true,
+        noThemes: true,
+        noContextFiles: true,
+      },
+    });
     try {
-      await session.prompt("Execute the task described in your instructions.", {
-        expandPromptTemplates: false,
-        source: "extension",
+      if (options.apiKey) {
+        services.authStorage.setRuntimeApiKey(options.model.provider, options.apiKey);
+      }
+      const { session } = await createAgentSessionFromServices({
+        services,
+        sessionManager: SessionManager.inMemory(options.cwd),
+        model: options.model,
+        thinkingLevel: options.thinkingLevel,
+        customTools,
+        tools: customTools.map((tool) => tool.name),
       });
+      const unsubscribe = session.subscribe((event) => {
+        const piWendaoEvent = toPiWendaoAgentEvent(event);
+        if (piWendaoEvent) options.onEvent?.(piWendaoEvent);
+        if (options.getToolScopeViolation?.() && event.type === "tool_execution_end") {
+          void session.abort();
+        }
+      });
+      const abort = () => {
+        void session.abort();
+      };
+      options.signal?.addEventListener("abort", abort, { once: true });
+      try {
+        try {
+          await session.prompt("Execute the task described in your instructions.", {
+            expandPromptTemplates: false,
+            source: "extension",
+          });
+        } catch (error) {
+          const violation = options.getToolScopeViolation?.();
+          if (violation) throw violation;
+          throw error;
+        }
+        const violation = options.getToolScopeViolation?.();
+        if (violation) throw violation;
+        throwIfWorkflowInterrupted(options.signal);
+        const messages = session.messages.filter(isPiWendaoAgentMessage);
+        const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+        if (lastAssistant?.stopReason === "error" || lastAssistant?.stopReason === "aborted") {
+          if (options.signal?.aborted) throw new WorkflowInterruptedError();
+          throw new Error(lastAssistant.errorMessage ?? `model stopped: ${lastAssistant.stopReason}`);
+        }
+        return messages;
+      } finally {
+        options.signal?.removeEventListener("abort", abort);
+        unsubscribe();
+        session.dispose();
+      }
     } catch (error) {
       const violation = options.getToolScopeViolation?.();
       if (violation) throw violation;
       throw error;
     }
-    const violation = options.getToolScopeViolation?.();
-    if (violation) throw violation;
-    throwIfWorkflowInterrupted(options.signal);
-    const messages = session.messages.filter(isPiWendaoAgentMessage);
-    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
-    if (lastAssistant?.stopReason === "error" || lastAssistant?.stopReason === "aborted") {
-      if (options.signal?.aborted) throw new WorkflowInterruptedError();
-      throw new Error(lastAssistant.errorMessage ?? `model stopped: ${lastAssistant.stopReason}`);
-    }
-    return messages;
   } finally {
-    options.signal?.removeEventListener("abort", abort);
-    unsubscribe();
-    session.dispose();
+    restoreProviderAuthEnv();
   }
+}
+
+function applyRequestScopedProviderAuthEnv(
+  model: Model<string>,
+  apiKey: string | undefined,
+): () => void {
+  if (!apiKey || model.provider !== "anthropic") return () => {};
+  const previousApiKey = process.env.ANTHROPIC_API_KEY;
+  const previousAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  const previousOAuthToken = process.env.ANTHROPIC_OAUTH_TOKEN;
+  process.env.ANTHROPIC_API_KEY = apiKey;
+  delete process.env.ANTHROPIC_AUTH_TOKEN;
+  delete process.env.ANTHROPIC_OAUTH_TOKEN;
+  return () => {
+    restoreEnv("ANTHROPIC_API_KEY", previousApiKey);
+    restoreEnv("ANTHROPIC_AUTH_TOKEN", previousAuthToken);
+    restoreEnv("ANTHROPIC_OAUTH_TOKEN", previousOAuthToken);
+  };
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
 }
 
 function toPiCodingAgentTool(tool: PiWendaoAgentTool<any>): ToolDefinition {

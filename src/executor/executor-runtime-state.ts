@@ -33,20 +33,22 @@ export async function applyCheckpointGraphSnapshot(options: {
   instanceId: string;
   dmnPaths: string[];
   cwd: string;
+  qianjiEnvironment?: NodeJS.ProcessEnv;
   options: ExecuteOptions;
 }): Promise<void> {
   try {
-    const cli = await runQianjiCli(
-      options.command,
-      buildQianjiStatusArgs({
+    const cli = await runQianjiCli({
+      command: options.command,
+      args: buildQianjiStatusArgs({
         sourcePath: options.sourcePath,
         instanceId: options.instanceId,
         dmnPaths: options.dmnPaths,
       }),
-      options.cwd,
-      () => {},
-      options.options.signal,
-    );
+      cwd: options.cwd,
+      onTraceEvent: () => {},
+      signal: options.options.signal,
+      env: options.qianjiEnvironment,
+    });
     if (cli.exitCode !== 0) return;
     const snapshot = parseQianjiGraphSnapshot(cli.stdout);
     if (snapshot.length === 0) return;

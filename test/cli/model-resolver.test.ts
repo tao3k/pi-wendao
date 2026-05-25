@@ -146,6 +146,36 @@ describe("resolveModel", () => {
     expect(warnings.join("\n")).not.toContain('Tool "intercom" conflicts');
   });
 
+  it("keeps DeepSeek model ids on the DeepSeek endpoint despite generic Anthropic gateway env", async () => {
+    process.env.DEEPSEEK_API_KEY = "deepseek-api-key";
+    process.env.ANTHROPIC_BASE_URL = "https://anthropic.example.test";
+    process.env.ANTHROPIC_AUTH_TOKEN = "wrong-gateway-token";
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+
+    const { result } = await captureWarnings(() => resolveModel("anthropic/deepseek-v4-pro"));
+
+    expect(result.model.provider).toBe("anthropic");
+    expect(result.model.id).toBe("deepseek-v4-pro");
+    expect(result.model.baseUrl).toBe("https://api.deepseek.com/anthropic");
+    expect(result.apiKey).toBe("deepseek-api-key");
+    expect(result.auth?.source).toBe("env:DEEPSEEK_API_KEY");
+  });
+
+  it("prefers DEEPSEEK_API_KEY over a generic ANTHROPIC_API_KEY for DeepSeek model ids", async () => {
+    process.env.DEEPSEEK_API_KEY = "deepseek-api-key";
+    process.env.ANTHROPIC_API_KEY = "wrong-generic-key";
+    delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+
+    const { result } = await captureWarnings(() => resolveModel("anthropic/deepseek-v4-pro"));
+
+    expect(result.model.baseUrl).toBe("https://api.deepseek.com/anthropic");
+    expect(result.apiKey).toBe("deepseek-api-key");
+    expect(result.auth?.source).toBe("env:DEEPSEEK_API_KEY");
+  });
+
   it("does not reuse stored Anthropic auth for the default DeepSeek gateway model", async () => {
     delete process.env.DEEPSEEK_API_KEY;
     delete process.env.ANTHROPIC_BASE_URL;

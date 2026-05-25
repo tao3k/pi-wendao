@@ -1,5 +1,11 @@
+import type {
+  WendaoArrowFlightDataPlane,
+  WendaoTraceDataPlane,
+} from "../../arrow/boundary.js";
+
 declare const searchStrategyFlowPathBrand: unique symbol;
 declare const searchStrategyFlowFlightBaseUrlBrand: unique symbol;
+declare const searchStrategyFlowServiceBaseUrlBrand: unique symbol;
 declare const searchStrategyFlowFlightTimeoutSecondsBrand: unique symbol;
 declare const searchStrategyFlowSourcePathBrand: unique symbol;
 declare const searchStrategyFlowPageIdBrand: unique symbol;
@@ -15,6 +21,9 @@ export type SearchStrategyFlowPath = string & {
 };
 export type SearchStrategyFlowFlightBaseUrl = string & {
   readonly [searchStrategyFlowFlightBaseUrlBrand]: "SearchStrategyFlowFlightBaseUrl";
+};
+export type SearchStrategyFlowServiceBaseUrl = string & {
+  readonly [searchStrategyFlowServiceBaseUrlBrand]: "SearchStrategyFlowServiceBaseUrl";
 };
 export type SearchStrategyFlowFlightTimeoutSeconds = number & {
   readonly [searchStrategyFlowFlightTimeoutSecondsBrand]: "SearchStrategyFlowFlightTimeoutSeconds";
@@ -56,6 +65,9 @@ export interface SearchStrategyFlowOptions {
   rustBridgeSession?: boolean;
   flightBaseUrl?: SearchStrategyFlowFlightBaseUrl;
   flightTimeoutSeconds?: SearchStrategyFlowFlightTimeoutSeconds;
+  strategyFlowServiceBaseUrl?: SearchStrategyFlowServiceBaseUrl;
+  strategyFlowServiceTimeoutSeconds?: SearchStrategyFlowFlightTimeoutSeconds;
+  queryUnderstanding?: SearchStrategyFlowQueryUnderstandingRow[];
   branchJudgements?: SearchStrategyFlowBranchJudgementRow[];
 }
 
@@ -75,12 +87,15 @@ export interface SearchStrategyFlowTrace {
   intent: string;
   backend: string;
   controlPlane?: string;
+  strategyFlowDataPlane?: WendaoTraceDataPlane;
+  strategyFlowService?: SearchStrategyFlowServiceTrace;
   candidateInputSource?: string;
   candidateInputCount?: number;
   juliaProject?: string;
   graphProject: string;
   searchRoot: string;
   rustBridge?: SearchStrategyFlowBridgeTrace;
+  candidateInputDiscovery?: SearchStrategyFlowCandidateInputDiscovery;
   queryUnderstanding?: SearchStrategyFlowQueryUnderstandingRow[];
   strategyBudget?: SearchStrategyFlowBudget;
   stageReceipts: SearchStrategyFlowStageReceipt[];
@@ -92,13 +107,33 @@ export interface SearchStrategyFlowTrace {
   validation: SearchStrategyFlowValidation;
 }
 
+export interface SearchStrategyFlowServiceTrace {
+  dataPlane: WendaoArrowFlightDataPlane;
+  baseUrl: string;
+  flightRoute: string;
+  timeoutSeconds: number;
+}
+
+export interface SearchStrategyFlowCandidateInputDiscovery {
+  receiptSource?: string;
+  candidateInputSource?: string;
+  candidateInputCount?: number;
+  repoId?: string;
+  transport?: string;
+  route?: string;
+  candidateDiscoveryMode?: string;
+  attemptCount?: number;
+  mergedCandidateCount?: number;
+  elapsedMs?: number;
+}
+
 export interface SearchStrategyFlowRetrievalRoute {
   candidateId: SearchStrategyFlowId;
   candidateInputSource?: string;
   materializationOwner: "studio-rust";
   materializationStatus: "planned" | "executed";
   receiptSource: "local-plan" | "rust-bridge";
-  primaryTransport: "arrow-flight";
+  primaryTransport: WendaoArrowFlightDataPlane;
   sourcePath: SearchStrategyFlowSourcePath;
   headingAnchor?: string;
   evidenceKind?: string;
@@ -122,6 +157,7 @@ export interface SearchStrategyFlowRetrievalRoute {
 export interface SearchStrategyFlowRouteReceipt {
   route: string;
   rowCount: number;
+  elapsedMs?: number;
 }
 
 export interface SearchStrategyFlowDecodedPayloadReceipt {
@@ -137,7 +173,7 @@ export interface SearchStrategyFlowRetrievalStep {
     | "flight_resolve_page_index_tree"
     | "flight_open_retrieval_context"
     | "flight_expand_graph_context";
-  transport: "arrow-flight";
+  transport: WendaoArrowFlightDataPlane;
   route: string;
   metadataTemplates: string[];
   note?: string;
@@ -147,7 +183,7 @@ export interface SearchStrategyFlowRetrievalStep {
 }
 
 export interface SearchStrategyFlowAgentTrace {
-  mode: "live-subagent";
+  mode: "qianji-service-agent";
   status: "completed" | "skipped" | "unavailable" | "failed";
   model?: string;
   durationMs?: number;

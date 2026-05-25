@@ -9,7 +9,7 @@ export interface CompileTemplates {
 }
 
 export interface CompileTemplateOptions {
-  /** Qianji CLI command. Defaults to QIANJI_CLI or qianji on PATH. */
+  /** Qianji CLI command. Defaults to QIANJI_CLI, workspace target/debug/qianji, or qianji on PATH. */
   command?: string;
   /** Test hook or custom qianji template runner. */
   runner?: QianjiTemplateRunner;

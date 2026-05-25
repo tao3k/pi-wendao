@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import type { Model } from "@mariozechner/pi-ai";
 import { resolveModel } from "../model-resolver.js";
-import { createCliPiSubagentsHost } from "../pi-subagents.js";
+import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
+import { execute } from "../../executor/executor.js";
+import { createPiAiHost } from "../../executor/node-runner.js";
 import {
   loadSearchStrategyFlowAnswerRequestRows,
   parseSearchStrategyFlowLiveAnswerEvidenceTsv,
@@ -13,6 +19,8 @@ import {
 
 const SEARCH_STRATEGY_FLOW_REQUEST_ANSWER_ACTIVITY_ID =
   "SearchStrategyFlow_MaterializedRequestAnswer";
+const PROCESS_ID = "Process_SearchStrategyFlowMaterializedAnswer";
+const SERVICE_TASK_IMPLEMENTATION = "${environment.services.runAgent}";
 
 interface SearchStrategyFlowLiveRequestAnswerOptions {
   requestPath: string;
@@ -23,7 +31,8 @@ interface SearchStrategyFlowLiveRequestAnswerOptions {
   modelPattern: string;
   provider?: string;
   apiKey?: string;
-  thinkingLevel?: string;
+  thinkingLevel?: PiWendaoThinkingLevel;
+  qianjiCommand?: string;
   extensionPaths: string[];
   onChunkComplete?: (progress: SearchStrategyFlowLiveRequestAnswerProgress) => void;
 }
@@ -63,42 +72,16 @@ export async function writeSearchStrategyFlowLiveRequestAnswerEvidence(
       "No request auth is configured for SearchStrategyFlow live request answers.",
     );
   }
-  const host = createCliPiSubagentsHost({
-    loadResult: resolved.loadResult,
-    modelRegistry: resolved.modelRegistry,
-    cwd: options.cwd,
-    model: resolved.model,
-    defaultRunInBackground: false,
-    defaultSubagentType: "pi-wendao-output-only",
-  });
-  if (!host) {
-    throw new Error("pi-subagents tools are not available in the loaded extensions.");
-  }
-
   for (const [index, chunk] of requestChunks.entries()) {
-    const output = await host.run({
+    const output = await runLiveRequestAnswerChunk({
       activityId: `${SEARCH_STRATEGY_FLOW_REQUEST_ANSWER_ACTIVITY_ID}_${index + 1}`,
-      config: {
-        prompt: buildLiveRequestAnswerPrompt(chunk.rows.length),
-        tools: [],
-        inputs: ["request_tsv"],
-        outputs: ["answer_evidence_tsv"],
-        subagent: {
-          type: "pi-wendao-output-only",
-          description: "Generate SearchStrategyFlow answer evidence from materialized request rows",
-          runInBackground: false,
-          model: `${resolved.model.provider}/${resolved.model.id}`,
-          ...(options.thinkingLevel ? { thinking: options.thinkingLevel } : {}),
-          maxTurns: 2,
-        },
-      },
-      variables: {
-        request_tsv: chunk.tsv,
-      },
-      execution: {
-        activityId: `${SEARCH_STRATEGY_FLOW_REQUEST_ANSWER_ACTIVITY_ID}_${index + 1}`,
-        nodeIndex: index,
-      },
+      prompt: buildLiveRequestAnswerPrompt(chunk.rows.length),
+      requestTsv: chunk.tsv,
+      cwd: options.cwd,
+      model: resolved.model,
+      ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}),
+      ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
+      ...(options.qianjiCommand ? { qianjiCommand: options.qianjiCommand } : {}),
     });
     const answerEvidenceTsv = readAnswerEvidenceOutput(output.answer_evidence_tsv);
     evidenceRows.push(
@@ -113,6 +96,120 @@ export async function writeSearchStrategyFlowLiveRequestAnswerEvidence(
   }
   writeEvidenceRows(options.evidencePath, evidenceRows);
   return { path: options.evidencePath, rowCount: evidenceRows.length };
+}
+
+interface LiveRequestAnswerChunkOptions {
+  activityId: string;
+  prompt: string;
+  requestTsv: string;
+  cwd: string;
+  model: Model<string>;
+  apiKey?: string;
+  thinkingLevel?: PiWendaoThinkingLevel;
+  qianjiCommand?: string;
+}
+
+async function runLiveRequestAnswerChunk(
+  options: LiveRequestAnswerChunkOptions,
+): Promise<Record<string, unknown>> {
+  const tempDir = await mkdtemp(join(tmpdir(), "pi-wendao-search-answer-bpmn-"));
+  try {
+    const workflowPath = join(tempDir, "search-strategy-flow-answer.bpmn");
+    const workflowSource = buildLiveRequestAnswerBpmn(options);
+    await writeFile(workflowPath, workflowSource, "utf-8");
+    const result = await execute({
+      source: workflowSource,
+      sourcePath: workflowPath,
+      cwd: options.cwd,
+      processId: PROCESS_ID,
+      instanceId: liveRequestAnswerInstanceId(options, workflowSource, workflowPath),
+      ...(options.qianjiCommand ?? process.env.QIANJI_CLI
+        ? { qianjiCommand: options.qianjiCommand ?? process.env.QIANJI_CLI }
+        : {}),
+      context: {
+        request_tsv: options.requestTsv,
+      },
+      agentHost: createPiAiHost({
+        model: options.model,
+        ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+        cwd: options.cwd,
+        ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
+      }),
+    });
+    if (!result.success) {
+      throw new Error(result.error ?? "SearchStrategyFlow Qianji answer task failed");
+    }
+    return result.variables;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+function buildLiveRequestAnswerBpmn(options: LiveRequestAnswerChunkOptions): string {
+  const taskId = options.activityId;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             id="Definitions_SearchStrategyFlowMaterializedAnswer"
+             targetNamespace="https://wendao.dev/pi/search-strategy-flow">
+  <process id="${PROCESS_ID}" isExecutable="true">
+    <startEvent id="Start_SearchStrategyFlowMaterializedAnswer" name="Start"/>
+    <serviceTask id="${escapeXmlAttr(taskId)}" name="SearchStrategyFlow materialized answer" implementation="${escapeXmlAttr(SERVICE_TASK_IMPLEMENTATION)}">
+      <documentation>${escapeXmlText(options.prompt)}</documentation>
+      <ioSpecification>
+        <dataInput id="${dataInputId(taskId, "request_tsv")}" name="request_tsv" />
+        <dataOutput id="${dataOutputId(taskId, "answer_evidence_tsv")}" name="answer_evidence_tsv" />
+        <inputSet id="${escapeXmlAttr(taskId)}_input_set">
+          <dataInputRefs>${dataInputId(taskId, "request_tsv")}</dataInputRefs>
+        </inputSet>
+        <outputSet id="${escapeXmlAttr(taskId)}_output_set">
+          <dataOutputRefs>${dataOutputId(taskId, "answer_evidence_tsv")}</dataOutputRefs>
+        </outputSet>
+      </ioSpecification>
+    <dataInputAssociation>
+      <sourceRef>request_tsv</sourceRef>
+      <targetRef>${dataInputId(taskId, "request_tsv")}</targetRef>
+    </dataInputAssociation>
+    <dataOutputAssociation>
+      <sourceRef>${dataOutputId(taskId, "answer_evidence_tsv")}</sourceRef>
+      <targetRef>answer_evidence_tsv</targetRef>
+    </dataOutputAssociation>
+    </serviceTask>
+    <endEvent id="End_SearchStrategyFlowMaterializedAnswer" name="Done"/>
+    <sequenceFlow id="Flow_SearchStrategyFlowMaterializedAnswer_Start" sourceRef="Start_SearchStrategyFlowMaterializedAnswer" targetRef="${escapeXmlAttr(taskId)}" />
+    <sequenceFlow id="Flow_SearchStrategyFlowMaterializedAnswer_Done" sourceRef="${escapeXmlAttr(taskId)}" targetRef="End_SearchStrategyFlowMaterializedAnswer" />
+  </process>
+</definitions>`;
+}
+
+function liveRequestAnswerInstanceId(
+  options: LiveRequestAnswerChunkOptions,
+  workflowSource: string,
+  workflowPath: string,
+): string {
+  const digest = createHash("sha256")
+    .update(workflowSource)
+    .update(workflowPath)
+    .update(options.requestTsv)
+    .digest("hex")
+    .slice(0, 16);
+  return `search-strategy-flow-answer-${digest}`;
+}
+
+function dataInputId(taskId: string, name: string): string {
+  return `${escapeXmlAttr(taskId)}_input_${escapeXmlAttr(name)}`;
+}
+
+function dataOutputId(taskId: string, name: string): string {
+  return `${escapeXmlAttr(taskId)}_output_${escapeXmlAttr(name)}`;
+}
+
+function escapeXmlAttr(value: string): string {
+  return escapeXmlText(value).replace(/"/g, "&quot;");
+}
+
+function escapeXmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export function buildLiveRequestAnswerPrompt(requestCount: number): string {

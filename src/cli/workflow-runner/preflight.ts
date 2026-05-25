@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { streamSimple, type Message } from "@mariozechner/pi-ai";
 import { extractArtifactBundle, extractAssistantText } from "../../compiler/artifacts.js";
 import { lintPiWendaoWorkflowContract } from "../../compiler/contract-lint.js";
+import { resolveDefaultQianjiCommand } from "../../qianji-command-resolution.js";
 import type { Renderer } from "../../ui/renderer.js";
 import { shellQuote } from "./qianji-show.js";
 import type { WorkflowLintPreflightParams, WorkflowLintPreflightResult, WorkflowRepairModel } from "../workflow-runner.js";
@@ -392,7 +393,7 @@ async function writeRepairedWorkflow(
 }
 
 export function resolveQianjiCommand(explicitCommand: string | undefined): string {
-  return explicitCommand ?? process.env.QIANJI_CLI ?? "qianji";
+  return explicitCommand ?? resolveDefaultQianjiCommand(process.cwd());
 }
 
 function runQianjiLint(options: {

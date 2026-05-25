@@ -137,6 +137,9 @@ export interface PiSubagentsHostOptions {
   client: PiSubagentsClient;
   defaultSubagentType?: string;
   defaultRunInBackground?: boolean;
+  defaultModel?: string;
+  defaultThinking?: string;
+  defaultMaxTurns?: number;
   verboseResult?: boolean;
   runStore?: PiSubagentsRunStore;
   onEvent?: (event: PiSubagentsHostEvent) => void;
@@ -357,9 +360,15 @@ function buildSpawnRequest(
     description: subagent?.description ?? `Run BPMN service task ${request.activityId}`,
     subagent_type: resolveSubagentType(options, request.config),
     run_in_background: subagent?.runInBackground ?? options.defaultRunInBackground ?? true,
-    ...(subagent?.model ? { model: subagent.model } : {}),
-    ...(subagent?.thinking ? { thinking: subagent.thinking } : {}),
-    ...(subagent?.maxTurns !== undefined ? { max_turns: subagent.maxTurns } : {}),
+    ...(subagent?.model ?? options.defaultModel
+      ? { model: subagent?.model ?? options.defaultModel }
+      : {}),
+    ...(subagent?.thinking ?? options.defaultThinking
+      ? { thinking: subagent?.thinking ?? options.defaultThinking }
+      : {}),
+    ...(subagent?.maxTurns ?? options.defaultMaxTurns
+      ? { max_turns: subagent?.maxTurns ?? options.defaultMaxTurns }
+      : {}),
     ...(subagent?.isolated !== undefined ? { isolated: subagent.isolated } : {}),
     ...(subagent?.isolation ? { isolation: subagent.isolation } : {}),
     ...(subagent?.inheritContext !== undefined ? { inherit_context: subagent.inheritContext } : {}),

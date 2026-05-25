@@ -72,6 +72,7 @@ export async function runQianjiExternalHostLoop(options: {
   source: string;
   startAtNode?: string;
   options: ExecuteOptions;
+  qianjiEnvironment?: NodeJS.ProcessEnv;
   completionFixture?: HostCompletionFixture;
   onTraceEvent: (event: QianjiTraceEvent) => void | Promise<void>;
   tempDirs: string[];
@@ -91,6 +92,7 @@ async function runQianjiExternalHostLoopInternal(options: {
   source: string;
   startAtNode?: string;
   options: ExecuteOptions;
+  qianjiEnvironment?: NodeJS.ProcessEnv;
   completionFixture?: HostCompletionFixture;
   onTraceEvent: (event: QianjiTraceEvent) => void | Promise<void>;
   tempDirs: string[];
@@ -151,6 +153,7 @@ async function runQianjiExternalHostLoopInternal(options: {
       options.cwd,
       onTraceEvent,
       options.options.signal,
+      options.qianjiEnvironment,
     );
     let latest = await session.initial;
     appendCliResult(aggregate, latest);

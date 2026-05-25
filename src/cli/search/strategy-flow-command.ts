@@ -1,4 +1,5 @@
 import { resolve as resolvePath } from "node:path";
+import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
 import {
   writeSearchStrategyFlowAgentAnswerEvidence,
   writeSearchStrategyFlowRequestAnswerEvidence,
@@ -21,6 +22,8 @@ interface SearchStrategyFlowCommandOptions {
   searchRustBridgeSession?: boolean;
   searchFlightBaseUrl?: string;
   searchFlightTimeoutSeconds?: number;
+  searchStrategyFlowServiceBaseUrl?: string;
+  searchStrategyFlowServiceTimeoutSeconds?: number;
   searchAgent?: boolean;
   searchAgentAnswerRequest?: string;
   searchAgentAnswerMode?: string;
@@ -28,10 +31,11 @@ interface SearchStrategyFlowCommandOptions {
   searchAgentAnswerResume?: boolean;
   searchAgentAnswerEvidence?: string;
   searchJson?: boolean;
+  qianjiCommand?: string;
   modelPattern: string;
   provider?: string;
   apiKey?: string;
-  thinkingLevel?: string;
+  thinkingLevel?: PiWendaoThinkingLevel;
   extensionPaths: string[];
 }
 
@@ -101,23 +105,24 @@ async function runLiveRequestAnswer(
 ): Promise<void> {
   const evidence = await writeSearchStrategyFlowLiveRequestAnswerEvidence({
     requestPath: invocation.requestPath,
-        evidencePath: invocation.evidencePath,
-        cwd: options.cwd,
-        chunkSize: options.searchAgentAnswerChunkSize,
-        resumeExisting: options.searchAgentAnswerResume,
-        modelPattern: options.modelPattern,
-        provider: options.provider,
-        apiKey: options.apiKey,
-        thinkingLevel: options.thinkingLevel,
-        extensionPaths: options.extensionPaths,
-        onChunkComplete: options.searchJson
-          ? undefined
-          : (progress) => {
-              console.error(
-                `SearchStrategyFlow live materialized answer chunk ${progress.chunkIndex}/${progress.chunkCount}: accepted ${progress.rowCount} row(s)`,
-              );
-            },
-      });
+    evidencePath: invocation.evidencePath,
+    cwd: options.cwd,
+    chunkSize: options.searchAgentAnswerChunkSize,
+    resumeExisting: options.searchAgentAnswerResume,
+    modelPattern: options.modelPattern,
+    provider: options.provider,
+    apiKey: options.apiKey,
+    thinkingLevel: options.thinkingLevel,
+    qianjiCommand: options.qianjiCommand,
+    extensionPaths: options.extensionPaths,
+    onChunkComplete: options.searchJson
+      ? undefined
+      : (progress) => {
+          console.error(
+            `SearchStrategyFlow live materialized answer chunk ${progress.chunkIndex}/${progress.chunkCount}: accepted ${progress.rowCount} row(s)`,
+          );
+        },
+  });
   if (!options.searchJson) {
     console.error(
       `SearchStrategyFlow live materialized answer evidence: wrote ${evidence.rowCount} row(s) to ${evidence.path}`,
@@ -138,6 +143,8 @@ async function runSearchTraceCommand(options: SearchStrategyFlowCommandOptions):
     searchRustBridgeSession: options.searchRustBridgeSession,
     searchFlightBaseUrl: options.searchFlightBaseUrl,
     searchFlightTimeoutSeconds: options.searchFlightTimeoutSeconds,
+    searchStrategyFlowServiceBaseUrl: options.searchStrategyFlowServiceBaseUrl,
+    searchStrategyFlowServiceTimeoutSeconds: options.searchStrategyFlowServiceTimeoutSeconds,
   });
   const trace = await runSearchStrategyFlow(baseOptions);
   const agentTrace =
@@ -149,6 +156,7 @@ async function runSearchTraceCommand(options: SearchStrategyFlowCommandOptions):
           provider: options.provider,
           apiKey: options.apiKey,
           thinkingLevel: options.thinkingLevel,
+          qianjiCommand: options.qianjiCommand,
           extensionPaths: options.extensionPaths,
         })
       : undefined;
@@ -158,6 +166,7 @@ async function runSearchTraceCommand(options: SearchStrategyFlowCommandOptions):
     agentTrace.branchJudgements.length > 0
       ? await runSearchStrategyFlow({
           ...baseOptions,
+          queryUnderstanding: trace.queryUnderstanding,
           branchJudgements: agentTrace.branchJudgements,
         })
       : trace;

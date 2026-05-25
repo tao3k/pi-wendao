@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { resolveDefaultQianjiCommand } from "../qianji-command-resolution.js";
 
 export interface CommandResult {
   exitCode: number | null;
@@ -33,8 +34,7 @@ export function runCommand(command: string, args: string[], cwd: string): Promis
 }
 
 export function defaultQianjiCommand(): string {
-  const envCommand = process.env.QIANJI_CLI?.trim();
-  return envCommand || "qianji";
+  return resolveDefaultQianjiCommand();
 }
 
 function shellQuote(value: string): string {

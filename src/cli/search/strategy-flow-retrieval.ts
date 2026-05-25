@@ -1,3 +1,4 @@
+import { WENDAO_ARROW_FLIGHT_DATA_PLANE } from "../../arrow/boundary.js";
 import type {
   SearchStrategyFlowId,
   SearchStrategyFlowResolutionRequirement,
@@ -43,7 +44,7 @@ export function buildSearchStrategyFlowRetrievalRoutes(
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
         receiptSource: "local-plan",
-        primaryTransport: "arrow-flight",
+        primaryTransport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
         sourcePath: section.sourcePath as SearchStrategyFlowSourcePath,
         headingAnchor: section.headingAnchor,
         evidenceKind: evidenceKind(section),
@@ -81,7 +82,7 @@ function flightSteps(section: {
   return [
     {
       step: "flight_search_page",
-      transport: "arrow-flight",
+      transport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
       route: "/search/repos/main",
       metadataTemplates: [
         `x-wendao-repo-search-repo=${REPO_PLACEHOLDER}`,
@@ -96,7 +97,7 @@ function flightSteps(section: {
     },
     {
       step: "flight_resolve_page_index_tree",
-      transport: "arrow-flight",
+      transport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
       route: "/analysis/repo-projected-page-index-tree",
       metadataTemplates: [
         `x-wendao-repo-projected-page-index-tree-repo=${REPO_PLACEHOLDER}`,
@@ -110,7 +111,7 @@ function flightSteps(section: {
     },
     {
       step: "flight_open_retrieval_context",
-      transport: "arrow-flight",
+      transport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
       route: "/analysis/repo-projected-retrieval-context",
       metadataTemplates: [
         `x-wendao-repo-projected-retrieval-context-repo=${REPO_PLACEHOLDER}`,
@@ -125,7 +126,7 @@ function flightSteps(section: {
     },
     {
       step: "flight_expand_graph_context",
-      transport: "arrow-flight",
+      transport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
       route: "/graph/neighbors",
       metadataTemplates: [
         `x-wendao-graph-node-id=${RESOLVED_GRAPH_NODE_ID_PLACEHOLDER}`,

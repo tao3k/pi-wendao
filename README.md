@@ -68,6 +68,34 @@ pi-wendao my-skill.bpmn
 This delegates BPMN execution to `qianji bpmn run`. By default, `pi-wendao`
 uses `QIANJI_CLI` when set, otherwise it resolves `qianji` from `PATH`.
 
+Flowhub scenarios can be executed without adding another resolver command:
+
+```bash
+pi-wendao --flowhub-scenario agent-coding --flowhub-root ../../qianji-flowhub
+```
+
+`pi-wendao` calls `qianji-client flowhub scenarios --json`, selects the
+requested Org+BPMN source pair, and then executes the selected BPMN through the
+same qianji runtime path as an explicit workflow file. The selected
+`BPMN_PROCESS_ID` is used as the default process unless `--process` is passed.
+Internally this lookup is a registry provider boundary: the default provider is
+qianji-client-backed, and qianji-server exposes the same validated source-pair
+contract at `/flowhub/scenarios` without adding another pi-wendao command
+surface.
+Set `PI_WENDAO_FLOWHUB_REGISTRY_URL` to use an HTTP Gateway registry provider
+that returns the same JSON contract as `qianji-client flowhub scenarios
+--json`. Gateway provider failures are surfaced directly instead of silently
+falling back to qianji-client.
+Set `PI_WENDAO_QIANJI_SERVER_URL` or `QIANJI_SERVER_URL` to a qianji-server base
+URL when the caller should derive the registry route as `/flowhub/scenarios`.
+
+For an opt-in end-to-end smoke that launches qianji-server and routes the
+Flowhub scenario registry through `/flowhub/scenarios`, run:
+
+```bash
+npm run test:flowhub-gateway-smoke
+```
+
 For a BPMN+DMN compile result, pass the sidecar DMN source to qianji:
 
 ```bash
@@ -79,12 +107,17 @@ Options:
 - `--process <id>` — BPMN process id (default: first process in the file)
 - `--instance-id <id>` — qianji workflow instance id; must be a stable descriptive id, not a short numeric value
 - `--qianji <command>` — qianji CLI command override
+- `--qianji-client <command>` — qianji-client command override for Flowhub scenario registry lookup
+- `--flowhub-scenario <id>` — run the BPMN source pair selected from `qianji-client flowhub scenarios --json`
+- `--flowhub-root <path>` — Flowhub root used by `--flowhub-scenario`
 - `--dmn <path>` — pass a DMN source to qianji (repeatable)
 - `--host-fixture <path>` — qianji host fixture JSON
 - `--event-fixture <path>` — qianji event fixture JSON
 - `--context-json <json>` — merge a JSON object after `--var` pairs
 - `--trace-frame-ms <ms>` — optional delay between streamed graph trace frames
-- `--model <model>` — accepted compatibility option for real host execution (defaults to `anthropic/deepseek-v4-pro`, with `PI_WENDAO_MODEL` and Anthropic-compatible environment variables overriding it)
+- `--model <model>` — accepted compatibility option for real host execution
+  (defaults to `anthropic/deepseek-v4-pro`; only `PI_WENDAO_MODEL` overrides
+  that default without an explicit flag)
 - `--provider <provider>` — accepted compatibility option for model resolution
 - `--api-key <key>` — accepted compatibility option for model resolution
 - `--thinking <level>` — LLM thinking level for real host execution
@@ -107,10 +140,10 @@ Architecture details live in
 `--search` is a pi-wendao CLI entry point for WendaoGraph SearchStrategyFlow
 traces. The CLI discovers `WendaoGraph.jl`, asks Julia to score and prune graph
 candidates, and prints Julia's graph-guided query-understanding evidence, the
-frontier, planner actions, validation flags, and the planned LLM/subagent
-judgement points. This path lives in this package so the agent-facing command
-can evolve with pi-subagents instead of requiring users to call a Rust example
-directly.
+frontier, planner actions, validation flags, and the planned Qianji
+service-agent judgement points. This path lives in this package so the
+agent-facing command can evolve with Qianji-owned service-agent orchestration
+instead of requiring users to call a Rust example directly.
 The rendered trace includes `strategy_budget`, which shows whether loop,
 judgement, and beam budgets came from Julia query-understanding evidence or
 from defaults.
@@ -124,7 +157,8 @@ with the WendaoGraph Pluto notebooks:
 5. planner actions
 
 Those stage receipts make the CLI trace match the research notebooks and give
-pi-subagents a bounded reasoning-tree surface instead of a flat search result.
+the Qianji service agent a bounded reasoning-tree surface instead of a flat
+search result.
 Candidate ids use Markdown section granularity, for example
 `docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding`,
 so the first materialization layer can reveal the content under the selected
@@ -150,8 +184,20 @@ only return `materialization=executed` when it has connected to a real Flight
 service endpoint and decoded the route batches. Agent answer generation must
 treat `execute_before_answer=yes` as a hard guard unless Rust has returned
 executed Arrow Flight evidence for the requested section.
-`pi-wendao` forwards endpoint settings to the Rust bridge and renders the
-returned evidence; it does not decode Arrow Flight streams with JS Arrow.
+`pi-wendao` forwards endpoint settings to the Rust bridge and owns a JS Arrow
+decode boundary for raw Arrow tables returned by backend-owned routes. JSON and
+JSONL are control envelopes only; section evidence and route receipts must stay
+on the Rust/Gateway Arrow Flight data plane. Do not wrap Arrow payloads in
+JSON/base64 for this path. Reports use `arrow-flight` for the canonical data
+plane, `none` when no backend data plane is involved, and
+`jsonl-stdio-control`/`process-args-control` for control-only coordination.
+The Studio/Gateway materialization endpoint and the WendaoGraph
+SearchStrategyFlow service endpoint are separate boundaries. Use
+`--search-flight-base-url` for Rust-owned retrieval materialization and
+`--search-strategy-flow-service-base-url` when Julia strategy computation is
+served by the WendaoGraph Arrow Flight service. The service path uses the Rust
+process only as a control envelope; table movement remains Arrow Flight and the
+JSONL stdio session mode is intentionally incompatible with the service URL.
 Required evidence is enforced before live Agent judgement. When Julia infers
 `ownership_boundary`, `validation_path`, `relation_path`, or `page_index_seed`,
 the frontier reserves matching authority, validation, link-graph, or page-index
@@ -166,12 +212,14 @@ Options:
 - `--search-julia <command>` — Julia executable override
 - `--search-backend <mode>` — `auto`, `rust-julia`, or `julia-direct`
 - `--search-rust-workspace <path>` — optional xiuxian Rust workspace for the Rust bridge
-- `--search-rust-command <command>` — Cargo executable override for the Rust bridge
+- `--search-rust-command <command>` — test-only launcher override for the local Rust bridge process; production materialization uses Studio/Gateway Arrow Flight
 - `--search-rust-bridge-bin <path>` — prebuilt `wendaograph_search_strategy_flow` binary; this bypasses `cargo run` while keeping the same Rust bridge contract
-- `--search-rust-bridge-session` — run the Rust bridge through its JSONL stdio session protocol; this requires `--search-flight-base-url`
+- `--search-rust-bridge-session` — run the Rust bridge through its JSONL stdio control protocol; this local control session cannot be combined with the WendaoGraph service URL
 - `--search-flight-base-url <url>` — Studio Arrow Flight endpoint consumed by the Rust bridge
 - `--search-flight-timeout-seconds <seconds>` — Rust bridge Flight request timeout
-- `--search-agent` — run a live pi-subagents LLM judgement for planner actions that require an LLM
+- `--search-strategy-flow-service-base-url <url>` — WendaoGraph SearchStrategyFlow Arrow Flight service endpoint consumed by the Rust bridge
+- `--search-strategy-flow-service-timeout-seconds <seconds>` — WendaoGraph SearchStrategyFlow service request timeout
+- `--search-agent` — run a live Qianji local CLI service-agent judgement for planner actions that require an LLM
 - `--search-agent-answer-request <path>` — read a WendaoGraph materialized answer request TSV and write deterministic packet-contract answer evidence
 - `--search-agent-answer-mode <mode>` — answer request mode, either `deterministic` or `live`
 - `--search-agent-answer-chunk-size <count>` — live answer request chunk size; defaults to a small batch for progress visibility
@@ -179,24 +227,44 @@ Options:
 - `--search-agent-answer-evidence <path>` — with `--search-agent`, write completed live agent output as `candidate_id<TAB>answer_text` TSV evidence for the WendaoGraph live answer rubric
 - `--search-json` — print the structured trace JSON
 
+`--search-agent` executes the first-layer judgement as a generated native BPMN
+service task through Qianji local CLI host-session execution. Qianji owns the
+service task token, BPMN IO, checkpoint, retry, and completion boundary; the
+local pi-ai service agent only fills the declared `intent_understanding`,
+`branch_decision`, `judgement`, and `branch_judgements` outputs. There is no
+direct Anthropic/OpenAI prompt fallback for SearchStrategyFlow promotion,
+because failed BPMN output extraction must remain a failed graph judgement
+rather than an implicit alternate runtime. The real local command path uses
+`--qianji`, `QIANJI_CLI`, a discovered workspace `target/debug/qianji`, or
+`qianji` on `PATH`. Server-mode execution must route through the Gateway/Flight
+boundary instead of inventing a second pi-wendao workflow engine.
+
 The default `auto` backend treats the Rust-to-Julia bridge as the core path. It
 requires a xiuxian Rust workspace and fails if the Rust bridge is unavailable or
 broken, because pi-wendao should not silently bypass the Rust control plane.
 Use `--search-rust-bridge-bin` or `PI_WENDAO_SEARCH_RUST_BRIDGE_BIN` for
 benchmark runs that should execute an already-built
 `wendaograph_search_strategy_flow` binary instead of measuring `cargo run`
-startup. `--search-rust-command` remains cargo-shaped and is only a cargo
-executable override.
+startup. `--search-rust-command` and `PI_WENDAO_SEARCH_RUST_COMMAND` remain
+test-only process launcher overrides; they are not the production bridge
+contract and should not be used to bypass Gateway Flight evidence.
 Use `--search-rust-bridge-session` or `PI_WENDAO_SEARCH_RUST_BRIDGE_SESSION=1`
 for Flight-backed runs that should talk to the bridge through its
-`--serve-stdio` JSONL protocol. A single CLI invocation still pays the initial
-Julia host warmup; longer running callers can keep that bridge process alive
-and reuse the warm host for subsequent intent searches.
+`--serve-stdio` JSONL control protocol. A single CLI invocation still pays the
+initial Julia host warmup; longer running callers can keep that bridge process
+alive and reuse the warm host for subsequent intent searches. The JSONL
+session carries request ids, intents, and small control receipts only; Arrow
+Flight remains the evidence data plane.
+When a live Agent triggers a second SearchStrategyFlow pass, `pi-wendao` sends
+first-pass `queryUnderstanding` rows and accepted `branch_judgements` rows to
+the Rust bridge as Arrow IPC files. The JSONL control fields are
+`queryUnderstandingArrowIpcPath` and `branchJudgementsArrowIpcPath`; table rows
+are not embedded in JSON or exposed as a delimited-text bridge ABI.
 Use `--search-backend julia-direct` only for pi-local bridge smoke tests and
 diagnostics.
 
-The production subagent retrieval path should remain backend-owned:
-`pi-wendao` receives the user intent, the query-understanding subagent shapes
+The production agent retrieval path should remain backend-owned:
+`pi-wendao` receives the user intent, the query-understanding service agent shapes
 the evidence demand, and WendaoGraph.jl turns that demand into selected route
 evidence. Only after that narrowing step should the runtime call Gateway
 REST/Flight data-plane routes such as `/search/repos/main`,
@@ -227,12 +295,13 @@ npm run test:search-live
 ```
 
 That test uses `--search-backend julia-direct` intentionally: it validates that
-the graph-owned SearchStrategyFlow algorithm trace and the first-layer
-`SearchStrategyFlow_QueryUnderstanding` LLM judgement are complete without
-paying the Rust bridge startup and compilation cost on every algorithm smoke.
-It expects `DEEPSEEK_API_KEY` in the worktree `.env` and requires the
-first-layer understanding agent to stay tool-less (`Tool uses: 0`). Expansion
-agents that read candidate documents belong to the next reasoning-tree layer.
+That test uses the default SearchStrategyFlow backend, so the CLI must route
+through the Rust bridge and report `backend: rust-wendao-julia`,
+`control_plane: rust`, and `fallback: none` before handing the trace to the
+live `SearchStrategyFlow_QueryUnderstanding` agent. It expects
+`DEEPSEEK_API_KEY` in the worktree `.env` and requires the first-layer
+understanding agent to stay tool-less (`Tool uses: 0`). Expansion agents that
+read candidate documents belong to the next reasoning-tree layer.
 
 The precision gate for the search algorithm is exposed from this package as a
 wrapper over WendaoGraph's Julia authority tests:
@@ -248,8 +317,69 @@ judgement to WendaoGraph. Use `PI_WENDAO_WENDAOGRAPH_DIR` or `--wendao-graph
 <path>` to point at another checkout, and `--gate materialized_precision` for a
 focused precision/recall run.
 
+For the Markdown corpus intent benchmark, use the package runner over
+WendaoGraph's Org-native `markdown_corpus_live_intents.org` ledger:
+
+```bash
+npm run benchmark:search-markdown-corpus -- --limit 3 \
+  --output-json ../../.cache/agent/evidence/search_strategy_flow_markdown_corpus/report.json \
+  --output-md ../../.cache/agent/evidence/search_strategy_flow_markdown_corpus/report.md
+```
+
+By default this runner uses one Rust bridge `--serve-stdio` control session for
+all intent rows and reports backend, required-evidence coverage, expected
+source hits, blocked source selections, and retrieval receipt shape for each
+intent. Without a Flight endpoint the benchmark reports `traceDataPlane=none`,
+`traceControlEnvelope=jsonl-stdio-control`, and `rustBridgeSession=true` while
+the Rust bridge still owns local Markdown candidate discovery. The report also
+records bridge-session request count, session duration, first response latency,
+response span, max response gap, total route materialization time, and max route
+materialization time so startup/warmup cost is separated from Flight route
+execution and the hot request path. Add `--live` or run
+`npm run benchmark:search-markdown-corpus-live` to pass every row through the
+Qianji service-agent judgement as well. Live benchmark mode requires
+Studio/Gateway Arrow Flight materialization through `--search-flight-base-url`
+or `PI_WENDAO_SEARCH_FLIGHT_BASE_URL`; with Flight configured the same session
+reports `traceDataPlane=arrow-flight`. Live judgement uses Qianji-owned BPMN
+workflows. When `--search-strategy-flow-service-base-url` or
+`PI_WENDAO_SEARCH_STRATEGY_FLOW_SERVICE_BASE_URL` is set, the benchmark uses
+process-args control instead of the JSONL session so the Rust bridge can call
+the WendaoGraph service through Arrow Flight. A row is promotion-eligible only
+when the trace reports the SearchStrategyFlow service data plane as
+`arrow-flight` and at least one retrieval route has executed through
+Studio/Gateway Flight.
+
+`--live-qianji-concurrency <count>` bounds how many Qianji live
+judgement sessions the benchmark may run at once while preserving report row
+order. Timeout-only live agent failures are retried serially after the first
+concurrent pass, and only when the deterministic trace already satisfies the
+backend, required-evidence, expected-source, and blocked-source gates. Use
+`--live-agent-retries <count>` to set the retry limit, and
+`--live-agent-retry-timeout-seconds <seconds>` when the retry attempt needs a
+different timeout. The live benchmark also defaults the agent candidate-pool
+policy to `auto`: when deterministic required evidence is already covered, the
+Qianji judgement receives only selected/actionable frontier branches; when the
+graph gate is missing required evidence, candidate-pool rows remain visible for
+rescue. Use `--live-agent-candidate-pool visible` to force the older wider
+trace, or `--live-agent-candidate-pool selected-only` to force the narrow trace.
+For live benchmark latency work, `--live-agent-mode batch-judgement` groups
+multiple already-gated intent rows into a single Qianji BPMN service-agent
+request while preserving per-row validation. `--live-agent-batch-size <count>`
+sets the row cap for each batch. This is a benchmark calling-shape optimization
+only: Rust/Julia table materialization remains on Arrow Flight, and failed
+deterministic gates are not sent to the live model.
+Use `--live-agent-mode batch-sufficiency` when the benchmark only needs a
+family-level live sufficiency verdict. It still requires deterministic
+Rust/Julia graph gates first, but it asks Qianji for one JSON sufficiency row
+per intent family instead of branch-level judgements.
+The report records `liveRetriedCount`, `liveRetryRecoveredCount`,
+`totalLiveAttemptCount`, `liveAgentMode`, `liveAgentCandidatePoolMode`,
+`liveBatchCount`, live batch duration fields, and per-row live attempt and
+retry counts. `--fail-on-violation` turns the report into a gate; without it
+the runner records failures for audit instead of claiming promotion.
+
 To produce an auditable answer-evidence receipt for WendaoGraph validation,
-write the live subagent output to an explicit TSV path:
+write the live Qianji service-agent output to an explicit TSV path:
 
 ```bash
 npx --no-install pi-wendao --search "find the relevant knowledge boundary" \
@@ -258,7 +388,7 @@ npx --no-install pi-wendao --search "find the relevant knowledge boundary" \
   --no-graph
 ```
 
-The receipt is written only after the live subagent completes with non-empty
+The receipt is written only after the live Qianji service agent completes with non-empty
 `intent_understanding`, `branch_decision`, `judgement`, and valid
 `branch_judgements` outputs. Accepted branch judgements are fed back into
 WendaoGraph as a generic table before the selected frontier is rendered or
@@ -320,7 +450,7 @@ then drive SearchStrategyFlow through the running service boundary. That gate
 belongs with the Rust/Juila service orchestration contract, not with the fast
 algorithm smoke. First-layer query understanding and judgement keep the
 configured reasoning level because route selection is correctness-sensitive.
-The first repair is structured branch judgement: the live subagent returns exact
+The first repair is structured branch judgement: the live Qianji service agent returns exact
 candidate-scoped `branch_judgements`, `pi-wendao` validates them, and
 WendaoGraph consumes them during frontier selection. Latency work must come from
 orchestration, caching, compact traces, and later concurrent branch judges

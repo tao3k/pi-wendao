@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { assertArrowIpcColumns, decodeArrowIpcTable } from "../../src/arrow/ipc.js";
+import { WENDAO_ARROW_FLIGHT_DATA_PLANE } from "../../src/arrow/boundary.js";
+import { encodeSearchStrategyFlowBranchJudgementsArrowIpc } from "../../src/cli/search/strategy-flow-branch-judgement-arrow.js";
+import { encodeSearchStrategyFlowQueryUnderstandingArrowIpc } from "../../src/cli/search/strategy-flow-query-understanding-arrow.js";
 import {
   parseSearchStrategyFlowBranchJudgements,
   renderSearchStrategyFlowBranchJudgementTsv,
@@ -206,11 +210,84 @@ describe("SearchStrategyFlow branch judgement contract", () => {
       "pi-wendao-search-strategy-flow\tdocs/a.md#owner\tauthority\t0.900000\t0.800000\tkeep\tfalse\tline one\\nline two\\twith tab",
     );
   });
+
+  it("encodes accepted branch judgement rows as Arrow IPC", () => {
+    const payload = encodeSearchStrategyFlowBranchJudgementsArrowIpc([
+      {
+        flowId: "pi-wendao-search-strategy-flow" as never,
+        candidateId: "docs/a.md#owner",
+        branchRole: "authority",
+        judgementScore: 0.9,
+        confidence: 0.8,
+        decision: "keep",
+        blocked: false,
+        reason: "Ownership branch covers the authority evidence.",
+      },
+    ]);
+    const decoded = decodeArrowIpcTable(payload);
+
+    assertArrowIpcColumns(decoded, [
+      "flow_id",
+      "candidate_id",
+      "branch_role",
+      "judgement_score",
+      "confidence",
+      "decision",
+      "blocked",
+      "reason",
+    ]);
+    expect(decoded.numRows).toBe(1);
+    expect(decoded.getChild("candidate_id")?.get(0)).toBe("docs/a.md#owner");
+    expect(decoded.getChild("branch_role")?.get(0)).toBe("authority");
+    expect(decoded.getChild("judgement_score")?.get(0)).toBe(0.9);
+  });
+
+  it("encodes query-understanding rows as Arrow IPC", () => {
+    const payload = encodeSearchStrategyFlowQueryUnderstandingArrowIpc([
+      {
+        flowId: "pi-wendao-search-strategy-flow" as never,
+        intentId: "cli-intent-1" as never,
+        signalId: "cli-intent-1-signal-1" as never,
+        signalKind: "route_hint",
+        signalValue: "search_strategy",
+        confidence: 0.92,
+        routeHint: "search_strategy",
+        requiredEvidence: "",
+        ambiguity: 0.42,
+        weight: 0.9,
+        recommendedLoopBudget: 1,
+        recommendedJudgementBudget: 2,
+        recommendedBeamWidth: 3,
+        reason: "route inferred from graph-owned query anchors",
+      },
+    ]);
+    const decoded = decodeArrowIpcTable(payload);
+
+    assertArrowIpcColumns(decoded, [
+      "flow_id",
+      "intent_id",
+      "signal_id",
+      "signal_kind",
+      "signal_value",
+      "confidence",
+      "route_hint",
+      "required_evidence",
+      "ambiguity",
+      "weight",
+      "recommended_loop_budget",
+      "recommended_judgement_budget",
+      "recommended_beam_width",
+      "reason",
+    ]);
+    expect(decoded.numRows).toBe(1);
+    expect(decoded.getChild("signal_value")?.get(0)).toBe("search_strategy");
+    expect(decoded.getChild("recommended_loop_budget")?.get(0)).toBe(1n);
+  });
 });
 
 function completedAgentTrace(): SearchStrategyFlowAgentTrace {
   return {
-    mode: "live-subagent",
+    mode: "qianji-service-agent",
     status: "completed",
     model: "deepseek/deepseek-chat-v3-0324",
     durationMs: 100,
@@ -295,7 +372,7 @@ function sampleTrace(): SearchStrategyFlowTrace {
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
         receiptSource: "local-plan",
-        primaryTransport: "arrow-flight",
+        primaryTransport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
         sourcePath: "docs/a.md",
         headingAnchor: "owner",
         directFileReadAllowed: false,
@@ -307,7 +384,7 @@ function sampleTrace(): SearchStrategyFlowTrace {
         materializationOwner: "studio-rust",
         materializationStatus: "planned",
         receiptSource: "local-plan",
-        primaryTransport: "arrow-flight",
+        primaryTransport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
         sourcePath: "docs/b.md",
         headingAnchor: "validation",
         directFileReadAllowed: false,

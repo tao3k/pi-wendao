@@ -15,7 +15,10 @@
     "test": "vitest run && node scripts/harness-agent-gate.mjs",
     "test:search-live": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"live SearchStrategyFlow\"'",
     "test:search-bridge-smoke": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_SMOKE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"Rust bridge SearchStrategyFlow smoke\"'",
+    "test:flowhub-gateway-smoke": "RUN_PI_WENDAO_FLOWHUB_GATEWAY_SMOKE=1 vitest run test/cli/flowhub-gateway-smoke.test.ts",
     "test:search-precision": "jiti src/cli/search/strategy-flow-precision-gate.ts",
+    "benchmark:search-markdown-corpus": "jiti src/cli/search/strategy-flow-markdown-corpus-benchmark.ts",
+    "benchmark:search-markdown-corpus-live": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; jiti src/cli/search/strategy-flow-markdown-corpus-benchmark.ts --live \"$@\"' --",
     "pi-wendao": "node dist/cli/pi-wendao.js"
   },
   "dependencies": {
@@ -27,6 +30,7 @@
     "@tintinweb/pi-subagents": "^0.6.1",
     "@twogiants/pi-anthropic-vertex": "^0.1.1",
     "@types/dagre": "^0.7.54",
+    "apache-arrow": "^21.1.0",
     "commander": "^13.0.0",
     "dagre": "^0.8.5",
     "fast-xml-parser": "^5.7.1",

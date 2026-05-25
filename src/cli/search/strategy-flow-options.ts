@@ -11,14 +11,17 @@ export function registerSearchStrategyFlowOptions(command: Command): Command {
       "SearchStrategyFlow backend: auto, rust-julia, or julia-direct",
     )
     .option("--search-rust-workspace <path>", "xiuxian Rust workspace for --search")
-    .option("--search-rust-command <command>", "Cargo executable override for the Rust bridge")
+    .option(
+      "--search-rust-command <command>",
+      "Test-only launcher override for the local SearchStrategyFlow bridge binary; production materialization uses Arrow Flight",
+    )
     .option(
       "--search-rust-bridge-bin <path>",
       "Prebuilt wendaograph_search_strategy_flow binary for the Rust bridge",
     )
     .option(
       "--search-rust-bridge-session",
-      "Run the Rust bridge through its JSONL stdio session protocol",
+      "Run the Rust bridge through its JSONL stdio control protocol",
     )
     .option(
       "--search-flight-base-url <url>",
@@ -29,7 +32,16 @@ export function registerSearchStrategyFlowOptions(command: Command): Command {
       "Rust SearchStrategyFlow Flight request timeout",
       (value) => parseNonNegativeInt(value, "--search-flight-timeout-seconds"),
     )
-    .option("--search-agent", "Run a live pi-subagents LLM judgement for LLM planner actions")
+    .option(
+      "--search-strategy-flow-service-base-url <url>",
+      "WendaoGraph SearchStrategyFlow Arrow Flight service endpoint",
+    )
+    .option(
+      "--search-strategy-flow-service-timeout-seconds <seconds>",
+      "WendaoGraph SearchStrategyFlow service request timeout",
+      (value) => parseNonNegativeInt(value, "--search-strategy-flow-service-timeout-seconds"),
+    )
+    .option("--search-agent", "Run a live Qianji service-agent judgement for LLM planner actions")
     .option(
       "--search-agent-answer-request <path>",
       "Read a materialized SearchStrategyFlow answer request TSV and write answer evidence",

@@ -16,6 +16,7 @@ import {
   nativeHumanTask,
   nativeServiceTask,
 } from "../support/native-bpmn.js";
+import { WENDAO_ARROW_FLIGHT_DATA_PLANE } from "../../src/arrow/boundary.js";
 
 const projectRoot = process.cwd();
 const tempDirs: string[] = [];
@@ -35,6 +36,10 @@ const searchStrategySectionCandidate =
   "docs/30_search_strategy/30.01_search_strategy_flow.md#stage-1-query-understanding";
 const searchStrategyWholeFileAction =
   "docs/30_search_strategy/30.01_search_strategy_flow.md action=keep";
+const rustSearchStrategyAuthorityCandidate =
+  "packages/rust/crates/xiuxian-wendao/docs/03_features/210_search_queries_architecture.md#local-corpus-lane-ownership";
+const rustSearchStrategyValidationCandidate =
+  "packages/rust/crates/xiuxian-qianji/docs/rfcs/2026-04-08-compact-validation-flowchart-alignment-rfc.md#rfc-0004-compact-validation-and-flowchart-alignment";
 const pageIndexSectionCandidate =
   "docs/20_page_index/20.01_reasoning_tree_contracts.md#relationship-to-search-strategy";
 
@@ -135,7 +140,7 @@ describe("pi-wendao CLI", () => {
       `candidate=${searchStrategySectionCandidate} owner=studio-rust materialization=planned`,
     );
     expect(output).toContain("receipt_source=local-plan");
-    expect(output).toContain("primary=arrow-flight");
+    expect(output).toContain(`primary=${WENDAO_ARROW_FLIGHT_DATA_PLANE}`);
     expect(output).toContain("direct_file_read=no");
     expect(output).toContain("execute_before_answer=yes");
     expect(output).toContain(
@@ -154,8 +159,8 @@ describe("pi-wendao CLI", () => {
     expect(output).not.toContain("node_id=stage-1-query-understanding");
     expect(output).toContain("llm_interactions:");
     expect(output).toContain("planned action=compare");
-    expect(output).toContain("subagent_interactions:");
-    expect(output).toContain("planned type=pi-wendao-output-only");
+    expect(output).toContain("qianji_service_agent_interactions:");
+    expect(output).toContain("planned runtime=qianji-local-cli");
   }, 20_000);
 
   it("prefers the Rust SearchStrategyFlow bridge when a workspace is available", async () => {
@@ -295,7 +300,7 @@ describe("pi-wendao CLI", () => {
     ]);
   }, 20_000);
 
-  it("requires Flight config for the Rust SearchStrategyFlow bridge session", async () => {
+  it("runs the Rust SearchStrategyFlow bridge session without Flight config", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-rust-session-no-flight-"));
     tempDirs.push(dir);
     const graphProject = join(dir, "WendaoGraph.jl");
@@ -322,10 +327,11 @@ describe("pi-wendao CLI", () => {
     );
     const output = [result.stdout, result.stderr].join("\n");
 
-    expect(result.exitCode).toBe(1);
-    expect(output).toContain(
-      "--search-rust-bridge-session requires --search-flight-base-url",
-    );
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("mode: persistent-stdio");
+    expect(output).toContain("fallback: none");
+    expect(output).toContain("materialization=planned");
   }, 20_000);
 
   it("requires --search-agent before writing SearchStrategyFlow answer evidence", async () => {
@@ -631,10 +637,6 @@ describe("pi-wendao CLI", () => {
       [
         "--search",
         "find the SearchStrategyFlow ownership boundary and validation path",
-        "--wendao-graph",
-        liveWendaoGraphProject,
-        "--search-backend",
-        "julia-direct",
         "--search-agent",
         "--no-graph",
       ],
@@ -650,16 +652,22 @@ describe("pi-wendao CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(output).toContain("SearchStrategyFlow trace");
-    expect(output).toContain("backend: wendao-graph-julia");
-    expect(output).toContain("requested: julia-direct");
+    expect(output).toContain("backend: rust-wendao-julia");
+    expect(output).toContain("control_plane: rust");
+    expect(output).toContain("candidate_input_source: rust-markdown-headings");
+    expect(output).toContain("requested: auto");
+    expect(output).toContain("fallback: none");
     expect(output).toContain("live status=completed model=anthropic/deepseek-v4-pro");
     expect(output).toContain("live intent_understanding=");
     expect(output).toContain("live branch_decision=");
     expect(output).toContain("live judgement=");
     expect(output).toContain(
-      "planned type=pi-wendao-output-only activity=SearchStrategyFlow_QueryUnderstanding",
+      "planned runtime=qianji-local-cli service_task=SearchStrategyFlow_QueryUnderstanding",
     );
-    expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
+    expect(output).toContain(`${rustSearchStrategyAuthorityCandidate} action=keep`);
+    expect(output).toContain(`${rustSearchStrategyValidationCandidate} action=expand`);
+    expect(output).toContain("receipt_source=rust-bridge");
+    expect(output).toContain(`primary=${WENDAO_ARROW_FLIGHT_DATA_PLANE}`);
     expect(output).not.toContain(searchStrategyWholeFileAction);
     expect(output).toContain("Tool uses: 0");
     expect(output).not.toContain("tool=read");
@@ -996,7 +1004,7 @@ const buildTrace = (intent) => ({
       materializationOwner: "studio-rust",
       materializationStatus: hasFlightBaseUrl ? "executed" : "planned",
       receiptSource: "rust-bridge",
-      primaryTransport: "arrow-flight",
+      primaryTransport: "${WENDAO_ARROW_FLIGHT_DATA_PLANE}",
       sourcePath: "docs/30_search_strategy/30.01_search_strategy_flow.md",
       headingAnchor: "stage-1-query-understanding",
       directFileReadAllowed: false,
@@ -1031,7 +1039,7 @@ const buildTrace = (intent) => ({
       flightSteps: [
         {
           step: "flight_search_page",
-          transport: "arrow-flight",
+          transport: "${WENDAO_ARROW_FLIGHT_DATA_PLANE}",
           route: "/search/repos/main",
           metadataTemplates: [
             "x-wendao-repo-search-repo=<repo>",
@@ -1045,7 +1053,7 @@ const buildTrace = (intent) => ({
         },
         {
           step: "flight_resolve_page_index_tree",
-          transport: "arrow-flight",
+          transport: "${WENDAO_ARROW_FLIGHT_DATA_PLANE}",
           route: "/analysis/repo-projected-page-index-tree",
           metadataTemplates: [
             "x-wendao-repo-projected-page-index-tree-repo=<repo>",
@@ -1058,7 +1066,7 @@ const buildTrace = (intent) => ({
         },
         {
           step: "flight_open_retrieval_context",
-          transport: "arrow-flight",
+          transport: "${WENDAO_ARROW_FLIGHT_DATA_PLANE}",
           route: "/analysis/repo-projected-retrieval-context",
           metadataTemplates: [
             "x-wendao-repo-projected-retrieval-context-repo=<repo>",
@@ -1072,7 +1080,7 @@ const buildTrace = (intent) => ({
         },
         {
           step: "flight_expand_graph_context",
-          transport: "arrow-flight",
+          transport: "${WENDAO_ARROW_FLIGHT_DATA_PLANE}",
           route: "/graph/neighbors",
           metadataTemplates: [
             "x-wendao-graph-node-id=<resolved-graph-node-id>",

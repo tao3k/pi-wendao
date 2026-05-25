@@ -11,7 +11,7 @@ export interface CompileOptions {
   apiKey?: string;
   /** Provider-specific request headers resolved from pi model/auth config */
   headers?: Record<string, string>;
-  /** qianji template integration. Defaults to QIANJI_CLI or qianji on PATH. */
+  /** qianji template integration. Defaults to QIANJI_CLI, workspace target/debug/qianji, or qianji on PATH. */
   template?: CompileTemplateOptions;
   /** LLM target decision integration. Defaults to automatic BPMN vs BPMN+DMN selection. */
   target?: CompileTargetOptions;
@@ -54,7 +54,7 @@ export interface CompileResult {
 }
 
 export interface CompileLintOptions {
-  /** Qianji CLI command. Defaults to QIANJI_CLI or qianji on PATH. */
+  /** Qianji CLI command. Defaults to QIANJI_CLI, workspace target/debug/qianji, or qianji on PATH. */
   command?: string;
   /** Number of model repair attempts after the initial lint failure. Defaults to 2. */
   maxRepairAttempts?: number;

@@ -1,6 +1,6 @@
 import { resolveModel } from "../model-resolver.js";
-import { createCliPiSubagentsHost } from "../pi-subagents.js";
-import { runDirectSearchStrategyFlowAgentTrace } from "./strategy-flow-agent-direct.js";
+import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
+import { runSearchStrategyFlowAgentBpmnTask } from "./strategy-flow-agent-bpmn.js";
 import { parseSearchStrategyFlowBranchJudgements } from "./strategy-flow-branch-judgement.js";
 import {
   buildSearchStrategyFlowBranchContexts,
@@ -14,6 +14,7 @@ import type {
 
 const SEARCH_STRATEGY_FLOW_AGENT_ACTIVITY_ID = "SearchStrategyFlow_QueryUnderstanding";
 const CANDIDATE_POOL_BRANCH_VISIBLE_LIMIT = 16;
+const DEFAULT_AGENT_TIMEOUT_SECONDS = 180;
 const CANDIDATE_POOL_STOP_WORDS = new Set([
   "and",
   "are",
@@ -32,16 +33,31 @@ export interface SearchStrategyFlowAgentOptions {
   modelPattern: string;
   provider?: string;
   apiKey?: string;
-  thinkingLevel?: string;
+  thinkingLevel?: PiWendaoThinkingLevel;
+  qianjiCommand?: string;
   extensionPaths: string[];
+  timeoutSeconds?: number;
+  forceJudgement?: boolean;
+  candidatePoolMode?: SearchStrategyFlowAgentCandidatePoolMode;
 }
+
+export type SearchStrategyFlowAgentCandidatePoolMode = "visible" | "selected-only" | "auto";
 
 export async function runSearchStrategyFlowAgentTrace(
   options: SearchStrategyFlowAgentOptions,
 ): Promise<SearchStrategyFlowAgentTrace> {
   const startedAt = Date.now();
-  if (!traceRequiresLlmJudgement(options.trace)) return skippedAgentTrace(startedAt);
+  if (!shouldRunSearchStrategyFlowAgentJudgement(options.trace, options.forceJudgement === true)) {
+    return skippedAgentTrace(startedAt);
+  }
   return runSearchStrategyFlowAgentLlmTrace(options, startedAt);
+}
+
+export function shouldRunSearchStrategyFlowAgentJudgement(
+  trace: SearchStrategyFlowTrace,
+  forceJudgement = false,
+): boolean {
+  return forceJudgement || traceRequiresLlmJudgement(trace);
 }
 
 async function runSearchStrategyFlowAgentLlmTrace(
@@ -58,7 +74,7 @@ async function runSearchStrategyFlowAgentLlmTrace(
     );
     if (!hasRequestAuth(resolved.apiKey, resolved.headers)) {
       return {
-        mode: "live-subagent",
+        mode: "qianji-service-agent",
         status: "failed",
         model: `${resolved.model.provider}/${resolved.model.id}`,
         durationMs: elapsedMs(startedAt),
@@ -67,97 +83,50 @@ async function runSearchStrategyFlowAgentLlmTrace(
         events,
       };
     }
-    const host = createCliPiSubagentsHost({
-      loadResult: resolved.loadResult,
-      modelRegistry: resolved.modelRegistry,
-      cwd: resolveSearchAgentCwd(options),
-      model: resolved.model,
-      defaultRunInBackground: false,
-      defaultSubagentType: "pi-wendao-output-only",
-      onEvent: (event) => {
-        events.push({
-          kind: event.type,
-          activityId: event.activityId,
-          agentId: event.agentId,
-          description: event.description,
-          ...(event.type === "result" ? { resultText: event.resultText } : {}),
-        });
-      },
-      onToolEvent: (event) => {
-        events.push({
-          kind: event.type,
-          activityId: event.activityId,
-          agentId: event.agentId,
-          description: event.description,
-          toolName: event.toolName,
-          ...(event.type === "tool_result" ? { isError: event.isError } : {}),
-        });
-      },
-    });
-    if (!host) {
-      return {
-        mode: "live-subagent",
-        status: "unavailable",
-        model: `${resolved.model.provider}/${resolved.model.id}`,
-        durationMs: elapsedMs(startedAt),
-        reason: "pi-subagents tools are not available in the loaded extensions.",
-        events,
-      };
-    }
-
     const prompt = buildSearchAgentPrompt(options.trace);
-    const compactTrace = compactSearchStrategyFlowTraceForAgent(options.trace);
-    let output: Record<string, unknown>;
-    try {
-      output = await host.run({
-      activityId: SEARCH_STRATEGY_FLOW_AGENT_ACTIVITY_ID,
-      config: {
-        prompt,
-        tools: [],
-        inputs: ["intent", "trace"],
-        outputs: ["intent_understanding", "branch_decision", "judgement", "branch_judgements"],
-        subagent: {
-          type: "pi-wendao-output-only",
-          description: "Understand SearchStrategyFlow intent and judge frontier branches",
-          runInBackground: false,
-          model: `${resolved.model.provider}/${resolved.model.id}`,
-          ...(options.thinkingLevel ? { thinking: options.thinkingLevel } : {}),
-          maxTurns: 2,
-        },
-      },
-      variables: {
-        intent: options.trace.intent,
-        trace: compactTrace,
-      },
-      execution: {
-        activityId: SEARCH_STRATEGY_FLOW_AGENT_ACTIVITY_ID,
-        nodeIndex: 0,
-      },
+    const compactTrace = compactSearchStrategyFlowTraceForAgent(options.trace, {
+      candidatePoolMode: options.candidatePoolMode ?? "visible",
     });
-    } catch (error) {
-      const directTrace = await runDirectSearchStrategyFlowAgentTrace({
+    const timeoutSeconds = normalizeAgentTimeoutSeconds(options.timeoutSeconds);
+    const controller = timeoutSeconds > 0 ? new AbortController() : undefined;
+    const timeout = controller
+      ? setTimeout(() => {
+          controller.abort();
+        }, timeoutSeconds * 1_000)
+      : undefined;
+    let bpmnResult: Awaited<ReturnType<typeof runSearchStrategyFlowAgentBpmnTask>>;
+    try {
+      bpmnResult = await runSearchStrategyFlowAgentBpmnTask({
         trace: options.trace,
+        cwd: resolveSearchAgentCwd(options),
+        activityId: SEARCH_STRATEGY_FLOW_AGENT_ACTIVITY_ID,
         prompt,
         compactTrace,
         model: resolved.model,
-        apiKey: resolved.apiKey,
-        headers: resolved.headers,
-        startedAt,
+        ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}),
+        ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
+        ...(options.qianjiCommand ? { qianjiCommand: options.qianjiCommand } : {}),
+        ...(controller ? { signal: controller.signal } : {}),
       });
-      if (directTrace.status === "completed") {
-        return {
-          ...directTrace,
-          events: [...events, ...directTrace.events],
-        };
-      }
+    } catch (error) {
       return {
-        ...directTrace,
-        reason: `pi-subagents failed: ${
-          error instanceof Error ? error.message : String(error)
-        }; direct fallback failed: ${directTrace.reason ?? "unknown"}`,
-        events: [...events, ...directTrace.events],
+        mode: "qianji-service-agent",
+        status: "failed",
+        model: `${resolved.model.provider}/${resolved.model.id}`,
+        durationMs: elapsedMs(startedAt),
+        reason:
+          controller?.signal.aborted === true
+            ? `SearchStrategyFlow BPMN/Qianji agent task timed out after ${timeoutSeconds}s.`
+            : `SearchStrategyFlow BPMN/Qianji agent task failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+        events,
       };
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
+    events.push(...bpmnResult.events);
+    const output = bpmnResult.output;
 
     const intentUnderstanding = readNonEmptyString(output.intent_understanding);
     const branchDecision = readNonEmptyString(output.branch_decision);
@@ -175,22 +144,22 @@ async function runSearchStrategyFlowAgentLlmTrace(
       .map(([name]) => name);
     if (missingOutputs.length > 0) {
       return {
-        mode: "live-subagent",
+        mode: "qianji-service-agent",
         status: "failed",
         model: `${resolved.model.provider}/${resolved.model.id}`,
         durationMs: elapsedMs(startedAt),
-        reason: `SearchStrategyFlow subagent completed without non-empty output(s): ${missingOutputs.join(", ")}.`,
+        reason: `SearchStrategyFlow Qianji service agent completed without non-empty output(s): ${missingOutputs.join(", ")}.`,
         events,
         output,
       };
     }
     if (branchJudgements.errors.length > 0) {
       return {
-        mode: "live-subagent",
+        mode: "qianji-service-agent",
         status: "failed",
         model: `${resolved.model.provider}/${resolved.model.id}`,
         durationMs: elapsedMs(startedAt),
-        reason: `SearchStrategyFlow subagent returned invalid branch_judgements: ${branchJudgements.errors.join("; ")}`,
+        reason: `SearchStrategyFlow Qianji service agent returned invalid branch_judgements: ${branchJudgements.errors.join("; ")}`,
         events,
         output,
         branchJudgementValidation: {
@@ -202,11 +171,11 @@ async function runSearchStrategyFlowAgentLlmTrace(
     }
 
     return {
-      mode: "live-subagent",
+      mode: "qianji-service-agent",
       status: "completed",
       model: `${resolved.model.provider}/${resolved.model.id}`,
       durationMs: elapsedMs(startedAt),
-      cached: events.length === 0,
+      cached: bpmnResult.cached,
       events,
       output,
       branchJudgements: branchJudgements.rows,
@@ -218,7 +187,7 @@ async function runSearchStrategyFlowAgentLlmTrace(
     };
   } catch (error) {
     return {
-      mode: "live-subagent",
+      mode: "qianji-service-agent",
       status: "failed",
       durationMs: elapsedMs(startedAt),
       reason: error instanceof Error ? error.message : String(error),
@@ -233,7 +202,7 @@ function traceRequiresLlmJudgement(trace: SearchStrategyFlowTrace): boolean {
 
 function skippedAgentTrace(startedAt: number): SearchStrategyFlowAgentTrace {
   return {
-    mode: "live-subagent",
+    mode: "qianji-service-agent",
     status: "skipped",
     durationMs: elapsedMs(startedAt),
     reason: "SearchStrategyFlow did not request an LLM judgement.",
@@ -273,6 +242,7 @@ function buildSearchAgentPrompt(trace: SearchStrategyFlowTrace): string {
 
 export function compactSearchStrategyFlowTraceForAgent(
   trace: SearchStrategyFlowTrace,
+  options: { candidatePoolMode?: SearchStrategyFlowAgentCandidatePoolMode } = {},
 ): Record<string, unknown> {
   const branchContexts = buildSearchStrategyFlowBranchContexts(trace);
   const selectedOrActionableBranches = branchContexts.filter(
@@ -282,10 +252,16 @@ export function compactSearchStrategyFlowTraceForAgent(
       branch.actionKind === "expand" ||
       branch.actionKind === "judge",
   );
-  const candidatePoolBranches = selectCandidatePoolBranchesForAgent(
-    trace,
-    branchContexts.filter((branch) => branch.branchSource === "candidate_pool"),
-  );
+  const candidatePoolMode = options.candidatePoolMode ?? "visible";
+  const includeCandidatePool =
+    candidatePoolMode === "visible" ||
+    (candidatePoolMode === "auto" && trace.validation.requiredEvidenceCovered !== true);
+  const candidatePoolBranches = includeCandidatePool
+    ? selectCandidatePoolBranchesForAgent(
+        trace,
+        branchContexts.filter((branch) => branch.branchSource === "candidate_pool"),
+      )
+    : [];
   const visibleIds = new Set<string>();
   const agentVisibleBranches = [...selectedOrActionableBranches, ...candidatePoolBranches].filter(
     (branch) => {
@@ -304,6 +280,8 @@ export function compactSearchStrategyFlowTraceForAgent(
       candidateInputCount: trace.candidateInputCount,
       frontierCount: trace.frontier.length,
       selectedCount: trace.frontier.filter((row) => row.selected).length,
+      agentCandidatePoolMode: candidatePoolMode,
+      agentCandidatePoolVisibleCount: candidatePoolBranches.length,
     },
     stageReceipts: trace.stageReceipts.map((stage) => ({
       stage: stage.stage,
@@ -434,6 +412,14 @@ function resolveSearchAgentCwd(options: SearchStrategyFlowAgentOptions): string 
 
 function hasRequestAuth(apiKey: string | undefined, headers: Record<string, string> | undefined): boolean {
   return Boolean(apiKey || (headers && Object.keys(headers).length > 0));
+}
+
+function normalizeAgentTimeoutSeconds(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_AGENT_TIMEOUT_SECONDS;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("--live-agent-timeout-seconds must be a non-negative number");
+  }
+  return Math.floor(value);
 }
 
 function elapsedMs(startedAt: number): number {

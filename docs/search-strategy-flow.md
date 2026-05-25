@@ -7,9 +7,9 @@ Flight retrieval routes for materialization.
 
 ## Runtime Roles
 
-- `pi-wendao` owns the agent-facing CLI, optional live LLM judgement, and
-  subagent interaction rendering.
-- The query-understanding subagent owns the intent-to-required-evidence
+- `pi-wendao` owns the agent-facing CLI, optional live Qianji service-agent
+  judgement, and trace rendering.
+- The query-understanding service agent owns the intent-to-required-evidence
   handoff. It decides what the graph must prove before any backend route is
   worth executing.
 - The xiuxian Rust bridge owns the control plane: candidate-source selection,
@@ -17,21 +17,34 @@ Flight retrieval routes for materialization.
   boundaries.
 - WendaoGraph.jl owns the graph algorithm: query understanding, candidate
   scoring, transition inference, frontier selection, and planner actions.
-- Studio Flight owns section materialization. JavaScript does not decode Arrow
-  Flight streams and does not read full Markdown files as a fallback.
+- The WendaoGraph SearchStrategyFlow Arrow Flight service owns production
+  algorithm execution when `--search-strategy-flow-service-base-url` is set.
+  The Rust bridge reaches that service through the shared polyglot admission
+  and Arrow Flight client path; `pi-wendao` only supplies a process-control
+  envelope.
+- Studio Flight owns section materialization. JavaScript owns a narrow raw
+  Arrow table decode boundary for backend-returned tables, while Gateway/Rust
+  owns live Flight routing. JavaScript does not read full Markdown files as a
+  fallback, and it must not carry Arrow payloads through JSON/base64 wrappers.
+  Reports use `arrow-flight` for table data, `none` when no backend data plane
+  is present, and `jsonl-stdio-control`/`process-args-control` for control-only
+  coordination.
 
 ## Flow
 
 1. The user passes an intent through `pi-wendao --search "<intent>"`.
 2. `pi-wendao` defaults to the Rust bridge in `auto` mode. `julia-direct` is
    reserved for pi-local algorithm smoke tests.
-3. Rust builds a candidate input batch before calling WendaoGraph.jl:
+3. Rust builds a candidate input batch before calling WendaoGraph.jl or its
+   SearchStrategyFlow Arrow Flight service:
    - `rust-markdown-headings` scans Markdown headings for local smoke tests.
    - `rust-code-intelligence-inventory` reads the configured structured
      candidate inventory for repository-scale search.
 4. WendaoGraph.jl reduces the candidate graph into a compact frontier and
-   planner actions. Candidate ids stay at Markdown section granularity, such as
-   `docs/path.md#heading-anchor`.
+   planner actions. In service mode, the response bundle returns the
+   `strategy_candidates`, `strategy_transitions`, `strategy_frontier`, and
+   `strategy_planner_actions` tables as Arrow IPC payloads. Candidate ids stay
+   at Markdown section granularity, such as `docs/path.md#heading-anchor`.
    Required evidence from query understanding reserves selectable frontier
    branches before score-only filling. `ownership_boundary` maps to authority,
    `validation_path` maps to validation, `relation_path` maps to link graph,
@@ -47,7 +60,7 @@ Flight retrieval routes for materialization.
    LLM receives the graph evidence and planner actions rather than the whole
    source document.
 7. If `--search-agent-answer-evidence <path>` is also provided, `pi-wendao`
-   writes the completed live subagent output as
+   writes the completed live Qianji service-agent output as
    `candidate_id<TAB>answer_text` TSV evidence for the WendaoGraph live answer
    rubric.
 
@@ -67,8 +80,8 @@ the agent layer:
 
 ## Agent Contract
 
-The LLM and subagents should treat the graph trace as a pruning surface, not as
-the final answer payload. A typical agent loop is:
+The LLM-backed Qianji service agents should treat the graph trace as a pruning
+surface, not as the final answer payload. A typical agent loop is:
 
 1. rewrite, expand, classify, and route the intent using the
    `graph_query_understanding` rows;
@@ -76,8 +89,8 @@ the final answer payload. A typical agent loop is:
    `validation.selectedRequiredEvidence`, and
    `validation.missingRequiredEvidence` before accepting a frontier as
    answer-ready;
-3. ask subagents to judge selected branches when planner actions require LLM
-   judgement;
+3. ask Qianji service agents to judge selected branches when planner actions
+   require LLM judgement;
 4. materialize only selected section-level candidates through Rust/Flight;
 5. repeat the loop only when the planner action permits a refinement cycle.
 
@@ -122,13 +135,68 @@ materialized_precision` for the focused precision/recall gate.
 The configured search denominator is the total structured candidate surface,
 not only the local Markdown replay subset. Rust owns that structured search
 surface and may query it through the backend index, including the configured
-DuckDB-backed path. `pi-wendao` receives the narrowed SearchStrategyFlow trace;
-it does not scan DuckDB, decode Arrow, or promote the `478` Markdown subset as
-the full `2818`-candidate inventory.
+DuckDB-backed path. `pi-wendao` receives the narrowed SearchStrategyFlow trace
+and decodes only explicit Arrow IPC tables handed across the bridge contract;
+it does not scan DuckDB or promote the `478` Markdown subset as the full
+`2818`-candidate inventory.
+
+When a live Agent supplies a second frontier pass, `pi-wendao` writes the
+first-pass `queryUnderstanding` rows and accepted `branch_judgements` rows as
+Arrow IPC files and passes only control-path pointers to the Rust bridge. The
+JSONL bridge session uses `queryUnderstandingArrowIpcPath` and
+`branchJudgementsArrowIpcPath`; table rows are not embedded in JSON and are not
+serialized as a delimited-text public interface.
+
+For production algorithm execution, pass
+`--search-strategy-flow-service-base-url <url>` to the CLI or set
+`PI_WENDAO_SEARCH_STRATEGY_FLOW_SERVICE_BASE_URL`. This cannot be combined with
+`--search-rust-bridge-session`: the service path uses process args only as
+control and carries graph tables over Arrow Flight. A benchmark row is
+promotion-eligible only when the trace reports `strategyFlowDataPlane` as
+`arrow-flight` and at least one selected retrieval route has executed through
+Studio/Gateway Flight.
+
+The live Markdown corpus benchmark keeps live agent retries explicit. It
+retries only timeout failures, runs retry attempts serially after the initial
+bounded-concurrency pass, and never retries rows whose deterministic Rust/Julia
+trace already failed backend, required-evidence, expected-source, or
+blocked-source gates. `--live-agent-retries <count>` sets the retry limit and
+defaults to one retry. `--live-agent-retry-timeout-seconds <seconds>` can tune
+the retry timeout without changing the first-attempt timeout.
+
+The same benchmark defaults live agent candidate-pool handling to `auto`. When
+the deterministic graph gate already covers required evidence, the Qianji
+judgement receives only selected/actionable frontier branches; this avoids
+spending model time judging rescue candidates that cannot improve a covered
+frontier. When required evidence is missing, candidate-pool rows remain visible
+so the live judgement can still recommend a high-confidence expansion. Use
+`--live-agent-candidate-pool visible` to force the wider trace, or
+`--live-agent-candidate-pool selected-only` to force the narrow trace. Reports
+include `liveRetriedCount`, `liveRetryRecoveredCount`,
+`totalLiveAttemptCount`, `liveAgentMode`, `liveAgentCandidatePoolMode`, and
+per-row live attempt/retry counts so model-side stalls are visible instead of
+being mixed with Gateway or graph latency.
+
+The benchmark also supports `--live-agent-mode batch-judgement` with
+`--live-agent-batch-size <count>`. Batch judgement sends several deterministic
+pass rows to one Qianji BPMN service-agent task and then validates each
+returned family independently against its exact frontier ids. This mode is only
+for live benchmark calling-shape experiments. It does not replace Arrow Flight
+as the Rust/Julia data plane, and rows with deterministic gate failures are
+skipped before any live model call. Reports include `liveBatchCount`,
+`totalLiveBatchDurationMs`, and `maxLiveBatchDurationMs`.
+
+Use `--live-agent-mode batch-sufficiency` when the benchmark only needs a live
+family-level sufficiency gate after deterministic graph coverage has passed.
+This mode asks Qianji to return one JSON sufficiency row per intent family
+instead of branch-level judgements. Missing, duplicate, or unexpected family ids
+are rejected, and rejected rows remain failed benchmark rows. This keeps the
+LLM as a lightweight judge while leaving frontier selection, required-evidence
+coverage, and Arrow Flight materialization deterministic.
 
 ## Live Answer Evidence Receipt
 
-The live subagent output is structured before it can affect graph selection.
+The live Qianji service-agent output is structured before it can affect graph selection.
 `pi-wendao` requires `branch_judgements` rows keyed by exact frontier candidate
 ids, validates each row, and feeds accepted rows back into WendaoGraph as the
 generic `branch_judgements` table for a second frontier pass. Natural-language
@@ -154,7 +222,7 @@ docs/path.md#heading	candidate_id=docs/path.md#heading; ... judgement=...
 
 `pi-wendao` writes one row per selected frontier candidate from the graph trace
 after accepted branch judgements have been applied. It refuses to write the file
-unless the live subagent completed with non-empty `intent_understanding`,
+unless the live Qianji service agent completed with non-empty `intent_understanding`,
 `branch_decision`, `judgement`, and valid `branch_judgements` outputs. This
 keeps the evidence path compatible with the WendaoGraph live answer rubric while
 preserving the rule that the LLM does not own graph truth.
@@ -233,8 +301,10 @@ cargo mode. It only changes process launch shape: `pi-wendao` invokes the
 prebuilt bridge with native bridge arguments rather than `cargo run ... --bin
 wendaograph_search_strategy_flow -- ...`.
 
-For Flight-backed sessions that should use the Rust bridge JSONL session
-protocol, enable the explicit session flag and pass a Flight endpoint:
+For single-intent runs that should use the Rust bridge JSONL control session
+protocol, enable the explicit session flag. A Flight endpoint is optional; when
+it is absent, the bridge returns planned route receipts from local Markdown
+candidate discovery:
 
 ```bash
 npx --no-install pi-wendao --search "query understanding reasoning tree page index search strategy flow" \
@@ -242,11 +312,19 @@ npx --no-install pi-wendao --search "query understanding reasoning tree page ind
   --search-rust-workspace ../.. \
   --search-rust-bridge-bin ../../target/debug/wendaograph_search_strategy_flow \
   --search-rust-bridge-session \
-  --search-flight-base-url http://127.0.0.1:50052 \
   --no-graph
 ```
 
 The session flag calls the bridge with `--serve-stdio` and sends the intent as a
-JSONL request. The CLI closes the session after the command completes; longer
-running shells or backend-owned adapters can keep the same process alive and
-avoid repeating the Julia host warmup.
+JSONL control request. Add `--search-flight-base-url http://127.0.0.1:50052`
+when route materialization should execute through Studio/Gateway Flight. The
+CLI closes the session after the command completes; the Markdown corpus
+benchmark keeps one session process open for all intent rows to avoid repeated
+Julia host warmup. The benchmark report records bridge-session request count,
+session duration, first response latency, response span, max response gap,
+total route materialization time, and max route materialization time so fixed
+startup cost is not mistaken for Flight route latency or per-intent algorithm
+latency.
+Evidence tables stay on the Arrow Flight data plane when Flight is configured;
+JSONL is not a replacement transport for candidate or evidence rows. The
+session token is `jsonl-stdio-control`; it is never a table payload token.
