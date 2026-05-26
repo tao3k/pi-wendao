@@ -1,11 +1,12 @@
-import type { Model } from "@mariozechner/pi-ai";
+import { streamSimple as streamSimpleWithRegisteredApi, type Model } from "@earendil-works/pi-ai";
 import { resolve, sep } from "node:path";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   SessionManager,
+  type ModelRegistry,
   type ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { createPiWendaoToolRegistry } from "../tools/registry.js";
 import {
   buildPiWendaoAgentPrompt,
@@ -251,6 +252,7 @@ async function runPiAiToolLoop(options: {
       },
     });
     try {
+      ensureRuntimeModelRegistered(services.modelRegistry, options.model, options.apiKey);
       if (options.apiKey) {
         services.authStorage.setRuntimeApiKey(options.model.provider, options.apiKey);
       }
@@ -307,6 +309,36 @@ async function runPiAiToolLoop(options: {
   } finally {
     restoreProviderAuthEnv();
   }
+}
+
+function ensureRuntimeModelRegistered(
+  modelRegistry: ModelRegistry,
+  model: Model<string>,
+  apiKey: string | undefined,
+): void {
+  if (modelRegistry.find(model.provider, model.id)) return;
+  modelRegistry.registerProvider(model.provider, {
+    api: model.api,
+    baseUrl: model.baseUrl,
+    apiKey: apiKey ?? "EMPTY",
+    streamSimple: (requestModel, context, streamOptions) =>
+      streamSimpleWithRegisteredApi(requestModel, context, streamOptions),
+    models: [
+      {
+        id: model.id,
+        name: model.name ?? model.id,
+        api: model.api,
+        baseUrl: model.baseUrl,
+        reasoning: model.reasoning,
+        thinkingLevelMap: model.thinkingLevelMap,
+        input: model.input,
+        cost: model.cost,
+        contextWindow: model.contextWindow,
+        maxTokens: model.maxTokens,
+        compat: model.compat,
+      },
+    ],
+  });
 }
 
 function applyRequestScopedProviderAuthEnv(

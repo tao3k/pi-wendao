@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, Theme as PiTheme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, Theme as PiTheme } from "@earendil-works/pi-coding-agent";
 import { MAX_MESSAGE_LINES, WORKFLOW_MESSAGE_TYPE } from "./constants.js";
 import type { PiWendaoWorkflowMessageDetails } from "./types.js";
 import { normalizeFoldedEventLines, normalizeMessageLines, stripAnsi } from "./text.js";

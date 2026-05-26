@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type {
   ApiKey,
   DmnPath,
@@ -48,6 +48,10 @@ import type {
 } from "./qianji-types.js";
 import { runQianjiExternalHostLoop } from "./executor-host-loop.js";
 import {
+  isQianjiServerWorkflowExecutionError,
+  runQianjiServerExternalHostLoop,
+} from "./qianji-server-workflow.js";
+import {
   applyCheckpointGraphSnapshot,
   applyQianjiTrace,
   applyQianjiTraceEvents,
@@ -79,6 +83,10 @@ export interface ExecuteOptions {
   dmnPaths?: DmnPath[];
   /** Optional qianji host fixture. */
   hostFixturePath?: HostFixturePath;
+  /** Optional qianji-server URL for HTTP-backed real host workflow execution. */
+  qianjiWorkflowServerUrl?: string;
+  /** qianji-server fresh-run policy. Defaults to resume-or-start for operator safety. */
+  qianjiWorkflowStartMode?: "resume-or-start" | "start";
   /** Optional qianji event fixture. */
   eventFixturePath?: EventFixturePath;
   /** Raw JSON object merged after --var pairs for qianji --context-json. */
@@ -215,23 +223,38 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       if (traceFrameDelayMs > 0) await delay(traceFrameDelayMs);
     };
     const cli = useRealHost
-      ? await runQianjiExternalHostLoop({
-          command,
-          sourcePath,
-          processId,
-          instanceId,
-          context: variables,
-          dmnPaths: options.dmnPaths ?? [],
-          eventFixturePath: options.eventFixturePath,
-          cwd,
-          source: options.source,
-          startAtNode: options.startAtNode,
-          options,
-          qianjiEnvironment,
-          completionFixture,
-          onTraceEvent,
-          tempDirs,
-        })
+      ? options.qianjiWorkflowServerUrl
+        ? await runQianjiServerExternalHostLoop({
+            serverUrl: options.qianjiWorkflowServerUrl,
+            sourcePath,
+            processId,
+            instanceId,
+            context: variables,
+            dmnPaths: options.dmnPaths ?? [],
+            cwd,
+            source: options.source,
+            startAtNode: options.startAtNode,
+            options,
+            completionFixture,
+            onTraceEvent,
+          })
+        : await runQianjiExternalHostLoop({
+            command,
+            sourcePath,
+            processId,
+            instanceId,
+            context: variables,
+            dmnPaths: options.dmnPaths ?? [],
+            eventFixturePath: options.eventFixturePath,
+            cwd,
+            source: options.source,
+            startAtNode: options.startAtNode,
+            options,
+            qianjiEnvironment,
+            completionFixture,
+            onTraceEvent,
+            tempDirs,
+          })
       : await runQianjiCli({
           command,
           args,
@@ -273,6 +296,21 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         variables: {},
         output: {},
         interrupted: true,
+      };
+    }
+    if (isQianjiServerWorkflowExecutionError(err)) {
+      const rawOutput = [err.result.stdout, err.result.stderr].filter(Boolean).join("\n");
+      options.onCliOutput?.(rawOutput);
+      if (!err.result.streamedTrace) {
+        applyQianjiTrace(rawOutput, options);
+      }
+      options.onError?.(err);
+      return {
+        success: false,
+        error: err.message,
+        variables: {},
+        output: {},
+        rawOutput,
       };
     }
     const error = err instanceof Error ? err : new Error(String(err));

@@ -19,7 +19,7 @@ describe("SearchStrategyFlow required evidence trace", () => {
     );
     expect(
       inferSearchStrategyFlowRouteRole(
-        "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
+        "packages/rust/crates/xiuxian-julia-core/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
       ),
     ).toBe("link_graph");
 
@@ -44,7 +44,7 @@ describe("SearchStrategyFlow required evidence trace", () => {
       "structured-code-relation:node:search-strategy-flow-link-graph-python-julia-toml",
     );
     expect(linkGraph?.derivedHints.probeRecommendations).toContain(
-      "open_structured_relation_context:packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
+      "open_structured_relation_context:packages/rust/crates/xiuxian-julia-core/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
     );
   });
 
@@ -260,7 +260,7 @@ function sampleTrace(): SearchStrategyFlowTrace {
       },
       {
         candidateId:
-          "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
+          "packages/rust/crates/xiuxian-julia-core/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
         rank: 3,
         selected: true,
         finalScore: 0.79,
@@ -297,13 +297,13 @@ function sampleTrace(): SearchStrategyFlowTrace {
       },
       {
         candidateId:
-          "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
+          "packages/rust/crates/xiuxian-julia-core/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",
         materializationOwner: "studio-rust",
         materializationStatus: "executed",
         receiptSource: "rust-bridge",
         primaryTransport: WENDAO_ARROW_FLIGHT_DATA_PLANE,
         sourcePath:
-          "packages/rust/crates/xiuxian-wendao-julia/tests/unit/integration_support/wendaograph/search_strategy.rs",
+          "packages/rust/crates/xiuxian-julia-core/tests/unit/integration_support/wendaograph/search_strategy.rs",
         headingAnchor: "search-strategy-flow-link-graph-python-julia-toml",
         directFileReadAllowed: false,
         executeBeforeAnswer: true,

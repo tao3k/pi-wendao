@@ -3,14 +3,18 @@ import type {
   ExtensionCommandContext,
   ExtensionFactory,
   TerminalInputHandler,
-} from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, Text, type Component } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey, Text, type Component } from "@earendil-works/pi-tui";
 import { isWorkflowInterruptedError } from "../../executor/interrupt.js";
 import { parseNativeRunCommand, parseNativeShowCommand } from "./args.js";
 import { WORKFLOW_MESSAGE_TYPE } from "./constants.js";
 import { renderWorkflowMessage, sendWorkflowMessage } from "./messages.js";
 import { registerAnthropicEnvProvider } from "./model.js";
 import { runNativeWorkflow, showNativeWorkflowStatus } from "./runner.js";
+import {
+  registerServerlessMemoryRecallInjection,
+  registerServerlessMemoryRecallTool,
+} from "../serverless-memory/index.js";
 import { isNativeWorkflowUiEscScopeActive } from "./esc-scope.js";
 import { resetNativeSessionSurfaces } from "./session-surfaces.js";
 import type {
@@ -27,6 +31,11 @@ export function createPiWendaoNativeExtension(
   return (pi: ExtensionAPI) => {
     registerAnthropicEnvProvider(pi);
     registerWorkflowMessageRenderers(pi);
+    registerServerlessMemoryRecallInjection(
+      pi,
+      options.serverlessMemoryRecallPacket,
+    );
+    registerServerlessMemoryRecallTool(pi, { cwd: options.invocationCwd });
     registerSessionLifecycleAliases(pi);
 
     pi.registerCommand("run", {

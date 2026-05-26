@@ -1,5 +1,5 @@
 import dagre from "dagre";
-import { type Component } from "@mariozechner/pi-tui";
+import { type Component } from "@earendil-works/pi-tui";
 import type { GraphEdge, GraphNode, NodeBounds, NodeStatus } from "./graph-view/types.js";
 import { drawEdgeOnGrid } from "./graph-view/grid.js";
 import {

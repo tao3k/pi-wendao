@@ -10,8 +10,8 @@ import {
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fauxAssistantMessage, registerFauxProvider } from "@mariozechner/pi-ai";
-import type { FauxProviderRegistration } from "@mariozechner/pi-ai";
+import { fauxAssistantMessage, registerFauxProvider } from "@earendil-works/pi-ai";
+import type { FauxProviderRegistration } from "@earendil-works/pi-ai";
 import { compileSkill } from "../../src/compiler/compiler.js";
 import {
   nativeDefinitions,

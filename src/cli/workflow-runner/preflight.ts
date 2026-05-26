@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
-import { streamSimple, type Message } from "@mariozechner/pi-ai";
+import { streamSimple, type Message } from "@earendil-works/pi-ai";
 import { extractArtifactBundle, extractAssistantText } from "../../compiler/artifacts.js";
 import { lintPiWendaoWorkflowContract } from "../../compiler/contract-lint.js";
 import { resolveDefaultQianjiCommand } from "../../qianji-command-resolution.js";

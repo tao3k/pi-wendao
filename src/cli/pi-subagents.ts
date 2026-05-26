@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import {
   ExtensionRunner,
   SessionManager,
@@ -8,7 +8,7 @@ import {
   type ExtensionContext,
   type LoadExtensionsResult,
   type ModelRegistry,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import type { PiWendaoAgentHost } from "../executor/agent-host.js";
 import type {
   PiSubagentsHostEvent,

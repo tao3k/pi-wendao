@@ -4,7 +4,7 @@
 
 Compile agent skills into qianji-owned BPMN 2.0 workflows, or BPMN+DMN
 bundles, then run them through the `pi-wendao` TUI with qianji checkpoint,
-parallel scheduling, graph trace, and pi-subagents host execution. The package
+parallel scheduling, graph trace, and native subagent host execution. The package
 exposes one `pi-wendao` CLI. Use `pi-wendao compile` to compile skills and
 `pi-wendao <workflow.bpmn>` to run workflows.
 
@@ -88,6 +88,34 @@ that returns the same JSON contract as `qianji-client flowhub scenarios
 falling back to qianji-client.
 Set `PI_WENDAO_QIANJI_SERVER_URL` or `QIANJI_SERVER_URL` to a qianji-server base
 URL when the caller should derive the registry route as `/flowhub/scenarios`.
+Set `PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL` to opt real host workflow execution
+into qianji-server HTTP control routes. With that variable set, pi-wendao starts
+the BPMN instance in `resume-or-start` mode by first trying
+`/workflows/{instance_id}/resume` and falling back to `/workflows/start` only
+when qianji-server reports `checkpoint_missing`. Use
+`--workflow-start-mode start` only when the caller knows the instance id is for
+a new run and wants to skip the failed resume probe. `--start-at-node` remains
+an explicit fresh-start path and is forwarded as `start_at_node_id` so the
+server-backed runner stays equivalent to the CLI start-at path. Native subagent
+or human host work is completed through
+`/workflows/{instance_id}/tasks/complete` for a single pending item and through
+`/workflows/{instance_id}/tasks/complete-batch` when the same blocked host
+boundary yields multiple completed items. Both paths use the same `Agent` /
+`get_subagent_result` host tools. The server-backed runner also
+synthesizes terminal node trace events after HTTP task completion so the graph
+view can close host-work nodes without depending on the CLI trace stream. If
+native host execution fails,
+pi-wendao reports the last qianji-server checkpoint summary before returning
+the failure, so operators can see that the remote workflow checkpoint remains
+recoverable unless an explicit cancel route is used. With the same environment
+configured, `--show --instance-id <id>` reads `/workflows/{instance_id}` from
+qianji-server and renders the pending host-work summary instead of shelling out
+to the qianji CLI. `--cancel --instance-id <id>` is the explicit operator
+surface for deleting a qianji-server workflow checkpoint through
+`/workflows/{instance_id}/cancel`; soft interrupts and host failures still
+preserve checkpoint state. The qianji CLI remains the default workflow runner,
+and qianji-server registry lookup remains a separate feature surface from
+workflow execution.
 
 For an opt-in end-to-end smoke that launches qianji-server and routes the
 Flowhub scenario registry through `/flowhub/scenarios`, run:
@@ -95,6 +123,35 @@ Flowhub scenario registry through `/flowhub/scenarios`, run:
 ```bash
 npm run test:flowhub-gateway-smoke
 ```
+
+This qianji-server registry path is a supported feature surface. It is separate
+from the CLI-backed Wendao memory recall backend used by native child agents for
+Codex/Claude collaboration tests.
+When the workspace process-compose stack is already running the `qianji-server`
+process, point `PI_WENDAO_QIANJI_SERVER_URL` at that base URL and the smoke will
+reuse the managed server instead of launching its own `cargo run` child.
+The smoke uses a longer server startup budget because a cold Rust target may
+compile qianji-server first; override it with
+`PI_WENDAO_FLOWHUB_GATEWAY_STARTUP_TIMEOUT_MS` when needed.
+
+For an opt-in workflow-control smoke against the managed process-compose
+`qianji-server`, run:
+
+```bash
+cd .data/pi-wendao
+npm run test:workflow-subagent-bpmn-server-smoke
+```
+
+That smoke uses `PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL`, defaulting to
+`http://127.0.0.1:38130`, and proves that `/workflows/start` plus
+`/workflows/{instance_id}/tasks/complete` or
+`/workflows/{instance_id}/tasks/complete-batch` can drive the same native
+`Agent` / `get_subagent_result` host tools through a real qianji-server. When
+the default server is not ready and the current environment exposes
+`PC_SOCKET_PATH`, the smoke starts the process-compose `qianji-server` process
+before waiting for readiness. A stale `PC_SOCKET_PATH` is ignored, and an
+already-running process-compose `qianji-server` is treated as a successful
+startup attempt before the readiness wait continues.
 
 For a BPMN+DMN compile result, pass the sidecar DMN source to qianji:
 
@@ -106,6 +163,9 @@ Options:
 
 - `--process <id>` — BPMN process id (default: first process in the file)
 - `--instance-id <id>` — qianji workflow instance id; must be a stable descriptive id, not a short numeric value
+- `--start-at-node <id>` — start a fresh run at a specific BPMN node; supported by both the CLI runner and the qianji-server workflow-control runner
+- `--workflow-start-mode <mode>` — qianji-server workflow admission mode; `resume-or-start` is the safe default, and `start` is for known-new workflow instance ids
+- `--cancel` — cancel a qianji-server workflow checkpoint for `--instance-id`; requires `PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL`
 - `--qianji <command>` — qianji CLI command override
 - `--qianji-client <command>` — qianji-client command override for Flowhub scenario registry lookup
 - `--flowhub-scenario <id>` — run the BPMN source pair selected from `qianji-client flowhub scenarios --json`
@@ -121,7 +181,7 @@ Options:
 - `--provider <provider>` — accepted compatibility option for model resolution
 - `--api-key <key>` — accepted compatibility option for model resolution
 - `--thinking <level>` — LLM thinking level for real host execution
-- `-e, --extension <path>` — load an extra pi extension; built-in pi-subagents is already loaded from package dependencies
+- `-e, --extension <path>` — load an extra pi extension; the built-in native subagent extension is already loaded by pi-wendao
 - `--var key=value` — set workflow variables (repeatable)
 - `--show` — show qianji BPMN instances, or status plus graph snapshot for `--instance-id`, without executing the workflow
 - `--tui` — enable interactive graph TUI visualization (default); without a workflow argument, open the native pi chat TUI
@@ -526,7 +586,7 @@ When execution stops at qianji host work, the active task node also shows
 runtime details such as host token count, host backend, checkpoint backend and
 source, and declared subagent type. These details are graph annotations only;
 qianji trace events still own graph progression.
-For pi-subagents-backed host work, `pi-wendao` also requests verbose subagent
+For native subagent-backed host work, `pi-wendao` also requests verbose subagent
 results and mirrors the subagent lifecycle plus the verbose child conversation
 into the native chat stream. The child conversation preserves user prompts,
 assistant replies, tool calls with their arguments, and tool-result summaries as
@@ -548,19 +608,19 @@ When real host execution is enabled, qianji still owns BPMN token scheduling,
 parallel gateways, joins, and checkpoint state. `pi-wendao` dispatches each
 pending service-task token through a `PiWendaoAgentHost` backend and returns the
 token-scoped output fixture to qianji. `pi-wendao` loads the packaged
-pi-subagents extension and its own graph-local intercom extension by default,
-then uses pi-subagents `Agent` and `get_subagent_result` tools as the host
+native subagent extension and its own graph-local intercom extension by default,
+then uses the `Agent` and `get_subagent_result` tools as the host
 backend when available.
 Planner and user prompts inside the native TUI use the `pi-ask` package as an
 internal UI dependency; `pi-ask` is not loaded as a pi extension and does not
 register an `ask_user` tool into the workflow session.
-The pi-subagents backend resolves worker capability from the host profile and
+The native subagent backend resolves worker capability from the host profile and
 task prompt. Native BPMN IO declares workflow data only; it does not grant
 workspace tools by itself.
 The graph-local intercom bridge is exposed as the `intercom` tool in the active
 pi extension context; graph mode logs `Extension tool: pi-intercom` at startup
 and shows actual calls as compact details such as `tool:intercom action=status`
-only when an LLM invokes the tool. When a pi-subagents worker calls
+only when an LLM invokes the tool. When a native subagent worker calls
 `intercom({ action: "ask", to: "planner", message: "..." })`, the chat stream
 opens an inline prompt; pressing Enter submits the
 planner approval or clarification and unblocks the worker tool call.
@@ -619,21 +679,33 @@ callers can use `createPiIntercomClientFromLoadedExtensions(...)` or
 `tryCreatePiIntercomClientFromLoadedExtensions(...)` to execute
 `list/send/ask/reply/pending/status` actions and optionally mirror message
 state into `PiWendaoIntercomCorrelationState`. `pi-wendao` exposes project
-`.pi/extensions` and `.pi/agents/pi-wendao-worker.md` wrappers so pi-subagents
-child sessions can load the graph-local `intercom` tool surface without also
-loading a second `intercom` provider. Under pi-subagents, the child agent sees
-`intercom` through the `pi-wendao-worker` allowed tool set and the native chat
-stream shows the call when the child agent uses it.
+`.pi/extensions` and `.pi/agents/pi-wendao-worker.md` wrappers as the stable
+packaged resources for native subagent follow-up work. The current built-in
+runtime keeps the parent `intercom` tool loaded in the active pi extension
+context and injects bounded child context tools into non-isolated native
+subagents: `fd` for file candidates, `rg` for text snippets,
+`wendao_memory_recall` for Org-native memory recall,
+`wendao_search_strategy_flow` for Rust/SearchStrategyFlow bridge evidence, and
+`intercom` for graph-local planner coordination. Child sessions inherit
+subagent-type core tools, while `fd` and `rg` override the file discovery and
+text search roles normally served by `find`, `ls`, and `grep`. Isolated and
+output-only subagents remain tool-free.
+The `wendao_memory_recall` backend is intentionally CLI-backed: it shells out
+to `wendao-client` so Codex and Claude collaboration sessions can quickly test
+and improve Org-native recall behavior. It is not a qianji-server or gateway
+migration path. Model-visible recall content is the default compact
+`wendao-client orgize task-list` text output. JSON recall packets remain a
+separate diagnostic and fixture surface for session injection tests.
 Graph-local `ask` calls target the inline planner inbox; `send` calls are
 fire-and-forget chat messages.
 CLI execution resolves workflow, fixture, DMN, and explicit extension paths
 before switching pi extension discovery to the packaged pi-wendao root, so qianji
-still runs from the original launch directory while pi-subagents consistently
+still runs from the original launch directory while native subagents consistently
 finds the packaged `.pi` resources.
 
 Plain `npx pi-wendao` loads built-in pi-wendao pi packages, configured pi packages,
 and explicit `--extension` paths during model resolution. It automatically
-injects the pi-subagents host when those tools are available. A separate pi
+injects the native subagent host when those tools are available. A separate pi
 runtime wrapper can also call
 `executeBpmnWithPiSubagents(...)` with the BPMN path, loaded extension result,
 active pi `ExtensionContext`, qianji command options, and either a
@@ -644,6 +716,58 @@ inject a host directly, `discoverPiSubagentsHost(...)` when they need extension
 discovery plus host construction, or
 `createPiSubagentsClientFromLoadedExtensions(...)` when they want to assemble
 the host manually.
+The maintained BPMN integration gate covers the CLI workflow path, not only the
+lower-level executor bridge: `runWorkflowInRenderer` receives a resolved model,
+constructs the native subagent host from loaded extensions, consumes qianji
+`bpmn host-session` work, and completes each token-scoped service task through
+`Agent` and `get_subagent_result`.
+The same gate covers the opt-in qianji-server workflow path by mocking
+`/workflows/start` and `/workflows/{instance_id}/tasks/complete`, then verifying
+that server-backed host work still dispatches through the same native subagent
+tools and returns the same compact workflow variables.
+The live process smoke extends that coverage to the real qianji-server workflow
+HTTP route while keeping the model fake and deterministic.
+For an opt-in live model smoke of that same BPMN subagent path, run:
+
+```bash
+npm run test:workflow-subagent-bpmn-live
+```
+
+The live smoke loads the repository `.env` when present and defaults to
+`anthropic/deepseek-v4-pro`; override with
+`PI_WENDAO_WORKFLOW_SUBAGENT_BPMN_LIVE_MODEL` when a different provider/model
+should be used.
+
+For a repeatable complex BPMN performance receipt, run:
+
+```bash
+npm run benchmark:workflow-subagent-bpmn
+npm run benchmark:workflow-subagent-bpmn-live
+npm run benchmark:workflow-subagent-bpmn -- --server-url http://127.0.0.1:38130
+```
+
+The benchmark uses `test/fixtures/complex-workflow.bpmn` so the report covers a
+real qianji execution with an exclusive gateway, a parallel fork/join, service
+task host work, variable merge, validation, and publish routing. The non-live
+variant reports two rows by default: the real qianji binary with a deterministic
+host fixture, and `pi-wendao -> qianji host-session -> native subagent` with
+deterministic subagent tools. Passing `--server-url` or setting
+`PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL` adds two server rows: the default
+resume-or-start workflow-control path and a fresh-start path that bypasses the
+resume probe for newly created benchmark instance ids. Server rows complete
+parallel host-work boundaries through qianji-server's batch task-completion
+route, reducing repeated checkpoint loads and HTTP round trips while preserving
+the single-task route for non-parallel boundaries. The live variant adds the
+model-backed subagent row so fixed model thinking time can be separated from
+BPMN runtime, subagent adapter, and server overhead. The direct qianji row
+reports full JSON trace events; host-session rows report compact renderer trace
+signals plus parallel host-work batches. Deterministic subagent rows also
+report HTTP timing, HTTP call count, native subagent tool timing, and
+unaccounted wall time so qianji-server workflow-control cost can be separated
+from local tool dispatch. It prints a compact Markdown table and accepts
+`--iterations`,
+`--model`, `--server-url`, `--fixture`, `--process`, `--json`, and
+`--output-json`.
 
 ### Supported BPMN elements
 
@@ -696,8 +820,8 @@ Or pass directly with `--api-key`.
 
 ## Dependencies
 
-- [@mariozechner/pi-ai](https://www.npmjs.com/package/@mariozechner/pi-ai) — LLM provider abstraction
-- [@mariozechner/pi-coding-agent](https://www.npmjs.com/package/@mariozechner/pi-coding-agent) — Tool factories (read, bash, edit, write, etc.)
+- [@earendil-works/pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) — LLM provider abstraction
+- [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) — Tool factories (read, bash, edit, write, etc.)
 - [fast-xml-parser](https://www.npmjs.com/package/fast-xml-parser) — BPMN process id discovery
 - `qianji template` — compile-time BPMN/DMN skeletons for model generation
 - `qianji lint` — compile-time BPMN and DMN validation

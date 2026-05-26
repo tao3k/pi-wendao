@@ -1,4 +1,4 @@
-import { type Component, truncateToWidth } from "@mariozechner/pi-tui";
+import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
 import { dim } from "yoctocolors";
 import type { GraphView } from "../graph-view.js";
 

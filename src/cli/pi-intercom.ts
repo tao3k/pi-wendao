@@ -1,5 +1,5 @@
-import type { Model } from "@mariozechner/pi-ai";
-import type { LoadExtensionsResult, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
+import type { LoadExtensionsResult, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { PiWendaoAgentTool } from "../executor/agent-runtime-types.js";
 import type { PiSubagentsToolExecutionContext } from "../executor/pi-subagents-runtime.js";
 import {

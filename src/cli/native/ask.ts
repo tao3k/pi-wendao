@@ -2,9 +2,9 @@ import type {
   ExtensionCommandContext,
   KeybindingsManager,
   Theme as PiTheme,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { createJiti } from "@mariozechner/jiti";
-import { Key, matchesKey, type Component, type OverlayOptions, type TUI } from "@mariozechner/pi-tui";
+import { Key, matchesKey, type Component, type OverlayOptions, type TUI } from "@earendil-works/pi-tui";
 import { withNativeWorkflowUiEscScope } from "./esc-scope.js";
 
 const WORKFLOW_ASK_OVERLAY_MIN_WIDTH = 52;

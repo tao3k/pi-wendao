@@ -1,25 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 
-const piSubagentsMock = vi.hoisted(() => ({
-  registeredPi: undefined as undefined | {
-    registerCommand(
-      name: string,
-      options: { handler: (args: string, ctx: unknown) => unknown },
-    ): void;
-  },
-}));
-
-vi.mock("@tintinweb/pi-subagents/dist/index.js", () => ({
-  default: (pi: typeof piSubagentsMock.registeredPi) => {
-    piSubagentsMock.registeredPi = pi;
-  },
-}));
-
 import registerPiWendaoPiSubagents, {
   PI_WENDAO_RESET_NATIVE_SESSION_SURFACES_EVENT,
 } from "../../src/cli/native/pi-subagents-extension.js";
 
 describe("pi-wendao native pi-subagents extension", () => {
+  it("registers the native subagent tool surface without an external extension", () => {
+    const registeredTools: string[] = [];
+
+    registerPiWendaoPiSubagents({
+      events: { on: () => undefined },
+      registerCommand: () => undefined,
+      on: () => undefined,
+      registerTool: (tool: { name: string }) => {
+        registeredTools.push(tool.name);
+      },
+    } as never);
+
+    expect(registeredTools).toEqual(["Agent", "get_subagent_result", "steer_subagent"]);
+  });
+
   it("hides late pi-subagents overlays after native session reset", async () => {
     const calls: string[] = [];
     let resetHandler: (() => void) | undefined;
@@ -45,25 +45,10 @@ describe("pi-wendao native pi-subagents extension", () => {
       registerTool: () => undefined,
     } as never);
 
-    piSubagentsMock.registeredPi?.registerCommand("subagents", {
-      handler: async (_args, ctx) => {
-        await (ctx as {
-          ui: {
-            custom<T>(
-              factory: () => T,
-              options: { overlay: true; onHandle?: (handle: { hide(): void }) => void },
-            ): Promise<T>;
-          };
-        }).ui.custom(() => undefined, {
-          overlay: true,
-          onHandle: () => calls.push("consumerHandle"),
-        });
-      },
-    });
-
     let lateHandle: ((handle: { hide(): void }) => void) | undefined;
     const neverSettles = new Promise<undefined>(() => undefined);
     const ctx = {
+      hasUI: true,
       ui: {
         custom: (
           _factory: () => undefined,

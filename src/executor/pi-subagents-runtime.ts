@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { discoverAndLoadExtensions } from "@mariozechner/pi-coding-agent";
-import type { EventBus } from "@mariozechner/pi-coding-agent";
+import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
+import type { EventBus } from "@earendil-works/pi-coding-agent";
 import type {
   PiSubagentsClient,
   PiSubagentsClientCallbacks,

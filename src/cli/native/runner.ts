@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, resolve as resolvePath } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { isWorkflowInterruptedError } from "../../executor/interrupt.js";
 import { ensureNamedWorkflow } from "../named-workflows.js";
 import {

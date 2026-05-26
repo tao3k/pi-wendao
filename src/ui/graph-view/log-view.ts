@@ -1,4 +1,4 @@
-import { type Component, truncateToWidth } from "@mariozechner/pi-tui";
+import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
 
 /**
  * A scrolling log component that keeps the last N lines.

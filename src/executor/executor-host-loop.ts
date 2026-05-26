@@ -25,6 +25,7 @@ import type {
   QianjiHostWork,
   QianjiTraceEvent,
 } from "./qianji-types.js";
+import type { ActivityId, ProcessId, TokenId } from "../types/domain.js";
 import { WorkflowStallGuard } from "./stall-guard.js";
 import type {
   ExecuteOptions,
@@ -51,11 +52,11 @@ import {
   updatePendingActivities,
 } from "./executor-runtime-state.js";
 
-interface HostCompletionResult {
+export interface HostCompletionResult {
   kind: PiWendaoHostWorkKind;
-  processId: string;
-  nodeId: string;
-  tokenId: number;
+  processId: ProcessId;
+  nodeId: ActivityId;
+  tokenId: TokenId;
   claimant?: string;
   data: Record<string, unknown>;
 }
@@ -223,7 +224,7 @@ async function runQianjiExternalHostLoopInternal(options: {
   }
 }
 
-async function runPendingHostWork(options: {
+export async function runPendingHostWork(options: {
   agentHost: PiWendaoAgentHost;
   humanTaskHandler?: (request: HumanTaskPromptRequest) => Promise<string>;
   piWendaoConfigs: Map<string, PiWendaoConfig>;

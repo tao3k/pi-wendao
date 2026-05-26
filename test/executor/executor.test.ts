@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { delimiter, join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { fauxAssistantMessage, registerFauxProvider, type Context } from "@mariozechner/pi-ai";
+import { fauxAssistantMessage, registerFauxProvider, type Context } from "@earendil-works/pi-ai";
 import {
   execute,
   mapHumanTaskReplyToOutputs,

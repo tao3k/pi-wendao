@@ -79,7 +79,7 @@ function requireRustBridgeBinary(path: string): string {
 function isWendaoRustWorkspace(path: string): boolean {
   return (
     existsSync(join(path, "Cargo.toml")) &&
-    existsSync(join(path, "packages", "rust", "crates", "xiuxian-wendao-julia", "Cargo.toml"))
+    existsSync(join(path, "packages", "rust", "crates", "xiuxian-julia-core", "Cargo.toml"))
   );
 }
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { readFileSync } from "fs";
 import { resolve as resolvePath } from "node:path";
 import { program } from "commander";
 import type { PiWendaoThinkingLevel } from "../executor/agent-runtime-types.js";
@@ -8,17 +7,17 @@ import { createRenderer } from "../ui/renderer.js";
 import { registerCompileCommand } from "./compile-command.js";
 import { resolveFlowhubScenario } from "./flowhub-scenario.js";
 import { resolveModel, resolvePiWendaoPackageRoot } from "./model-resolver.js";
+import { resolveNativeChatStartup } from "./native/chat-startup.js";
 import { parseNonNegativeNumber } from "./number-options.js";
 import { launchPiWendaoNativeTui } from "./pi-wendao-native-launcher.js";
 import { runSearchStrategyFlowCommand } from "./search/strategy-flow-command.js";
 import { registerSearchStrategyFlowOptions } from "./search/strategy-flow-options.js";
 import {
-  appendActiveBpmnNodeLabels,
-  resolveQianjiCommand,
-  runQianjiShow,
   runWorkflowLintPreflight,
   runWorkflowInRenderer,
+  runQianjiWorkflowControlCommand,
 } from "./workflow-runner.js";
+import { resolveWorkflowStartMode } from "./workflow-start-mode.js";
 
 const DEFAULT_EXECUTION_MODEL = "anthropic/deepseek-v4-pro";
 const DEFAULT_THINKING_LEVEL: PiWendaoThinkingLevel = "medium";
@@ -30,13 +29,13 @@ const THINKING_LEVELS = new Set([
   "high",
   "xhigh",
 ]);
-
 program.enablePositionalOptions();
 
 interface PiWendaoCliOptions {
   process?: string;
   instanceId?: string;
   startAtNode?: string;
+  workflowStartMode?: string;
   qianji?: string;
   qianjiClient?: string;
   flowhubScenario?: string;
@@ -54,6 +53,7 @@ interface PiWendaoCliOptions {
   var?: string[];
   show?: boolean;
   graph?: boolean;
+  cancel?: boolean;
   tui?: boolean;
   search?: string;
   wendaoGraph?: string;
@@ -74,6 +74,7 @@ interface PiWendaoCliOptions {
   searchAgentAnswerResume?: boolean;
   searchAgentAnswerEvidence?: string;
   searchJson?: boolean;
+  serverlessMemoryRecallJson?: string;
 }
 
 registerCompileCommand(program);
@@ -91,6 +92,10 @@ registerSearchStrategyFlowOptions(
     .option(
       "--start-at-node <id>",
       "Start a fresh qianji BPMN instance at a specific node",
+    )
+    .option(
+      "--workflow-start-mode <mode>",
+      "qianji-server workflow admission mode: resume-or-start or start",
     )
     .option(
       "--qianji <command>",
@@ -134,14 +139,22 @@ registerSearchStrategyFlowOptions(
     )
     .option(
       "-e, --extension <path>",
-      "Load an extra pi extension; built-in pi-subagents is loaded from package dependencies",
+      "Load an extra pi extension; pi-wendao loads its native subagent extension by default",
       collect,
       [],
+    )
+    .option(
+      "--serverless-memory-recall-json <path>",
+      "Load a wendao-client orgize task-list JSON recallPacket into the native pi session",
     )
     .option("--var <pairs...>", "Variables as key=value pairs")
     .option(
       "--show",
       "Show qianji BPMN instances, or status for --instance-id, without executing",
+    )
+    .option(
+      "--cancel",
+      "Cancel a qianji-server workflow checkpoint for --instance-id and exit",
     ),
 )
   .option(
@@ -176,6 +189,17 @@ registerSearchStrategyFlowOptions(
         );
         const instanceId = validateInstanceId(options.instanceId);
         const thinkingLevel = resolveExecutionThinkingLevel(options.thinking);
+        const workflowStartMode = resolveWorkflowStartMode(options.workflowStartMode);
+        const nativeChatStartup = resolveNativeChatStartup({
+          invocationCwd,
+          workflowPath,
+          flowhubScenario: options.flowhubScenario,
+          cancel: options.cancel,
+          show: options.show,
+          tui: options.tui,
+          stdinIsTTY: Boolean(process.stdin.isTTY),
+          serverlessMemoryRecallJson: options.serverlessMemoryRecallJson,
+        });
         if (
           options.search !== undefined ||
           options.searchAgentAnswerRequest !== undefined
@@ -212,13 +236,7 @@ registerSearchStrategyFlowOptions(
           });
           process.exit(0);
         }
-        if (
-          !workflowPath &&
-          !options.flowhubScenario &&
-          options.show !== true &&
-          options.tui === true &&
-          process.stdin.isTTY
-        ) {
+        if (nativeChatStartup.shouldLaunchNativeChat) {
           await launchPiWendaoNativeTui({
             modelPattern: resolveExecutionModelPattern(options.model),
             provider: options.provider,
@@ -231,6 +249,7 @@ registerSearchStrategyFlowOptions(
               process: options.process,
               instanceId,
               startAtNode: options.startAtNode,
+              qianjiWorkflowStartMode: workflowStartMode,
               qianji: options.qianji,
               contextJson: options.contextJson,
               traceFrameMs: options.traceFrameMs,
@@ -239,6 +258,8 @@ registerSearchStrategyFlowOptions(
             resolvedDmnPaths,
             resolvedHostFixturePath,
             resolvedEventFixturePath,
+            serverlessMemoryRecallPacket:
+              nativeChatStartup.serverlessMemoryRecallPacket,
           });
           process.exit(0);
         }
@@ -262,25 +283,24 @@ registerSearchStrategyFlowOptions(
           workflowResolution.kind === "workflow"
             ? (options.process ?? workflowResolution.process)
             : options.process;
-        if (options.show) {
-          const output = await runQianjiShow({
-            command: resolveQianjiCommand(options.qianji),
-            instanceId,
-            workflowPath: resolvedWorkflowPath,
-            dmnPaths: resolvedDmnPaths,
-            cwd: invocationCwd,
-          });
-          const stdout =
-            output.exitCode === 0 && instanceId && resolvedWorkflowPath
-              ? appendActiveBpmnNodeLabels(
-                  output.stdout,
-                  readFileSync(resolvedWorkflowPath, "utf-8"),
-                  resolvedProcessId,
-                )
-              : output.stdout;
-          if (stdout.trim()) console.log(stdout.trimEnd());
-          if (output.stderr.trim()) console.error(output.stderr.trimEnd());
-          process.exitCode = output.exitCode ?? 1;
+        const controlResult = await runQianjiWorkflowControlCommand({
+          show: options.show,
+          cancel: options.cancel,
+          qianji: options.qianji,
+          instanceId,
+          workflowPath: resolvedWorkflowPath,
+          processId: resolvedProcessId,
+          dmnPaths: resolvedDmnPaths,
+          cwd: invocationCwd,
+        });
+        if (controlResult.handled) {
+          if (controlResult.stdout.trim()) {
+            console.log(controlResult.stdout.trimEnd());
+          }
+          if (controlResult.stderr.trim()) {
+            console.error(controlResult.stderr.trimEnd());
+          }
+          process.exitCode = controlResult.exitCode;
           return;
         }
         if (!resolvedWorkflowPath) {
@@ -334,6 +354,7 @@ registerSearchStrategyFlowOptions(
               process: resolvedProcessId,
               instanceId,
               startAtNode: options.startAtNode,
+              qianjiWorkflowStartMode: workflowStartMode,
               qianji: options.qianji,
               contextJson: options.contextJson,
               traceFrameMs: options.traceFrameMs,

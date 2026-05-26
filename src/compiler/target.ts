@@ -1,4 +1,4 @@
-import { streamSimple } from "@mariozechner/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai";
 import { buildTargetDecisionPrompt, type CompileTargetDecision } from "./prompt.js";
 import type { CompileOptions } from "./types.js";
 import { asArray, extractJsonObject, isObject, readString } from "./json.js";

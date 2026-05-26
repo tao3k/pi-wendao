@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, resolve as resolvePath } from "node:path";
-import type { Model } from "@mariozechner/pi-ai";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type {
   DmnPath,
   EventFixturePath,
@@ -31,12 +31,15 @@ import {
 } from "./pi-intercom.js";
 import { createCliPiSubagentsHost } from "./pi-subagents.js";
 import { runWorkflowLintPreflight } from "./workflow-runner/preflight.js";
+import { resolveQianjiWorkflowServerUrl } from "./workflow-runner/server-url.js";
 
 export interface PiWendaoWorkflowOptions {
   process?: string;
   instanceId?: InstanceId;
   startAtNode?: string;
   qianji?: string;
+  qianjiWorkflowServerUrl?: string;
+  qianjiWorkflowStartMode?: "resume-or-start" | "start";
   contextJson?: string;
   traceFrameMs?: TraceFrameDelayMs;
   var?: string[];
@@ -207,6 +210,10 @@ async function runWorkflowInRendererInternal(
       instanceId: params.instanceId,
       startAtNode: params.options.startAtNode,
       qianjiCommand: params.options.qianji,
+      qianjiWorkflowServerUrl: resolveQianjiWorkflowServerUrl(
+        params.options.qianjiWorkflowServerUrl,
+      ),
+      qianjiWorkflowStartMode: params.options.qianjiWorkflowStartMode,
       dmnPaths: params.resolvedDmnPaths,
       hostFixturePath: params.resolvedHostFixturePath,
       eventFixturePath: params.resolvedEventFixturePath,
@@ -283,7 +290,14 @@ async function runWorkflowInRendererInternal(
 }
 
 export { runWorkflowLintPreflight, resolveQianjiCommand } from "./workflow-runner/preflight.js";
-export { appendActiveBpmnNodeLabels, runQianjiShow } from "./workflow-runner/qianji-show.js";
+export { runQianjiWorkflowControlCommand } from "./workflow-runner/control.js";
+export {
+  appendActiveBpmnNodeLabels,
+  runQianjiServerCancel,
+  runQianjiServerShow,
+  runQianjiShow,
+} from "./workflow-runner/qianji-show.js";
+export { resolveQianjiWorkflowServerUrl } from "./workflow-runner/server-url.js";
 
 function formatGraphIntercomEventForLog(event: PiWendaoGraphIntercomEvent): string[] {
   if (event.type === "intercom_call") return [];

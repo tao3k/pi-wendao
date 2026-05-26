@@ -1,4 +1,4 @@
-import { main } from "@mariozechner/pi-coding-agent";
+import { main, type MainOptions } from "@earendil-works/pi-coding-agent";
 import {
   createPiWendaoNativeExtension,
   type PiWendaoNativeExtensionOptions,
@@ -9,12 +9,23 @@ import {
 } from "./model-resolver.js";
 
 export type LaunchPiWendaoNativeTuiOptions = PiWendaoNativeExtensionOptions;
+export type PiWendaoNativeMain = (
+  args: string[],
+  options?: MainOptions,
+) => Promise<void>;
 
 export async function launchPiWendaoNativeTui(
   options: LaunchPiWendaoNativeTuiOptions,
 ): Promise<void> {
+  await launchPiWendaoNativeTuiWithMain(options, main);
+}
+
+export async function launchPiWendaoNativeTuiWithMain(
+  options: LaunchPiWendaoNativeTuiOptions,
+  runMain: PiWendaoNativeMain,
+): Promise<void> {
   process.env.PI_CODING_AGENT = "true";
-  await main(buildPiWendaoNativeArgs(options), {
+  await runMain(buildPiWendaoNativeArgs(options), {
     extensionFactories: [createPiWendaoNativeExtension(options)],
   });
 }

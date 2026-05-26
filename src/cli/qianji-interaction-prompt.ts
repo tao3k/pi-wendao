@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext, Theme as PiTheme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext, Theme as PiTheme } from "@earendil-works/pi-coding-agent";
 import {
   Editor,
   Key,
@@ -7,7 +7,7 @@ import {
   type EditorTheme,
   type TUI,
   truncateToWidth,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import type { QianjiInteraction, QianjiInteractionChoice } from "../executor/agent-host.js";
 import type { PlannerReplyRequest } from "../ui/renderer.js";
 

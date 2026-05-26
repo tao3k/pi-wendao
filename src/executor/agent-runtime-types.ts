@@ -8,8 +8,8 @@ import type {
   ToolResultMessage,
   Static,
   TSchema,
-} from "@mariozechner/pi-ai";
-import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-ai";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 export type PiWendaoThinkingLevel = "off" | PiAiThinkingLevel;
 export type PiWendaoAgentMessage = Message;

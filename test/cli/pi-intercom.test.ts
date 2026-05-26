@@ -4,7 +4,7 @@ import {
   ModelRegistry,
   createExtensionRuntime,
   type LoadExtensionsResult,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   createCliPiIntercomAgentTool,
   hasLoadedPiIntercomTool,

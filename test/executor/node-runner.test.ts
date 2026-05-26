@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fauxAssistantMessage, fauxToolCall, registerFauxProvider } from "@mariozechner/pi-ai";
-import type { FauxProviderRegistration } from "@mariozechner/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, registerFauxProvider } from "@earendil-works/pi-ai";
+import type { FauxProviderRegistration } from "@earendil-works/pi-ai";
 import type {
   PiWendaoAgentEvent,
   PiWendaoAgentTool,

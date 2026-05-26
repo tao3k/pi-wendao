@@ -1,5 +1,5 @@
 import { isAbsolute, join, resolve } from "node:path";
-import { streamSimple } from "@mariozechner/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai";
 import { extractArtifactBundle, missingArtifactMessage } from "./artifacts.js";
 import { createCompileLintRunner } from "./contract-lint.js";
 import { buildCompilePrompt } from "./prompt.js";

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { AuthStorage } from "@mariozechner/pi-coding-agent";
+import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import {
   applyPiWendaoEnvAuthOverride,
   resolvePiWendaoAnthropicEnvAuth,
@@ -119,6 +119,21 @@ describe("resolveModel", () => {
       apiKey: "openrouter-api-key",
       source: "env:OPENROUTE_API_KEY",
     });
+  });
+
+  it("sets OpenRouter environment auth for direct OpenRouter models", async () => {
+    const authStorage = AuthStorage.inMemory();
+    process.env.OPENROUTER_API_KEY = '"openrouter-direct-api-key"';
+    delete process.env.OPENROUTE_API_KEY;
+    delete process.env.WENDAO_OPENROUTER_API_KEY;
+
+    expect(applyPiWendaoEnvAuthOverride(authStorage, "openrouter")).toEqual({
+      apiKey: "openrouter-direct-api-key",
+      source: "env:OPENROUTER_API_KEY",
+    });
+    await expect(authStorage.getApiKey("openrouter")).resolves.toBe(
+      "openrouter-direct-api-key",
+    );
   });
 
   it("uses the DeepSeek Anthropic endpoint for DeepSeek model ids by default", async () => {

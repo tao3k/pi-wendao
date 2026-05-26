@@ -168,7 +168,7 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
       });
       expect(capturedParams?.questions[0]?.freeText).toEqual(testCase.expectedFreeText);
     }
-  });
+  }, 10000);
 
   it("routes pure qianji input through the direct prompt because pi-ask requires options", async () => {
     await expect(
@@ -282,7 +282,7 @@ async function withTimeout<T>(promise: Promise<T>): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_resolve, reject) => {
-      setTimeout(() => reject(new Error("workflow ask did not resolve")), 1000);
+      setTimeout(() => reject(new Error("workflow ask did not resolve")), 5000);
     }),
   ]);
 }

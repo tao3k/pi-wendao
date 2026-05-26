@@ -1,0 +1,144 @@
+{
+  "command": "orgize task-list",
+  "rows": 2,
+  "tasks": [
+    {
+      "index": 1,
+      "orgid": "accepted-memory-sample",
+      "title": "Accepted memory sample",
+      "state": "DOING",
+      "isDone": false,
+      "archived": false,
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "source": ".cache/agent/org/serverless_memory_fixture.org",
+      "sourceLine": 1,
+      "memoryObjects": [
+        {
+          "index": 1,
+          "kind": "finality",
+          "facet": "memory-finality",
+          "sourceKind": "property",
+          "sourceKey": "TASK_OUTCOME",
+          "question": "TASK_OUTCOME",
+          "value": "success"
+        },
+        {
+          "index": 2,
+          "kind": "claim",
+          "facet": "memory-claim",
+          "sourceKind": "property",
+          "sourceKey": "REUSABLE_KNOWLEDGE",
+          "question": "REUSABLE_KNOWLEDGE",
+          "value": "The serverless recall path emits compact session packets."
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "orgid": "superseded-memory-sample",
+      "title": "Superseded memory sample",
+      "state": "DOING",
+      "isDone": false,
+      "archived": false,
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "source": ".cache/agent/org/serverless_memory_fixture.org",
+      "sourceLine": 8,
+      "memoryObjects": []
+    }
+  ],
+  "recallPacket": {
+    "schema": "xiuxian_wendao.serverless_memory_recall_packet.v1",
+    "transport": "local-duckdb-arrow-ready",
+    "rows": [
+      {
+        "orgid": "accepted-memory-sample",
+        "title": "Accepted memory sample",
+        "source": ".cache/agent/org/serverless_memory_fixture.org",
+        "sourceLine": 1,
+        "memoryObjects": [
+          {
+            "index": 1,
+            "kind": "finality",
+            "facet": "memory-finality",
+            "sourceKind": "property",
+            "sourceKey": "TASK_OUTCOME",
+            "question": "TASK_OUTCOME",
+            "value": "success",
+            "locator": {
+              "schema": "xiuxian_wendao.org_memory_locator.v1",
+              "section": {
+                "kind": "org-section",
+                "orgid": "accepted-memory-sample"
+              },
+              "object": {
+                "kind": "org-property",
+                "sourceKind": "property",
+                "sourceKey": "TASK_OUTCOME",
+                "objectIndex": 1
+              }
+            }
+          },
+          {
+            "index": 2,
+            "kind": "claim",
+            "facet": "memory-claim",
+            "sourceKind": "property",
+            "sourceKey": "REUSABLE_KNOWLEDGE",
+            "question": "REUSABLE_KNOWLEDGE",
+            "value": "The serverless recall path emits compact session packets.",
+            "locator": {
+              "schema": "xiuxian_wendao.org_memory_locator.v1",
+              "section": {
+                "kind": "org-section",
+                "orgid": "accepted-memory-sample"
+              },
+              "object": {
+                "kind": "org-property",
+                "sourceKind": "property",
+                "sourceKey": "REUSABLE_KNOWLEDGE",
+                "objectIndex": 2
+              }
+            }
+          }
+        ],
+        "sourceRangeStart": 0,
+        "sourceRangeEnd": 220,
+        "locator": {
+          "schema": "xiuxian_wendao.org_memory_locator.v1",
+          "section": {
+            "kind": "org-section",
+            "orgid": "accepted-memory-sample",
+            "title": "Accepted memory sample",
+            "source": ".cache/agent/org/serverless_memory_fixture.org",
+            "outline": []
+          }
+        }
+      },
+      {
+        "orgid": "superseded-memory-sample",
+        "title": "Superseded memory sample",
+        "source": ".cache/agent/org/serverless_memory_fixture.org",
+        "sourceLine": 8,
+        "memoryObjects": [],
+        "locator": {
+          "schema": "xiuxian_wendao.org_memory_locator.v1",
+          "section": {
+            "kind": "org-section",
+            "orgid": "superseded-memory-sample",
+            "title": "Superseded memory sample",
+            "source": ".cache/agent/org/serverless_memory_fixture.org",
+            "outline": []
+          }
+        },
+        "sourceRangeStart": 0,
+        "sourceRangeEnd": 220
+      }
+    ]
+  }
+}

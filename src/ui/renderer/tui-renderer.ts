@@ -1,4 +1,4 @@
-import { matchesKey, ProcessTerminal, TUI } from "@mariozechner/pi-tui";
+import { matchesKey, ProcessTerminal, TUI } from "@earendil-works/pi-tui";
 import { bold, cyan, dim, green, red, yellow } from "yoctocolors";
 import type { PiWendaoAgentEvent } from "../../executor/agent-runtime-types.js";
 import { WorkflowInterruptedError } from "../../executor/interrupt.js";

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createServer, type Server } from "node:http";
 import {
   chmodSync,
   existsSync,
@@ -29,7 +30,7 @@ const liveSearchStrategyFlowEnabled =
 const rustBridgeSearchStrategyFlowSmokeEnabled =
   process.env.RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_SMOKE === "1" &&
   existsSync(join(liveWendaoGraphProject, "Project.toml")) &&
-  existsSync(join(liveRustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia"));
+  existsSync(join(liveRustWorkspace, "packages", "rust", "crates", "xiuxian-julia-core"));
 const itLive = liveSearchStrategyFlowEnabled ? it : it.skip;
 const itBridgeSmoke = rustBridgeSearchStrategyFlowSmokeEnabled ? it : it.skip;
 const searchStrategySectionCandidate =
@@ -75,6 +76,97 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain('Bad payload: {"kind":"choice_array","value"');
     expect(output).toContain("Expected value:");
     expect(output).not.toContain("human task Task_AskQuestion");
+  }, 20_000);
+
+  it("shows qianji-server workflow status when workflow server URL is configured", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-server-show-"));
+    tempDirs.push(dir);
+    const workflowPath = join(dir, "workflow.bpmn");
+    writeFileSync(workflowPath, singleReviewWorkflow(), "utf-8");
+    const server = await serveQianjiWorkflowStatus();
+
+    try {
+      const result = await runPiWendaoCli(
+        [workflowPath, "--show", "--instance-id", "wf_show_server", "--no-graph"],
+        dir,
+        {
+          env: {
+            PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL: server.url,
+          },
+        },
+      );
+      const output = [result.stdout, result.stderr].join("\n");
+
+      expect(result.exitCode).toBe(0);
+      expect(server.requests).toEqual(["GET /workflows/wf_show_server"]);
+      expect(output).toContain("# BPMN Server Workflow");
+      expect(output).toContain("Checkpoint backend: valkey");
+      expect(output).toContain("Checkpoint source: qianji-server");
+      expect(output).toContain("Pending host work: 1");
+      expect(output).toContain("node_id=Task_Review");
+      expect(output).toContain("## Active BPMN Nodes");
+      expect(output).toContain("- Task_Review | Review item");
+    } finally {
+      await server.close();
+    }
+  }, 20_000);
+
+  it("cancels qianji-server workflow checkpoints only through explicit --cancel", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-server-cancel-"));
+    tempDirs.push(dir);
+    const workflowPath = join(dir, "workflow.bpmn");
+    writeFileSync(workflowPath, singleReviewWorkflow(), "utf-8");
+    const server = await serveQianjiWorkflowCancel();
+
+    try {
+      const result = await runPiWendaoCli(
+        [workflowPath, "--cancel", "--instance-id", "wf_cancel_server", "--no-graph"],
+        dir,
+        {
+          env: {
+            PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL: server.url,
+          },
+        },
+      );
+      const output = [result.stdout, result.stderr].join("\n");
+
+      expect(result.exitCode).toBe(0);
+      expect(server.requests).toEqual(["POST /workflows/wf_cancel_server/cancel"]);
+      expect(server.bodies).toEqual([
+        {
+          bpmn_path: workflowPath,
+          dmn_paths: [],
+        },
+      ]);
+      expect(output).toContain("# BPMN Server Workflow Cancel");
+      expect(output).toContain("Cancelled: yes");
+      expect(output).toContain("Checkpoint backend: valkey");
+      expect(output).toContain("Checkpoint source: qianji-server");
+      expect(output).toContain("Pending host work before cancel: 1");
+      expect(output).toContain("node_id=Task_Review");
+      expect(output).toContain("## Active BPMN Nodes");
+      expect(output).toContain("- Task_Review | Review item");
+    } finally {
+      await server.close();
+    }
+  }, 20_000);
+
+  it("rejects invalid workflow start mode values", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-workflow-start-mode-"));
+    tempDirs.push(dir);
+    const workflowPath = join(dir, "workflow.bpmn");
+    writeFileSync(workflowPath, singleReviewWorkflow(), "utf-8");
+
+    const result = await runPiWendaoCli(
+      [workflowPath, "--workflow-start-mode", "invalid", "--no-graph"],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain(
+      'invalid workflow start mode "invalid"; expected resume-or-start or start',
+    );
   }, 20_000);
 
   it("runs SearchStrategyFlow from --search without requiring a workflow", async () => {
@@ -825,7 +917,7 @@ process.exit(64);
 
 function writeSearchProjectFixture(graphProject: string, rustWorkspace: string): void {
   mkdirSync(graphProject);
-  mkdirSync(join(rustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia"), {
+  mkdirSync(join(rustWorkspace, "packages", "rust", "crates", "xiuxian-julia-core"), {
     recursive: true,
   });
   writeFileSync(
@@ -835,8 +927,8 @@ function writeSearchProjectFixture(graphProject: string, rustWorkspace: string):
   );
   writeFileSync(join(rustWorkspace, "Cargo.toml"), "[workspace]\n", "utf-8");
   writeFileSync(
-    join(rustWorkspace, "packages", "rust", "crates", "xiuxian-wendao-julia", "Cargo.toml"),
-    '[package]\nname = "xiuxian-wendao-julia"\n',
+    join(rustWorkspace, "packages", "rust", "crates", "xiuxian-julia-core", "Cargo.toml"),
+    '[package]\nname = "xiuxian-julia-core"\n',
     "utf-8",
   );
 }
@@ -1164,7 +1256,7 @@ function writeFailingCargoSearch(path: string): void {
   writeFileSync(
     path,
     `#!/usr/bin/env node
-console.error("error: no example target named \\u0060wendaograph_search_strategy_flow\\u0060 in \\u0060xiuxian-wendao-julia\\u0060 package");
+console.error("error: no example target named \\u0060wendaograph_search_strategy_flow\\u0060 in \\u0060xiuxian-julia-core\\u0060 package");
 process.exit(101);
 `,
     "utf-8",
@@ -1232,4 +1324,155 @@ function serviceGeneratedDynamicChoicesWorkflow(): string {
       '    <sequenceFlow id="Flow_3" sourceRef="Task_AskQuestion" targetRef="End_1"/>',
     ].join("\n"),
   );
+}
+
+function singleReviewWorkflow(): string {
+  return nativeDefinitions(
+    "Process_1",
+    [
+      '    <startEvent id="Start_1"/>',
+      nativeServiceTask({
+        id: "Task_Review",
+        name: "Review item",
+        documentation: "Review the current item.",
+        inputs: ["item"],
+        outputs: ["result"],
+      }),
+      '    <endEvent id="End_1"/>',
+      '    <sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="Task_Review"/>',
+      '    <sequenceFlow id="Flow_2" sourceRef="Task_Review" targetRef="End_1"/>',
+    ].join("\n"),
+  );
+}
+
+async function serveQianjiWorkflowStatus(): Promise<{
+  url: string;
+  requests: string[];
+  close: () => Promise<void>;
+}> {
+  const requests: string[] = [];
+  const server: Server = createServer((request, response) => {
+    requests.push(`${request.method} ${request.url}`);
+    if (request.method === "GET" && request.url === "/workflows/wf_show_server") {
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          checkpoint_sequence: 7,
+          checkpoint_backend: "valkey",
+          workflow: {
+            instance_id: "wf_show_server",
+            process_id: "Process_1",
+            sequence: 3,
+            lifecycle: "running",
+            variables: { item: "server" },
+            pending_host_work_count: 1,
+            pending_host_work: [
+              {
+                kind: "service",
+                process_id: "Process_1",
+                activity_id: "Task_Review",
+                node_id: "Task_Review",
+                node_index: 1,
+                token_id: 11,
+                variables: {},
+                inputs: { item: "server" },
+              },
+            ],
+            wait_registration_count: 0,
+            active_token_count: 1,
+          },
+        }),
+      );
+      return;
+    }
+    response.statusCode = 404;
+    response.end("not found");
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server should listen on TCP");
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    requests,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  };
+}
+
+async function serveQianjiWorkflowCancel(): Promise<{
+  url: string;
+  requests: string[];
+  bodies: unknown[];
+  close: () => Promise<void>;
+}> {
+  const requests: string[] = [];
+  const bodies: unknown[] = [];
+  const server: Server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      requests.push(`${request.method} ${request.url}`);
+      const body = Buffer.concat(chunks).toString("utf-8");
+      bodies.push(body ? JSON.parse(body) : undefined);
+      if (request.method === "POST" && request.url === "/workflows/wf_cancel_server/cancel") {
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            cancelled: true,
+            checkpoint_sequence: 8,
+            checkpoint_backend: "valkey",
+            workflow: {
+              instance_id: "wf_cancel_server",
+              process_id: "Process_1",
+              sequence: 4,
+              lifecycle: "running",
+              variables: { item: "server" },
+              pending_host_work_count: 1,
+              pending_host_work: [
+                {
+                  kind: "service",
+                  process_id: "Process_1",
+                  activity_id: "Task_Review",
+                  node_id: "Task_Review",
+                  node_index: 1,
+                  token_id: 11,
+                  variables: {},
+                  inputs: { item: "server" },
+                },
+              ],
+              wait_registration_count: 0,
+              active_token_count: 1,
+            },
+          }),
+        );
+        return;
+      }
+      response.statusCode = 404;
+      response.end("not found");
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server should listen on TCP");
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    requests,
+    bodies,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  };
 }

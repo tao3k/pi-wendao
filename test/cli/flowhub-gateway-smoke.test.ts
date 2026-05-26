@@ -18,6 +18,10 @@ const tempDirs: string[] = [];
 const servers: ChildProcessWithoutNullStreams[] = [];
 const smokeEnabled = process.env.RUN_PI_WENDAO_FLOWHUB_GATEWAY_SMOKE === "1";
 const itSmoke = smokeEnabled ? it : it.skip;
+const serverStartupTimeoutMs = readPositiveIntEnv(
+  "PI_WENDAO_FLOWHUB_GATEWAY_STARTUP_TIMEOUT_MS",
+  600_000,
+);
 
 describe("Flowhub Gateway smoke", () => {
   afterEach(async () => {
@@ -30,7 +34,7 @@ describe("Flowhub Gateway smoke", () => {
   itSmoke(
     "runs pi-wendao against a live qianji-server Flowhub registry route",
     async () => {
-      const server = await startQianjiServer();
+      const server = await resolveQianjiServer();
       const tempDir = mkdtempSync(join(tmpdir(), "pi-wendao-flowhub-gateway-smoke-"));
       tempDirs.push(tempDir);
       const qianjiPath = join(tempDir, "qianji");
@@ -57,9 +61,26 @@ describe("Flowhub Gateway smoke", () => {
       expect(output).toContain("bpmn instances");
       expect(output).not.toContain("qianji-client flowhub scenarios");
     },
-    240_000,
+    serverStartupTimeoutMs + 90_000,
   );
 });
+
+async function resolveQianjiServer(): Promise<{ baseUrl: string }> {
+  const existingUrl = process.env.PI_WENDAO_QIANJI_SERVER_URL?.trim() ||
+    process.env.QIANJI_SERVER_URL?.trim();
+  if (existingUrl) {
+    await assertQianjiServerReady(existingUrl);
+    return { baseUrl: existingUrl };
+  }
+  return startQianjiServer();
+}
+
+async function assertQianjiServerReady(baseUrl: string): Promise<void> {
+  const response = await fetch(new URL("/readyz", baseUrl));
+  if (!response.ok) {
+    throw new Error(`qianji-server readiness failed with HTTP ${response.status}: ${baseUrl}`);
+  }
+}
 
 async function startQianjiServer(): Promise<{ baseUrl: string }> {
   const cargo = resolveCargoInvocation();
@@ -96,7 +117,7 @@ async function startQianjiServer(): Promise<{ baseUrl: string }> {
     const timeout = setTimeout(() => {
       isSettled = true;
       reject(new Error(`qianji-server did not start before timeout:\n${output}`));
-    }, 180_000);
+    }, serverStartupTimeoutMs);
 
     const onData = (chunk: Buffer) => {
       output += chunk.toString("utf-8");
@@ -200,4 +221,11 @@ function writeEchoQianji(path: string): void {
     "utf-8",
   );
   chmodSync(path, 0o755);
+}
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const value = process.env[name]?.trim();
+  if (!value) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
 }

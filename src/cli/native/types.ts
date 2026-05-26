@@ -9,6 +9,7 @@ import type {
   WorkflowPath,
 } from "../../types/domain.js";
 import type { PiWendaoNamedWorkflow } from "../named-workflows.js";
+import type { ServerlessMemoryRecallPacket } from "../serverless-memory/index.js";
 import type { PiWendaoWorkflowOptions } from "../workflow-runner.js";
 
 export interface PiWendaoNativeExtensionOptions {
@@ -23,6 +24,7 @@ export interface PiWendaoNativeExtensionOptions {
   resolvedDmnPaths: DmnPath[];
   resolvedHostFixturePath?: HostFixturePath;
   resolvedEventFixturePath?: EventFixturePath;
+  serverlessMemoryRecallPacket?: ServerlessMemoryRecallPacket;
 }
 
 export interface PiWendaoWorkflowMessageDetails {

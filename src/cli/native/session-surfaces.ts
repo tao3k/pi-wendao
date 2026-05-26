@@ -1,5 +1,5 @@
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { clearAllNativeWorkflowGraphPanels } from "./graph-panel.js";
 import { PI_WENDAO_RESET_NATIVE_SESSION_SURFACES_EVENT } from "./pi-subagents-extension.js";
 

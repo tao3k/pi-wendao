@@ -170,7 +170,7 @@ function rustBridgeSessionArgs(
           "run",
           "-q",
           "-p",
-          "xiuxian-wendao-julia",
+          "xiuxian-julia-core",
           "--bin",
           "wendaograph_search_strategy_flow",
           "--",

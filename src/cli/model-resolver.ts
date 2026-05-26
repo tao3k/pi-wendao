@@ -2,14 +2,14 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   createAgentSessionServices,
   type AgentSessionServices,
   type AuthStorage,
   type LoadExtensionsResult,
   type ModelRegistry,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { resolvePiWendaoPackageRoot as resolvePiWendaoPackageRootFromResources } from "../pi-resources.js";
 
 const require = createRequire(import.meta.url);
@@ -241,6 +241,12 @@ export function applyPiWendaoEnvAuthOverride(
   provider: string,
   modelId?: string,
 ): { apiKey: string; source: string } | undefined {
+  if (provider === "openrouter") {
+    const envAuth = readOpenRouterApiKey();
+    if (!envAuth) return undefined;
+    authStorage.setRuntimeApiKey(provider, envAuth.apiKey);
+    return envAuth;
+  }
   if (provider !== "anthropic") return undefined;
   const envAuth = resolvePiWendaoAnthropicEnvAuth({ modelId });
   if (!envAuth) return undefined;
@@ -379,7 +385,18 @@ function readOpenRouterApiKey(): { apiKey: string; source: string } | undefined 
 
 function readEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
-  return value ? value : undefined;
+  if (!value) return undefined;
+  return stripMatchingQuotes(value);
+}
+
+function stripMatchingQuotes(value: string): string {
+  if (value.length < 2) return value;
+  const first = value[0];
+  const last = value[value.length - 1];
+  if ((first === '"' || first === "'") && first === last) {
+    return value.slice(1, -1).trim();
+  }
+  return value;
 }
 
 function isDeepSeekAnthropicGateway(): boolean {

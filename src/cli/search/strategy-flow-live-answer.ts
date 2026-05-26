@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import { resolveModel } from "../model-resolver.js";
 import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
 import { execute } from "../../executor/executor.js";

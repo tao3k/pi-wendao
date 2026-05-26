@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
-import { streamSimple } from "@mariozechner/pi-ai";
+import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai";
 import type { CompileTargetDecision } from "./prompt.js";
 import type { CompileTemplates } from "./qianji-template.js";
 import type {

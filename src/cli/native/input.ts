@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { QianjiInteractionChoice } from "../../executor/agent-host.js";
 import { WorkflowInterruptedError, waitForWorkflowInterrupt } from "../../executor/interrupt.js";
 import type { PlannerReplyRequest } from "../../ui/renderer.js";

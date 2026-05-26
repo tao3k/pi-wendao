@@ -1,4 +1,4 @@
-import { createCodingTools, createReadOnlyTools } from "@mariozechner/pi-coding-agent";
+import { createCodingTools, createReadOnlyTools } from "@earendil-works/pi-coding-agent";
 import type { PiWendaoAgentTool } from "../executor/agent-runtime-types.js";
 
 export function createPiWendaoToolRegistry(

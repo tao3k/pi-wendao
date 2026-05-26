@@ -1,4 +1,4 @@
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type { CompileArtifactTarget, CompileTargetDecision } from "./prompt.js";
 import type { CompileTemplateOptions } from "./qianji-template.js";
 

@@ -1,7 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import { compileSkill, defaultCompileTraceDir, type CompileResult } from "../compiler/compiler.js";
 import { resolvePiWendaoNamedWorkflowSeedPath } from "../pi-resources.js";
 import type { DmnPath, SourcePath, WorkflowPath } from "../types/domain.js";

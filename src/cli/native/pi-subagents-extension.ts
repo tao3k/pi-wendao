@@ -3,10 +3,10 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
-import type { OverlayHandle } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { OverlayHandle } from "@earendil-works/pi-tui";
 import type { TSchema } from "typebox";
-import registerPiSubagents from "@tintinweb/pi-subagents/dist/index.js";
+import { registerPiWendaoNativeSubagents } from "../../subagents/index.js";
 
 export const PI_WENDAO_RESET_NATIVE_SESSION_SURFACES_EVENT =
   "pi-wendao:native-session-surfaces:reset";
@@ -32,7 +32,7 @@ export default function registerPiWendaoPiSubagents(pi: ExtensionAPI): void {
 
   pi.events.on(PI_WENDAO_RESET_NATIVE_SESSION_SURFACES_EVENT, resetSurfaces);
 
-  registerPiSubagents(
+  registerPiWendaoNativeSubagents(
     wrapPi(pi, (ctx) =>
       wrapContext(ctx, overlayHandles, () => surfaceGeneration, (ui) => {
         latestUi = ui;
