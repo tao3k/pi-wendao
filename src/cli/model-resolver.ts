@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   createAgentSessionServices,
@@ -12,7 +11,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolvePiWendaoPackageRoot as resolvePiWendaoPackageRootFromResources } from "../pi-resources.js";
 
-const require = createRequire(import.meta.url);
 const DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
 const DYNAMIC_GATEWAY_MODELS = Symbol.for("pi-wendao.dynamicGatewayModels");
 const PI_WENDAO_PI_EXTENSION_FILES = [
@@ -188,19 +186,26 @@ function installDynamicGatewayModel(modelRegistry: ModelRegistry, model: Model<A
     registry.find = ((provider: string, modelId: string) => {
       return dynamicModels!.get(modelKey(provider, modelId)) ?? originalFind(provider, modelId);
     }) as ModelRegistry["find"];
-    registry.getAll = (() => appendDynamicModels(originalGetAll(), dynamicModels!)) as ModelRegistry["getAll"];
+    registry.getAll = (() =>
+      appendDynamicModels(originalGetAll(), dynamicModels!)) as ModelRegistry["getAll"];
     registry.getAvailable = (() => {
       const available = originalGetAvailable();
       const configuredDynamicModels = [...dynamicModels!.values()].filter((dynamicModel) =>
         registry.hasConfiguredAuth(dynamicModel),
       );
-      return appendDynamicModels(available, new Map(configuredDynamicModels.map((item) => [modelKey(item.provider, item.id), item])));
+      return appendDynamicModels(
+        available,
+        new Map(configuredDynamicModels.map((item) => [modelKey(item.provider, item.id), item])),
+      );
     }) as ModelRegistry["getAvailable"];
   }
   dynamicModels.set(modelKey(model.provider, model.id), model);
 }
 
-function appendDynamicModels(models: Model<Api>[], dynamicModels: Map<string, Model<Api>>): Model<Api>[] {
+function appendDynamicModels(
+  models: Model<Api>[],
+  dynamicModels: Map<string, Model<Api>>,
+): Model<Api>[] {
   const seen = new Set(models.map((model) => modelKey(model.provider, model.id)));
   const appended = [...models];
   for (const [key, model] of dynamicModels) {
@@ -313,16 +318,6 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-function resolvePackageRoot(packageName: string): string | undefined {
-  try {
-    const packageJsonPath = require.resolve(`${packageName}/package.json`);
-    const packageRoot = dirname(packageJsonPath);
-    return existsSync(packageRoot) ? packageRoot : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function applyAnthropicEnvOverrides(model: Model<Api>): Model<Api> {
   if (model.provider !== "anthropic") return model;
   if (isDeepSeekAnthropicModelId(model.id)) {
@@ -371,11 +366,7 @@ export function resolvePiWendaoAnthropicEnvAuth(options?: {
 }
 
 function readOpenRouterApiKey(): { apiKey: string; source: string } | undefined {
-  for (const name of [
-    "OPENROUTER_API_KEY",
-    "OPENROUTE_API_KEY",
-    "WENDAO_OPENROUTER_API_KEY",
-  ]) {
+  for (const name of ["OPENROUTER_API_KEY", "OPENROUTE_API_KEY", "WENDAO_OPENROUTER_API_KEY"]) {
     const apiKey = readEnv(name);
     if (apiKey) return { apiKey, source: `env:${name}` };
   }

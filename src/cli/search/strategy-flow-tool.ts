@@ -3,10 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resolveSearchStrategyFlowCliOptions } from "./strategy-flow-cli-options.js";
 import { runSearchStrategyFlow } from "./strategy-flow-julia.js";
 import { renderSearchStrategyFlowTrace } from "./strategy-flow-renderer.js";
-import type {
-  SearchStrategyFlowOptions,
-  SearchStrategyFlowTrace,
-} from "./strategy-flow-types.js";
+import type { SearchStrategyFlowOptions, SearchStrategyFlowTrace } from "./strategy-flow-types.js";
 
 export const WENDAO_SEARCH_STRATEGY_FLOW_TOOL_NAME = "wendao_search_strategy_flow";
 
@@ -68,8 +65,7 @@ export function registerSearchStrategyFlowTool(
       ),
       search_strategy_flow_service_base_url: Type.Optional(
         Type.String({
-          description:
-            "Optional WendaoGraph SearchStrategyFlow Arrow Flight service endpoint.",
+          description: "Optional WendaoGraph SearchStrategyFlow Arrow Flight service endpoint.",
         }),
       ),
       search_strategy_flow_service_timeout_seconds: Type.Optional(
@@ -80,7 +76,8 @@ export function registerSearchStrategyFlowTool(
       ),
       json: Type.Optional(
         Type.Boolean({
-          description: "Return the raw SearchStrategyFlow trace JSON instead of the compact text trace.",
+          description:
+            "Return the raw SearchStrategyFlow trace JSON instead of the compact text trace.",
         }),
       ),
     }),
@@ -115,8 +112,7 @@ async function executeSearchStrategyFlowTool(input: {
         searchFlightBaseUrl: request.searchFlightBaseUrl,
         searchFlightTimeoutSeconds: request.searchFlightTimeoutSeconds,
         searchStrategyFlowServiceBaseUrl: request.searchStrategyFlowServiceBaseUrl,
-        searchStrategyFlowServiceTimeoutSeconds:
-          request.searchStrategyFlowServiceTimeoutSeconds,
+        searchStrategyFlowServiceTimeoutSeconds: request.searchStrategyFlowServiceTimeoutSeconds,
       }),
     );
     throwIfAborted(input.signal);

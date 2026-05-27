@@ -1,9 +1,21 @@
+import type { Effect } from "effect";
 import { streamSimple } from "@earendil-works/pi-ai";
 import { buildTargetDecisionPrompt, type CompileTargetDecision } from "./prompt.js";
 import type { CompileOptions } from "./types.js";
 import { asArray, extractJsonObject, isObject, readString } from "./json.js";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
 
-export async function decideCompileTarget(
+export function decideCompileTarget(
+  options: CompileOptions,
+  skillContent: string,
+  constructIndex: string,
+): Effect.Effect<CompileTargetDecision, PiWendaoEffectError> {
+  return effectFromPromise("decideCompileTarget", () =>
+    decideCompileTargetPromise(options, skillContent, constructIndex),
+  );
+}
+
+async function decideCompileTargetPromise(
   options: CompileOptions,
   skillContent: string,
   constructIndex: string,

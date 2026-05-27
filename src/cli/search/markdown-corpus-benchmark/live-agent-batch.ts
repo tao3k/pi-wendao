@@ -12,6 +12,15 @@ import type {
 import { evaluateMarkdownCorpusBenchmarkRow } from "./evaluate.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { resolveLiveAgentCandidatePoolMode } from "./live-agent.js";
+import {
+  chunkRows,
+  elapsedMs,
+  hasRequestAuth,
+  isRecord,
+  parseJsonPayload,
+  readString,
+  type IndexedMarkdownCorpusTraceRow,
+} from "./live-agent-batch-common.js";
 import type {
   MarkdownCorpusBenchmarkCount,
   SearchStrategyFlowMarkdownCorpusAgentRun,
@@ -22,12 +31,6 @@ import type {
 export const DEFAULT_LIVE_AGENT_BATCH_SIZE = 4;
 
 const BATCH_ACTIVITY_ID = "SearchStrategyFlow_BatchQueryUnderstanding";
-
-interface IndexedTracedRow {
-  index: number;
-  intentRow: SearchStrategyFlowMarkdownCorpusIntentRow;
-  trace: SearchStrategyFlowTrace;
-}
 
 interface BatchJudgementRow {
   familyId: string;
@@ -48,7 +51,7 @@ export async function runBenchmarkLiveAgentBatchRuns(input: {
   defaultModelPattern: string;
 }): Promise<SearchStrategyFlowMarkdownCorpusAgentRun[]> {
   const batchSize = normalizeLiveAgentBatchSize(input.options.liveAgentBatchSize);
-  const runs = input.tracedRows.map(({ intentRow, trace }) =>
+  const runs = input.tracedRows.map(({ trace }) =>
     skippedRun(
       "SearchStrategyFlow batch judgement was not required for this row.",
       resolveLiveAgentCandidatePoolMode(input.options.liveAgentCandidatePoolMode, trace),
@@ -57,7 +60,9 @@ export async function runBenchmarkLiveAgentBatchRuns(input: {
   const eligibleRows = input.tracedRows
     .map((row, index) => ({ index, ...row }))
     .filter((row) => {
-      if (!shouldRunSearchStrategyFlowAgentJudgement(row.trace, row.intentRow.liveEvidenceRequired)) {
+      if (
+        !shouldRunSearchStrategyFlowAgentJudgement(row.trace, row.intentRow.liveEvidenceRequired)
+      ) {
         return false;
       }
       const deterministic = evaluateMarkdownCorpusBenchmarkRow(row.intentRow, row.trace);
@@ -89,7 +94,7 @@ export async function runBenchmarkLiveAgentBatchRuns(input: {
 
 async function runLiveAgentBatchChunk(input: {
   cwd: string;
-  rows: IndexedTracedRow[];
+  rows: IndexedMarkdownCorpusTraceRow[];
   batchIndex: number;
   batchSize: number;
   options: SearchStrategyFlowMarkdownCorpusBenchmarkOptions;
@@ -111,7 +116,11 @@ async function runLiveAgentBatchChunk(input: {
       input.options.extensionPaths ?? [],
     );
     if (!hasRequestAuth(resolved.apiKey, resolved.headers)) {
-      return failedBatchRows(input, candidatePoolModes, batchId, elapsedMs(startedAt),
+      return failedBatchRows(
+        input,
+        candidatePoolModes,
+        batchId,
+        elapsedMs(startedAt),
         "No request auth is configured for the SearchStrategyFlow batch judgement.",
       );
     }
@@ -173,7 +182,7 @@ async function runLiveAgentBatchChunk(input: {
 }
 
 function mapBatchOutputToRuns(input: {
-  rows: IndexedTracedRow[];
+  rows: IndexedMarkdownCorpusTraceRow[];
   output: Record<string, unknown>;
   events: SearchStrategyFlowAgentEvent[];
   cached: boolean;
@@ -267,7 +276,7 @@ function mapBatchOutputToRuns(input: {
   });
 }
 
-function buildBatchAgentPrompt(rows: IndexedTracedRow[]): string {
+function buildBatchAgentPrompt(rows: IndexedMarkdownCorpusTraceRow[]): string {
   return [
     "You are the first-layer Wendao SearchStrategyFlow batch query-understanding and branch-judgement agent.",
     "Judge each batch row independently. Do not request files, tools, or extra context.",
@@ -288,7 +297,7 @@ function buildBatchAgentPrompt(rows: IndexedTracedRow[]): string {
 }
 
 function buildBatchCompactTrace(
-  rows: IndexedTracedRow[],
+  rows: IndexedMarkdownCorpusTraceRow[],
   candidatePoolModes: Map<number, SearchStrategyFlowMarkdownCorpusAgentRun["candidatePoolMode"]>,
 ): Record<string, unknown> {
   return {
@@ -305,7 +314,7 @@ function buildBatchCompactTrace(
   };
 }
 
-function syntheticBatchTrace(rows: IndexedTracedRow[]): SearchStrategyFlowTrace {
+function syntheticBatchTrace(rows: IndexedMarkdownCorpusTraceRow[]): SearchStrategyFlowTrace {
   const trace = rows[0]?.trace;
   if (!trace) throw new Error("SearchStrategyFlow batch judgement requires at least one row");
   return {
@@ -322,7 +331,7 @@ function parseBatchJudgementRows(value: unknown): {
   const rawRows = Array.isArray(parsed)
     ? parsed
     : isRecord(parsed)
-      ? parsed.rows ?? parsed.batch_judgements ?? parsed.batchJudgements
+      ? (parsed.rows ?? parsed.batch_judgements ?? parsed.batchJudgements)
       : undefined;
   if (!Array.isArray(rawRows)) {
     return { rows: new Map(), errors: ["branch_judgements must be a JSON array of batch rows."] };
@@ -344,7 +353,9 @@ function parseBatchJudgementRows(value: unknown): {
       errors.push(`batch row ${rowNumber} duplicates family_id ${familyId}.`);
       return;
     }
-    const intentUnderstanding = readString(rawRow.intent_understanding ?? rawRow.intentUnderstanding);
+    const intentUnderstanding = readString(
+      rawRow.intent_understanding ?? rawRow.intentUnderstanding,
+    );
     const branchDecision = readString(rawRow.branch_decision ?? rawRow.branchDecision);
     const judgement = readString(rawRow.judgement);
     const branchJudgements = rawRow.branch_judgements ?? rawRow.branchJudgements;
@@ -365,26 +376,9 @@ function parseBatchJudgementRows(value: unknown): {
   return errors.length > 0 ? { rows: new Map(), errors } : { rows, errors: [] };
 }
 
-function parseJsonPayload(value: unknown): unknown {
-  if (Array.isArray(value) || isRecord(value)) return value;
-  if (typeof value !== "string") return undefined;
-  const text = stripJsonFence(value.trim());
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-function stripJsonFence(value: string): string {
-  const fenced = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced ? fenced[1]?.trim() ?? "" : value;
-}
-
 function failedBatchRows(
   input: {
-    rows: IndexedTracedRow[];
+    rows: IndexedMarkdownCorpusTraceRow[];
     batchSize?: number;
   },
   candidatePoolModes: Map<number, SearchStrategyFlowMarkdownCorpusAgentRun["candidatePoolMode"]>,
@@ -394,10 +388,10 @@ function failedBatchRows(
 ): Array<{ index: number; run: SearchStrategyFlowMarkdownCorpusAgentRun }> {
   return input.rows.map((row) => ({
     index: row.index,
-      run: failedRun(
-        reason,
-        candidatePoolModes.get(row.index) ?? "visible",
-        batchId,
+    run: failedRun(
+      reason,
+      candidatePoolModes.get(row.index) ?? "visible",
+      batchId,
       input.rows.length,
       batchDurationMs,
     ),
@@ -469,31 +463,4 @@ function normalizeBatchTimeoutSeconds(value: number | undefined): number {
     throw new Error("--live-agent-timeout-seconds must be a non-negative number");
   }
   return Math.floor(value);
-}
-
-function chunkRows<T>(rows: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < rows.length; index += size) {
-    chunks.push(rows.slice(index, index + size));
-  }
-  return chunks;
-}
-
-function hasRequestAuth(
-  apiKey: string | undefined,
-  headers: Record<string, string> | undefined,
-): boolean {
-  return Boolean(apiKey || (headers && Object.keys(headers).length > 0));
-}
-
-function readString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function elapsedMs(startedAt: number): number {
-  return Date.now() - startedAt;
 }

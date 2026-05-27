@@ -86,7 +86,8 @@ function deriveStageReceipts(trace: SearchStrategyFlowTrace): SearchStrategyFlow
       llmJudgementCount: llmActions.length,
       cycleAllowedCount: actions.filter((row) => row.cycleAllowed).length,
       contextBudget: actions.reduce((sum, row) => sum + (row.contextBudget ?? 0), 0),
-      summary: "frontier and transition facts to materialize, refine, judge, compare, and stop actions",
+      summary:
+        "frontier and transition facts to materialize, refine, judge, compare, and stop actions",
     },
   ];
 }

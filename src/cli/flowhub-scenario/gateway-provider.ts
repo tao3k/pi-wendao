@@ -29,9 +29,7 @@ export function resolveGatewayFlowhubRegistryProviderFromEnv():
   if (!url) return undefined;
   return createGatewayFlowhubScenarioRegistryProvider({
     url,
-    timeoutMs: parseOptionalPositiveInteger(
-      process.env.PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS,
-    ),
+    timeoutMs: parseOptionalPositiveInteger(process.env.PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS),
   });
 }
 
@@ -55,20 +53,14 @@ function flowhubRegistryUrlFromServerUrl(serverUrl: string): string {
 function resolveTimeoutMs(timeoutMs: number | undefined): number {
   if (timeoutMs === undefined) return DEFAULT_GATEWAY_TIMEOUT_MS;
   if (Number.isInteger(timeoutMs) && timeoutMs > 0) return timeoutMs;
-  throw new Error(
-    "Flowhub Gateway registry timeout must be a positive integer",
-  );
+  throw new Error("Flowhub Gateway registry timeout must be a positive integer");
 }
 
-function parseOptionalPositiveInteger(
-  value: string | undefined,
-): number | undefined {
+function parseOptionalPositiveInteger(value: string | undefined): number | undefined {
   if (!value?.trim()) return undefined;
   const parsed = Number(value);
   if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  throw new Error(
-    "PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS must be a positive integer",
-  );
+  throw new Error("PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS must be a positive integer");
 }
 
 function fetchRegistryBody(url: string, timeoutMs: number): Promise<string> {
@@ -95,11 +87,7 @@ function fetchRegistryBody(url: string, timeoutMs: number): Promise<string> {
         response.on("end", () => {
           const statusCode = response.statusCode ?? 0;
           if (statusCode < 200 || statusCode >= 300) {
-            reject(
-              new Error(
-                formatHttpFailure(statusCode, body),
-              ),
-            );
+            reject(new Error(formatHttpFailure(statusCode, body)));
             return;
           }
           resolve(body);
@@ -109,9 +97,7 @@ function fetchRegistryBody(url: string, timeoutMs: number): Promise<string> {
 
     request.setTimeout(timeoutMs, () => {
       request.destroy(
-        new Error(
-          `Flowhub Gateway registry request timed out after ${timeoutMs} ms`,
-        ),
+        new Error(`Flowhub Gateway registry request timed out after ${timeoutMs} ms`),
       );
     });
     request.on("error", reject);

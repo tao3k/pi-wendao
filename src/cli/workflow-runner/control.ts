@@ -42,9 +42,7 @@ export async function runQianjiWorkflowControlCommand(
   if (options.show && options.cancel) {
     throw new Error("--show and --cancel cannot be combined");
   }
-  return options.cancel
-    ? runQianjiWorkflowCancel(options)
-    : runQianjiWorkflowShow(options);
+  return options.cancel ? runQianjiWorkflowCancel(options) : runQianjiWorkflowShow(options);
 }
 
 async function runQianjiWorkflowCancel(
@@ -75,21 +73,20 @@ async function runQianjiWorkflowCancel(
 async function runQianjiWorkflowShow(
   options: QianjiWorkflowControlOptions,
 ): Promise<QianjiWorkflowControlResult> {
-  const serverUrl = options.instanceId
-    ? resolveQianjiWorkflowServerUrl(undefined)
-    : undefined;
-  const output = serverUrl && options.instanceId
-    ? await runQianjiServerShow({
-        serverUrl,
-        instanceId: options.instanceId,
-      })
-    : await runQianjiShow({
-        command: resolveQianjiCommand(options.qianji),
-        instanceId: options.instanceId,
-        workflowPath: options.workflowPath,
-        dmnPaths: options.dmnPaths,
-        cwd: options.cwd,
-      });
+  const serverUrl = options.instanceId ? resolveQianjiWorkflowServerUrl(undefined) : undefined;
+  const output =
+    serverUrl && options.instanceId
+      ? await runQianjiServerShow({
+          serverUrl,
+          instanceId: options.instanceId,
+        })
+      : await runQianjiShow({
+          command: resolveQianjiCommand(options.qianji),
+          instanceId: options.instanceId,
+          workflowPath: options.workflowPath,
+          dmnPaths: options.dmnPaths,
+          cwd: options.cwd,
+        });
   return {
     handled: true,
     exitCode: output.exitCode ?? 1,

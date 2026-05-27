@@ -3,6 +3,8 @@ import type {
   SearchStrategyFlowDecodedPayloadReceipt,
   SearchStrategyFlowGraphNodeId,
   SearchStrategyFlowId,
+  SearchStrategyFlowJudgementKind,
+  SearchStrategyFlowPlannerActionKind,
   SearchStrategyFlowRetrievalRoute,
   SearchStrategyFlowSourcePath,
   SearchStrategyFlowTrace,
@@ -23,8 +25,8 @@ export interface SearchStrategyFlowBranchContext {
   routePurpose: string;
   selected: boolean;
   frontierRank?: number;
-  judgementKind?: string;
-  actionKind?: string;
+  judgementKind?: SearchStrategyFlowJudgementKind;
+  actionKind?: SearchStrategyFlowPlannerActionKind;
   compareTargetId?: SearchStrategyFlowId;
   finalScore?: number;
   contextCost?: number;
@@ -364,7 +366,9 @@ function maxQueryAmbiguity(trace: SearchStrategyFlowTrace): number {
 }
 
 function selectedRouteRoles(trace: SearchStrategyFlowTrace): Set<SearchStrategyFlowRouteRole> {
-  const selected = new Set(trace.frontier.filter((row) => row.selected).map((row) => row.candidateId));
+  const selected = new Set(
+    trace.frontier.filter((row) => row.selected).map((row) => row.candidateId),
+  );
   return new Set(
     resolveSearchStrategyFlowRetrievalRoutes(trace)
       .filter((route) => selected.has(route.candidateId))

@@ -1,4 +1,12 @@
-import type { ActivityId, InstanceId, NodeIndex, ProcessId, TokenId } from "../types/domain.js";
+import type {
+  ActivityId,
+  Branded,
+  InstanceId,
+  NodeIndex,
+  PiWendaoSubagentType,
+  ProcessId,
+  TokenId,
+} from "../types/domain.js";
 
 export interface PiWendaoConfig {
   hostKind?: PiWendaoHostWorkKind;
@@ -14,9 +22,11 @@ export interface PiWendaoConfig {
 
 export type QianjiInteractionType = "input" | "confirm" | "choice" | "choice_input";
 export type QianjiOutputSchemaRequirement = "required" | "optional";
+export type QianjiOutputSchemaKind = Branded<string, "QianjiOutputSchemaKind">;
+export type PiWendaoCheckpointStatus = Branded<string, "PiWendaoCheckpointStatus">;
 
 export interface QianjiOutputSchema {
-  kind: string;
+  kind: QianjiOutputSchemaKind;
   value?: QianjiOutputSchemaRequirement;
   label?: QianjiOutputSchemaRequirement;
   description?: QianjiOutputSchemaRequirement;
@@ -75,7 +85,7 @@ export type PiWendaoHostWorkKind =
   | "business_rule";
 
 export interface PiWendaoSubagentConfig {
-  type?: string;
+  type?: PiWendaoSubagentType;
   description?: string;
   runInBackground?: boolean;
   model?: string;
@@ -92,7 +102,7 @@ export interface PiWendaoQianjiCheckpointFeedback {
   source?: string;
   saved?: string;
   deleted?: string;
-  status?: string;
+  status?: PiWendaoCheckpointStatus;
   pendingHostWork?: string;
 }
 
@@ -178,9 +188,7 @@ export function buildPiWendaoAgentPrompt(
 }
 
 function formatToolScopes(config: PiWendaoConfig): string {
-  const scopes = (config.toolScopes ?? []).filter((scope) =>
-    config.tools.includes(scope.tool),
-  );
+  const scopes = (config.toolScopes ?? []).filter((scope) => config.tools.includes(scope.tool));
   return scopes.length > 0 ? JSON.stringify(scopes, null, 2) : "";
 }
 
@@ -192,13 +200,9 @@ function formatOutputSchemas(config: PiWendaoConfig): string {
         const schema = schemas[name];
         return [name, schema ? formatOutputSchema(schema) : undefined] as const;
       })
-      .filter((entry): entry is readonly [string, QianjiPromptOutputSchema] =>
-        Boolean(entry[1]),
-      ),
+      .filter((entry): entry is readonly [string, QianjiPromptOutputSchema] => Boolean(entry[1])),
   );
-  return Object.keys(declaredSchemas).length > 0
-    ? JSON.stringify(declaredSchemas, null, 2)
-    : "";
+  return Object.keys(declaredSchemas).length > 0 ? JSON.stringify(declaredSchemas, null, 2) : "";
 }
 
 function formatOutputSchema(schema: QianjiOutputSchema): QianjiPromptOutputSchema {
@@ -326,7 +330,7 @@ function extractJsonObjectCandidates(textContent: string): string[] {
       escaped = inString;
       continue;
     }
-    if (char === "\"") {
+    if (char === '"') {
       inString = !inString;
       continue;
     }

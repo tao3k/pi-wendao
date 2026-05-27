@@ -1,17 +1,10 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-  SessionEntry,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   PI_WENDAO_MEMORY_RECALL_CUSTOM_TYPE,
   type ServerlessMemoryRecallDetails,
   type ServerlessMemoryRecallPacket,
 } from "./types.js";
-import {
-  renderServerlessMemoryRecallContent,
-  serverlessMemoryRecallDetails,
-} from "./session.js";
+import { renderServerlessMemoryRecallContent, serverlessMemoryRecallDetails } from "./session.js";
 
 export interface ServerlessMemoryRecallInjectionResult {
   injected: boolean;
@@ -62,10 +55,7 @@ function hasRecallMessage(
   });
 }
 
-function sameRecallDetails(
-  left: unknown,
-  right: ServerlessMemoryRecallDetails,
-): boolean {
+function sameRecallDetails(left: unknown, right: ServerlessMemoryRecallDetails): boolean {
   if (!isRecord(left)) return false;
   return (
     left.schema === right.schema &&

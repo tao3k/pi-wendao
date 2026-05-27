@@ -14,9 +14,9 @@ describe("SearchStrategyFlow required evidence trace", () => {
         "docs/30_search_strategy/30.01_search_strategy_flow.md#ownership-boundary",
       ),
     ).toBe("authority");
-    expect(inferSearchStrategyFlowRouteRole("docs/90_validation/90.01_validation.md#package-test")).toBe(
-      "validation",
-    );
+    expect(
+      inferSearchStrategyFlowRouteRole("docs/90_validation/90.01_validation.md#package-test"),
+    ).toBe("validation");
     expect(
       inferSearchStrategyFlowRouteRole(
         "packages/rust/crates/xiuxian-julia-core/tests/unit/integration_support/wendaograph/search_strategy.rs#search-strategy-flow-link-graph-python-julia-toml",

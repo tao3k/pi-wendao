@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
+import { runPiWendaoEffect } from "../../effect.js";
 import { execute } from "../../executor/executor.js";
 import type { PiWendaoAgentHost } from "../../executor/agent-host.js";
 import type {
@@ -56,40 +57,38 @@ export async function runSearchStrategyFlowAgentBpmnTask(
     const workflowSource = buildSearchStrategyFlowAgentBpmn(options);
     await writeFile(workflowPath, workflowSource, "utf-8");
     const description = "Run Qianji service task SearchStrategyFlow_QueryUnderstanding";
-    const result = await execute({
-      source: workflowSource,
-      sourcePath: workflowPath,
-      cwd: options.cwd,
-      processId: PROCESS_ID,
-      instanceId: searchStrategyFlowAgentInstanceId(options, workflowSource, workflowPath),
-      qianjiWorkflowStateDuckdbPath: workflowStateDuckdbPath,
-      ...(options.qianjiCommand ?? process.env.QIANJI_CLI
-        ? { qianjiCommand: options.qianjiCommand ?? process.env.QIANJI_CLI }
-        : {}),
-      context: {
-        intent: options.trace.intent,
-        trace: options.compactTrace,
-      },
-      agentHost:
-        options.agentHost ??
-        createPiAiHost({
-          model: options.model,
-          ...(options.apiKey ? { apiKey: options.apiKey } : {}),
-          cwd: options.cwd,
-          ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
-          ...(options.signal ? { signal: options.signal } : {}),
-          onEvent: (event) => {
-            if (event.type === "tool_execution_end") toolUseCount += 1;
-            const mapped = mapPiAiEventToSearchAgentEvent(
-              options.activityId,
-              description,
-              event,
-            );
-            if (mapped) events.push(mapped);
-          },
-        }),
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
+    const result = await runPiWendaoEffect(
+      execute({
+        source: workflowSource,
+        sourcePath: workflowPath,
+        cwd: options.cwd,
+        processId: PROCESS_ID,
+        instanceId: searchStrategyFlowAgentInstanceId(options, workflowSource, workflowPath),
+        qianjiWorkflowStateDuckdbPath: workflowStateDuckdbPath,
+        ...((options.qianjiCommand ?? process.env.QIANJI_CLI)
+          ? { qianjiCommand: options.qianjiCommand ?? process.env.QIANJI_CLI }
+          : {}),
+        context: {
+          intent: options.trace.intent,
+          trace: options.compactTrace,
+        },
+        agentHost:
+          options.agentHost ??
+          createPiAiHost({
+            model: options.model,
+            ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+            cwd: options.cwd,
+            ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
+            ...(options.signal ? { signal: options.signal } : {}),
+            onEvent: (event) => {
+              if (event.type === "tool_execution_end") toolUseCount += 1;
+              const mapped = mapPiAiEventToSearchAgentEvent(options.activityId, description, event);
+              if (mapped) events.push(mapped);
+            },
+          }),
+        ...(options.signal ? { signal: options.signal } : {}),
+      }),
+    );
     if (!result.success) {
       throw new Error(result.error ?? "SearchStrategyFlow BPMN agent task failed");
     }

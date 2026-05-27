@@ -2,9 +2,7 @@ import { readFileSync } from "node:fs";
 import { parseServerlessMemoryRecallPacket } from "./packet.js";
 import type { ServerlessMemoryRecallPacket } from "./types.js";
 
-export function readServerlessMemoryRecallPacketFile(
-  path: string,
-): ServerlessMemoryRecallPacket {
+export function readServerlessMemoryRecallPacketFile(path: string): ServerlessMemoryRecallPacket {
   const raw = readFileSync(path, "utf-8");
   let parsed: unknown;
   try {

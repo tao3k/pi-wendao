@@ -1,3 +1,4 @@
+import type { Effect } from "effect";
 import { buildQianjiStatusArgs, runQianjiCli } from "./qianji-cli.js";
 import {
   isActivityTraceNode,
@@ -24,10 +25,25 @@ import type {
 } from "./agent-host.js";
 import { isObject } from "./data.js";
 import type { ExecuteOptions } from "./executor.js";
+import { effectFromPromise, runPiWendaoEffect, type PiWendaoEffectError } from "../effect.js";
 
 const DEFAULT_GRAPH_TRACE_FRAME_DELAY_MS = 0;
 
-export async function applyCheckpointGraphSnapshot(options: {
+export function applyCheckpointGraphSnapshot(options: {
+  command: string;
+  sourcePath: string;
+  instanceId: string;
+  dmnPaths: string[];
+  cwd: string;
+  qianjiEnvironment?: NodeJS.ProcessEnv;
+  options: ExecuteOptions;
+}): Effect.Effect<void, PiWendaoEffectError> {
+  return effectFromPromise("applyCheckpointGraphSnapshot", () =>
+    applyCheckpointGraphSnapshotPromise(options),
+  );
+}
+
+async function applyCheckpointGraphSnapshotPromise(options: {
   command: string;
   sourcePath: string;
   instanceId: string;
@@ -37,18 +53,20 @@ export async function applyCheckpointGraphSnapshot(options: {
   options: ExecuteOptions;
 }): Promise<void> {
   try {
-    const cli = await runQianjiCli({
-      command: options.command,
-      args: buildQianjiStatusArgs({
-        sourcePath: options.sourcePath,
-        instanceId: options.instanceId,
-        dmnPaths: options.dmnPaths,
+    const cli = await runPiWendaoEffect(
+      runQianjiCli({
+        command: options.command,
+        args: buildQianjiStatusArgs({
+          sourcePath: options.sourcePath,
+          instanceId: options.instanceId,
+          dmnPaths: options.dmnPaths,
+        }),
+        cwd: options.cwd,
+        onTraceEvent: () => {},
+        signal: options.options.signal,
+        env: options.qianjiEnvironment,
       }),
-      cwd: options.cwd,
-      onTraceEvent: () => {},
-      signal: options.options.signal,
-      env: options.qianjiEnvironment,
-    });
+    );
     if (cli.exitCode !== 0) return;
     const snapshot = parseQianjiGraphSnapshot(cli.stdout);
     if (snapshot.length === 0) return;
@@ -65,7 +83,10 @@ export async function applyCheckpointGraphSnapshot(options: {
   }
 }
 
-export function updatePendingActivities(pendingActivities: Set<string>, event: QianjiTraceEvent): void {
+export function updatePendingActivities(
+  pendingActivities: Set<string>,
+  event: QianjiTraceEvent,
+): void {
   if (event.kind !== "node_status" || !isActivityTraceNode(event)) return;
   if (event.status === "executing") {
     pendingActivities.add(event.node_id);
@@ -154,7 +175,10 @@ export function buildGraphRuntimeDetails(options: {
   return details;
 }
 
-export function emitQianjiHostWorkEvents(hostWork: QianjiHostWork[], options: ExecuteOptions): void {
+export function emitQianjiHostWorkEvents(
+  hostWork: QianjiHostWork[],
+  options: ExecuteOptions,
+): void {
   if (!options.onHostWork || hostWork.length === 0) return;
   for (const event of buildQianjiHostWorkEvents(hostWork)) {
     options.onHostWork(event);
@@ -315,7 +339,7 @@ export function appendCliResult(aggregate: QianjiCliResult, result: QianjiCliRes
   if (result.pendingHostWork !== undefined) aggregate.pendingHostWork = result.pendingHostWork;
   if (result.variables) {
     aggregate.variables = {
-      ...(aggregate.variables ?? {}),
+      ...aggregate.variables,
       ...result.variables,
     };
   }
@@ -395,6 +419,10 @@ export function resolveTraceFrameDelayMs(
   return DEFAULT_GRAPH_TRACE_FRAME_DELAY_MS;
 }
 
-export function delay(ms: number): Promise<void> {
+export function delay(ms: number): Effect.Effect<void, PiWendaoEffectError> {
+  return effectFromPromise("delay", () => delayPromise(ms));
+}
+
+function delayPromise(ms: number): Promise<void> {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 }

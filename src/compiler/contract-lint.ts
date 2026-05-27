@@ -71,7 +71,10 @@ export function createCompileLintRunner(
       };
     }
 
-    const output = [qianjiLint.output.trim(), contractLint.success ? undefined : contractLint.output.trim()]
+    const output = [
+      qianjiLint.output.trim(),
+      contractLint.success ? undefined : contractLint.output.trim(),
+    ]
       .filter(Boolean)
       .join("\n\n");
     return {
@@ -118,12 +121,17 @@ function lintPiWendaoWorkflowContractInternal(
     ]);
   }
 
-  const processRoot = document.definitions?.process ?? document["bpmn:definitions"]?.process ?? document["bpmn:definitions"]?.["bpmn:process"];
+  const processRoot =
+    document.definitions?.process ??
+    document["bpmn:definitions"]?.process ??
+    document["bpmn:definitions"]?.["bpmn:process"];
   const issues: PiWendaoCompileContractIssue[] = [];
   issues.push(...legacyCustomXmlIssues(document));
 
   const tasks = collectPiWendaoTasks(processRoot);
-  const userInteractions = tasks.filter((task) => task.element === "userTask" && readNativeInteraction(task));
+  const userInteractions = tasks.filter(
+    (task) => task.element === "userTask" && readNativeInteraction(task),
+  );
   if (requiresUserInteraction(options.targetDecision) && userInteractions.length === 0) {
     issues.push({
       code: "PI_WENDAO_INTERACTIVE_USER_TASK_REQUIRED",
@@ -149,7 +157,10 @@ function lintPiWendaoWorkflowContractInternal(
 
   for (const task of tasks) {
     const taskId = readString(task.id) || `(missing ${task.element} id)`;
-    if (task.element === "serviceTask" && readString(task.implementation) !== SERVICE_TASK_IMPLEMENTATION) {
+    if (
+      task.element === "serviceTask" &&
+      readString(task.implementation) !== SERVICE_TASK_IMPLEMENTATION
+    ) {
       issues.push({
         code: "PI_WENDAO_SERVICE_IMPLEMENTATION",
         title: "serviceTask must dispatch through pi-wendao runAgent",
@@ -193,7 +204,14 @@ function lintPiWendaoWorkflowContractInternal(
     }
   }
 
-  issues.push(...lintGatewayConditionVariables(processRoot, tasks, options.gatewayConditions ?? [], declaredVariables));
+  issues.push(
+    ...lintGatewayConditionVariables(
+      processRoot,
+      tasks,
+      options.gatewayConditions ?? [],
+      declaredVariables,
+    ),
+  );
   issues.push(...lintUserFeedbackLoops(processRoot, tasks));
 
   if (issues.length === 0) {
@@ -233,7 +251,15 @@ function failed(issues: PiWendaoCompileContractIssue[]): BpmnLintResult {
 function renderPiWendaoCompileContractIssues(issues: PiWendaoCompileContractIssue[]): string {
   const lines = ["# PiWendao Compile Contract Failed", "", `Issues: ${issues.length}`];
   for (const issue of issues) {
-    lines.push("", `## [${issue.code}] ${issue.title}`, "Severity: error", `Summary: ${issue.summary}`, "", "### Repair Plan", issue.repairPlan);
+    lines.push(
+      "",
+      `## [${issue.code}] ${issue.title}`,
+      "Severity: error",
+      `Summary: ${issue.summary}`,
+      "",
+      "### Repair Plan",
+      issue.repairPlan,
+    );
   }
   return lines.join("\n");
 }
@@ -305,7 +331,9 @@ function collectNativeOutputProducers(tasks: PiWendaoTaskElement[]): NativeOutpu
     .filter((producer) => producer.taskId && producer.outputNames.length > 0);
 }
 
-function groupOutputProducersByName(producers: NativeOutputProducer[]): Map<string, NativeOutputProducer[]> {
+function groupOutputProducersByName(
+  producers: NativeOutputProducer[],
+): Map<string, NativeOutputProducer[]> {
   const byName = new Map<string, NativeOutputProducer[]>();
   for (const producer of producers) {
     for (const outputName of producer.outputNames) {
@@ -320,11 +348,17 @@ function groupOutputProducersByName(producers: NativeOutputProducer[]): Map<stri
 function collectDynamicChoiceRefs(tasks: PiWendaoTaskElement[]): DynamicChoiceRef[] {
   return tasks
     .filter((task) => task.element === "userTask")
-    .map((task) => ({ taskId: readString(task.id), choicesRef: readNativeInteraction(task)?.choicesRef }))
+    .map((task) => ({
+      taskId: readString(task.id),
+      choicesRef: readNativeInteraction(task)?.choicesRef,
+    }))
     .filter((ref): ref is DynamicChoiceRef => Boolean(ref.taskId && ref.choicesRef));
 }
 
-function lintNativeHumanInteraction(task: PiWendaoTaskElement, taskId: string): PiWendaoCompileContractIssue[] {
+function lintNativeHumanInteraction(
+  task: PiWendaoTaskElement,
+  taskId: string,
+): PiWendaoCompileContractIssue[] {
   const issues: PiWendaoCompileContractIssue[] = [];
   const interaction = readNativeInteraction(task);
   if (!interaction) return issues;
@@ -333,15 +367,22 @@ function lintNativeHumanInteraction(task: PiWendaoTaskElement, taskId: string): 
       code: "PI_WENDAO_INTERACTION_TYPE",
       title: "human-task interaction type is unsupported",
       summary: `human task '${taskId}' declares unsupported interactionType '${interaction.type ?? "(missing)"}'.`,
-      repairPlan: "Set the interactionType data input assignment literal to one of: input, confirm, choice, choice_input.",
+      repairPlan:
+        "Set the interactionType data input assignment literal to one of: input, confirm, choice, choice_input.",
     });
   }
-  if (interaction.type && CHOICE_INTERACTION_TYPES.has(interaction.type) && !interaction.choicesRef && !(interaction.choices?.length)) {
+  if (
+    interaction.type &&
+    CHOICE_INTERACTION_TYPES.has(interaction.type) &&
+    !interaction.choicesRef &&
+    !interaction.choices?.length
+  ) {
     issues.push({
       code: "PI_WENDAO_INTERACTION_CHOICES",
       title: "choice interaction must declare choices",
       summary: `human task '${taskId}' declares interactionType '${interaction.type}' without static choices or a dynamic choices source.`,
-      repairPlan: "Map a choices data input from an upstream sourceRef, or assign a JSON array literal to the choices data input.",
+      repairPlan:
+        "Map a choices data input from an upstream sourceRef, or assign a JSON array literal to the choices data input.",
     });
   }
   if (!interaction.resultOutput) {
@@ -349,7 +390,8 @@ function lintNativeHumanInteraction(task: PiWendaoTaskElement, taskId: string): 
       code: "PI_WENDAO_USER_TASK_RESULT_OUTPUT",
       title: "human-task interaction must map answer output",
       summary: `human task '${taskId}' has no answer dataOutputAssociation targetRef.`,
-      repairPlan: "Declare a dataOutput named answer and map it to the workflow variable that should receive the human reply.",
+      repairPlan:
+        "Declare a dataOutput named answer and map it to the workflow variable that should receive the human reply.",
     });
   }
   return issues;
@@ -365,7 +407,9 @@ function lintGatewayConditionVariables(
   for (const condition of conditions) {
     const variable = readGatewayConditionVariable(condition);
     if (!variable || declaredVariables.has(variable)) continue;
-    const route = [condition.source_ref, condition.target_ref].filter(Boolean).join(" -> ") || "(unknown route)";
+    const route =
+      [condition.source_ref, condition.target_ref].filter(Boolean).join(" -> ") ||
+      "(unknown route)";
     const producerIds = findDirectUpstreamTaskIds(processes, condition.source_ref, tasks);
     issues.push({
       code: "PI_WENDAO_CONDITION_VARIABLE_UNDECLARED",
@@ -406,7 +450,9 @@ function lintUserFeedbackLoops(
   tasks: PiWendaoTaskElement[],
 ): PiWendaoCompileContractIssue[] {
   const issues: PiWendaoCompileContractIssue[] = [];
-  const taskById = new Map(tasks.map((task) => [readString(task.id), task] as const).filter(([id]) => Boolean(id)));
+  const taskById = new Map(
+    tasks.map((task) => [readString(task.id), task] as const).filter(([id]) => Boolean(id)),
+  );
   const flows = collectSequenceFlows(processes);
   for (const serviceToUser of flows) {
     const serviceId = readString(serviceToUser.sourceRef);
@@ -416,7 +462,10 @@ function lintUserFeedbackLoops(
     if (serviceTask?.element !== "serviceTask" || userTask?.element !== "userTask") continue;
     for (const userToGateway of flows.filter((flow) => readString(flow.sourceRef) === userId)) {
       const gatewayId = readString(userToGateway.targetRef);
-      const loopsBack = flows.some((flow) => readString(flow.sourceRef) === gatewayId && readString(flow.targetRef) === serviceId);
+      const loopsBack = flows.some(
+        (flow) =>
+          readString(flow.sourceRef) === gatewayId && readString(flow.targetRef) === serviceId,
+      );
       if (!loopsBack) continue;
       const serviceInputs = nativeInputSources(serviceTask);
       const userOutputs = nativeOutputTargets(userTask);
@@ -441,4 +490,3 @@ function collectSequenceFlows(processes: unknown): Record<string, unknown>[] {
   }
   return flows;
 }
-

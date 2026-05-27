@@ -7,28 +7,19 @@ import type {
   FlowhubScenarioRegistryProviderOptions,
 } from "./types.js";
 
-export const qianjiClientFlowhubScenarioRegistryProvider: FlowhubScenarioRegistryProvider =
-  {
-    async loadRegistry(options) {
-      const command =
-        options.qianjiClientCommand ??
-        resolveDefaultQianjiClientCommand(options.cwd);
-      const stdout = await runQianjiClientScenarios(command, options);
-      return parseFlowhubScenarioRegistryJson(stdout);
-    },
-  };
+export const qianjiClientFlowhubScenarioRegistryProvider: FlowhubScenarioRegistryProvider = {
+  async loadRegistry(options) {
+    const command = options.qianjiClientCommand ?? resolveDefaultQianjiClientCommand(options.cwd);
+    const stdout = await runQianjiClientScenarios(command, options);
+    return parseFlowhubScenarioRegistryJson(stdout);
+  },
+};
 
 function runQianjiClientScenarios(
   command: string,
   options: FlowhubScenarioRegistryProviderOptions,
 ): Promise<string> {
-  const args = [
-    "flowhub",
-    "--flowhub-root",
-    options.flowhubRoot,
-    "scenarios",
-    "--json",
-  ];
+  const args = ["flowhub", "--flowhub-root", options.flowhubRoot, "scenarios", "--json"];
   const commandLine = [command, ...args.map(shellQuote)].join(" ");
   return new Promise((resolve, reject) => {
     const child = spawn(commandLine, {

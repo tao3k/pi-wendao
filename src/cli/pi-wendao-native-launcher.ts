@@ -9,10 +9,7 @@ import {
 } from "./model-resolver.js";
 
 export type LaunchPiWendaoNativeTuiOptions = PiWendaoNativeExtensionOptions;
-export type PiWendaoNativeMain = (
-  args: string[],
-  options?: MainOptions,
-) => Promise<void>;
+export type PiWendaoNativeMain = (args: string[], options?: MainOptions) => Promise<void>;
 
 export async function launchPiWendaoNativeTui(
   options: LaunchPiWendaoNativeTuiOptions,

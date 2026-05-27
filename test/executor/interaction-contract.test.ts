@@ -164,30 +164,38 @@ describe("native BPMN interaction contract parsing", () => {
     expect(config).toBeDefined();
 
     expect(() =>
-      resolveHumanTaskConfig(config!, {
-        currentQuestion: "Which repair path should the workflow use?",
-        currentChoices: [
-          {
-            label: "Minimal repair",
-            description: "Repair only the invalid BPMN contract.",
-          },
-        ],
-      }, {
-        activityId: "Task_DynamicChoiceInput",
-      }),
+      resolveHumanTaskConfig(
+        config!,
+        {
+          currentQuestion: "Which repair path should the workflow use?",
+          currentChoices: [
+            {
+              label: "Minimal repair",
+              description: "Repair only the invalid BPMN contract.",
+            },
+          ],
+        },
+        {
+          activityId: "Task_DynamicChoiceInput",
+        },
+      ),
     ).toThrow("[pi-wendao.runtime.invalid_dynamic_choices]");
     expect(() =>
-      resolveHumanTaskConfig(config!, {
-        currentQuestion: "Which repair path should the workflow use?",
-        currentChoices: [
-          {
-            label: "Minimal repair",
-            description: "Repair only the invalid BPMN contract.",
-          },
-        ],
-      }, {
-        activityId: "Task_DynamicChoiceInput",
-      }),
+      resolveHumanTaskConfig(
+        config!,
+        {
+          currentQuestion: "Which repair path should the workflow use?",
+          currentChoices: [
+            {
+              label: "Minimal repair",
+              description: "Repair only the invalid BPMN contract.",
+            },
+          ],
+        },
+        {
+          activityId: "Task_DynamicChoiceInput",
+        },
+      ),
     ).toThrow("Consumer activity: Task_DynamicChoiceInput");
   });
 
@@ -474,5 +482,4 @@ describe("native BPMN interaction contract parsing", () => {
     expect(error?.message).toContain("Producer activity: Task_PrepareQuestion");
     expect(error?.message).toContain("Problem: item is not an object");
   });
-
 });

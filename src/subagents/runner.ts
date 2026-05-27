@@ -5,18 +5,21 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentSession, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { Effect } from "effect";
+import type { AgentSession, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
 import {
   createNativeSubagentChildContextExtensionFactories,
   selectNativeSubagentChildContextToolNames,
 } from "./child-tools.js";
 import type { NativeSubagentRunOptions } from "./protocol.js";
+import type { PiWendaoSubagentType } from "../types/domain.js";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
 
 const EXCLUDED_TOOL_NAMES = new Set(["Agent", "get_subagent_result", "steer_subagent"]);
 
 export interface NativeSubagentRunnerInput {
-  type: string;
+  type: PiWendaoSubagentType;
   prompt: string;
   description: string;
   cwd: string;
@@ -32,7 +35,14 @@ export interface NativeSubagentRunnerResult {
   session: AgentSession;
 }
 
-export async function runNativeSubagent(
+export function runNativeSubagent(
+  input: NativeSubagentRunnerInput,
+  options: NativeSubagentRunOptions,
+): Effect.Effect<NativeSubagentRunnerResult, PiWendaoEffectError> {
+  return effectFromPromise("runNativeSubagent", () => runNativeSubagentPromise(input, options));
+}
+
+async function runNativeSubagentPromise(
   input: NativeSubagentRunnerInput,
   options: NativeSubagentRunOptions,
 ): Promise<NativeSubagentRunnerResult> {
@@ -72,7 +82,7 @@ export async function runNativeSubagent(
   );
   options.onSessionCreated?.(session);
 
-  const collector = collectResponseText(session);
+  const collector = collectResponseText();
   const cleanupAbort = forwardAbortSignal(session, options.signal);
   let turnCount = 0;
   const unsubscribe = session.subscribe((event) => {
@@ -160,10 +170,12 @@ function resolveModelOverride(
     const modelId = modelName.slice(slashIndex + 1);
     return registry.find(provider, modelId);
   }
-  return registry.getAll().find((model) => model.id.includes(modelName) || model.name.includes(modelName));
+  return registry
+    .getAll()
+    .find((model) => model.id.includes(modelName) || model.name.includes(modelName));
 }
 
-function collectResponseText(session: AgentSession): {
+function collectResponseText(): {
   append(delta: string): void;
   getText(): string;
 } {

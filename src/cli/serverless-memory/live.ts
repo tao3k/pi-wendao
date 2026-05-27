@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolveModel } from "../model-resolver.js";
 import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
+import type { Branded } from "../../types/domain.js";
 import {
   appendServerlessMemoryRecallPacket,
   readServerlessMemoryRecallPacketFile,
@@ -30,9 +31,12 @@ export interface ServerlessMemoryLiveRecallSmokeOptions {
   evidencePath?: ServerlessMemoryLiveEvidencePath;
 }
 
-export type ServerlessMemoryLiveRecallPacketPath = string;
-export type ServerlessMemoryLiveApiKey = string;
-export type ServerlessMemoryLiveEvidencePath = string;
+export type ServerlessMemoryLiveRecallPacketPath = Branded<
+  string,
+  "ServerlessMemoryLiveRecallPacketPath"
+>;
+export type ServerlessMemoryLiveApiKey = Branded<string, "ServerlessMemoryLiveApiKey">;
+export type ServerlessMemoryLiveEvidencePath = Branded<string, "ServerlessMemoryLiveEvidencePath">;
 
 export interface ServerlessMemoryLiveRecallSmokeResult {
   passed: boolean;
@@ -65,20 +69,12 @@ export async function runServerlessMemoryLiveRecallSmoke(
     throw new Error("serverless memory live recall smoke requires one claim memory object");
   }
 
-  const resolved = await resolveModel(
-    options.modelPattern,
-    options.provider,
-    options.apiKey,
-    [],
-  );
+  const resolved = await resolveModel(options.modelPattern, options.provider, options.apiKey, []);
   if (!resolved.apiKey && !resolved.headers) {
     throw new Error("serverless memory live recall smoke requires configured model auth");
   }
   if (resolved.apiKey) {
-    resolved.services.authStorage.setRuntimeApiKey(
-      resolved.model.provider,
-      resolved.apiKey,
-    );
+    resolved.services.authStorage.setRuntimeApiKey(resolved.model.provider, resolved.apiKey);
   }
 
   const sessionManager = SessionManager.inMemory(options.cwd);
@@ -147,10 +143,7 @@ function collectAssistantEvidence(session: AgentSession): {
     if (event.type === "message_start" && event.message.role === "assistant") {
       text = "";
     }
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       text += event.assistantMessageEvent.delta;
     }
   });
@@ -186,8 +179,9 @@ function summarizeAssistantMessages(session: AgentSession): {
   }
   const content = Array.isArray(lastAssistant.content) ? lastAssistant.content : [];
   const text = content
-    .filter((block): block is { type: "text"; text: string } =>
-      isRecord(block) && block.type === "text" && typeof block.text === "string",
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        isRecord(block) && block.type === "text" && typeof block.text === "string",
     )
     .map((block) => block.text)
     .join("");
@@ -195,12 +189,9 @@ function summarizeAssistantMessages(session: AgentSession): {
     text,
     count,
     roles,
-    stopReason:
-      typeof lastAssistant.stopReason === "string" ? lastAssistant.stopReason : undefined,
+    stopReason: typeof lastAssistant.stopReason === "string" ? lastAssistant.stopReason : undefined,
     errorMessage:
-      typeof lastAssistant.errorMessage === "string"
-        ? lastAssistant.errorMessage
-        : undefined,
+      typeof lastAssistant.errorMessage === "string" ? lastAssistant.errorMessage : undefined,
   };
 }
 

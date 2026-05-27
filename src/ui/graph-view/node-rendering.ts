@@ -67,7 +67,14 @@ export function drawNodeOnGrid({
 
   const isSmall = node.type === "start" || node.type === "end";
   if (isSmall) {
-    writeAt({ grid, row: startY + 1, col: startX + 1, text: styleLabel(label, node), gridW, gridH });
+    writeAt({
+      grid,
+      row: startY + 1,
+      col: startX + 1,
+      text: styleLabel(label, node),
+      gridW,
+      gridH,
+    });
     return;
   }
 

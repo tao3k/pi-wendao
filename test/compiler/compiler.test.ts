@@ -13,11 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fauxAssistantMessage, registerFauxProvider } from "@earendil-works/pi-ai";
 import type { FauxProviderRegistration } from "@earendil-works/pi-ai";
 import { compileSkill } from "../../src/compiler/compiler.js";
-import {
-  nativeDefinitions,
-  nativeHumanTask,
-  nativeServiceTask,
-} from "../support/native-bpmn.js";
+import { nativeDefinitions, nativeHumanTask, nativeServiceTask } from "../support/native-bpmn.js";
 
 const fixturesDir = join(import.meta.dirname, "../fixtures");
 
@@ -908,7 +904,9 @@ process.exit(2);
       ].join("\n"),
     );
 
-    faux.setResponses([fauxAssistantMessage("```xml\n" + missingDynamicChoicesProducerXml + "\n```")]);
+    faux.setResponses([
+      fauxAssistantMessage("```xml\n" + missingDynamicChoicesProducerXml + "\n```"),
+    ]);
 
     const result = await compileSkill({
       skillContent: "# Skill\nAsk the user a structured question.",

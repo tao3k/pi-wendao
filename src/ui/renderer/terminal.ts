@@ -1,4 +1,13 @@
-export function waitForTerminalKey(input: NodeJS.ReadStream = process.stdin): Promise<void> {
+import type { Effect } from "effect";
+import { effectFromPromise, type PiWendaoEffectError } from "../../effect.js";
+
+export function waitForTerminalKey(
+  input: NodeJS.ReadStream = process.stdin,
+): Effect.Effect<void, PiWendaoEffectError> {
+  return effectFromPromise("waitForTerminalKey", () => waitForTerminalKeyPromise(input));
+}
+
+function waitForTerminalKeyPromise(input: NodeJS.ReadStream = process.stdin): Promise<void> {
   if (!input.isTTY) return Promise.resolve();
   return new Promise((resolve) => {
     const wasRaw = input.isRaw === true;

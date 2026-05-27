@@ -34,13 +34,15 @@ function parseMarkdownCorpusIntentOrgFixture(
       continue;
     }
     if (line.trim() === ":PROPERTIES:") {
-      if (inDrawer) throw new Error(`nested Org property drawer in ${fixturePath}:${lineIndex + 1}`);
+      if (inDrawer)
+        throw new Error(`nested Org property drawer in ${fixturePath}:${lineIndex + 1}`);
       inDrawer = true;
       currentProperties = {};
       continue;
     }
     if (line.trim() === ":END:") {
-      if (!inDrawer) throw new Error(`unexpected Org property drawer end in ${fixturePath}:${lineIndex + 1}`);
+      if (!inDrawer)
+        throw new Error(`unexpected Org property drawer end in ${fixturePath}:${lineIndex + 1}`);
       inDrawer = false;
       continue;
     }
@@ -59,7 +61,8 @@ function parseMarkdownCorpusIntentOrgFixture(
   flushCurrentRow();
 
   if (inDrawer) throw new Error(`unterminated Org property drawer in ${fixturePath}`);
-  if (rows.length === 0) throw new Error(`Markdown corpus intent Org fixture has no intent rows: ${fixturePath}`);
+  if (rows.length === 0)
+    throw new Error(`Markdown corpus intent Org fixture has no intent rows: ${fixturePath}`);
   return rows;
 
   function flushCurrentRow(): void {
@@ -82,8 +85,12 @@ function intentRowFromProperties(
   return {
     familyId: requireOrgProperty(properties, "FAMILY_ID", rowNumber, heading),
     intent: requireOrgProperty(properties, "INTENT", rowNumber, heading),
-    requiredEvidence: splitList(requireOrgProperty(properties, "REQUIRED_EVIDENCE", rowNumber, heading)),
-    expectedSourcePaths: splitList(requireOrgProperty(properties, "EXPECTED_SOURCE_PATHS", rowNumber, heading)),
+    requiredEvidence: splitList(
+      requireOrgProperty(properties, "REQUIRED_EVIDENCE", rowNumber, heading),
+    ),
+    expectedSourcePaths: splitList(
+      requireOrgProperty(properties, "EXPECTED_SOURCE_PATHS", rowNumber, heading),
+    ),
     blockedSourcePaths: splitList(properties.BLOCKED_SOURCE_PATHS ?? ""),
     liveEvidenceRequired: parseBooleanOrgProperty(
       requireOrgProperty(properties, "LIVE_EVIDENCE_REQUIRED", rowNumber, heading),
@@ -102,7 +109,9 @@ function requireOrgProperty(
 ): string {
   const value = properties[key]?.trim();
   if (!value) {
-    throw new Error(`Markdown corpus intent row ${rowNumber} (${heading || "no heading"}) missing ${key}.`);
+    throw new Error(
+      `Markdown corpus intent row ${rowNumber} (${heading || "no heading"}) missing ${key}.`,
+    );
   }
   return value;
 }

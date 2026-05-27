@@ -11,6 +11,15 @@ import type {
 import { evaluateMarkdownCorpusBenchmarkRow } from "./evaluate.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { resolveLiveAgentCandidatePoolMode } from "./live-agent.js";
+import {
+  chunkRows,
+  elapsedMs,
+  hasRequestAuth,
+  isRecord,
+  parseJsonPayload,
+  readString,
+  type IndexedMarkdownCorpusTraceRow,
+} from "./live-agent-batch-common.js";
 import { normalizeLiveAgentBatchSize } from "./live-agent-batch.js";
 import type {
   SearchStrategyFlowMarkdownCorpusAgentRun,
@@ -19,12 +28,6 @@ import type {
 } from "./types.js";
 
 const SUFFICIENCY_ACTIVITY_ID = "SearchStrategyFlow_BatchSufficiencyGate";
-
-interface IndexedTracedRow {
-  index: number;
-  intentRow: SearchStrategyFlowMarkdownCorpusIntentRow;
-  trace: SearchStrategyFlowTrace;
-}
 
 interface SufficiencyRow {
   familyId: string;
@@ -68,7 +71,7 @@ export async function runBenchmarkLiveAgentSufficiencyRuns(input: {
 }
 
 function liveSufficiencyRowIsEligible(
-  row: IndexedTracedRow,
+  row: IndexedMarkdownCorpusTraceRow,
   options: SearchStrategyFlowMarkdownCorpusBenchmarkOptions,
   runs: SearchStrategyFlowMarkdownCorpusAgentRun[],
 ): boolean {
@@ -86,7 +89,7 @@ function liveSufficiencyRowIsEligible(
 
 async function runSufficiencyChunk(input: {
   cwd: string;
-  rows: IndexedTracedRow[];
+  rows: IndexedMarkdownCorpusTraceRow[];
   batchIndex: number;
   options: SearchStrategyFlowMarkdownCorpusBenchmarkOptions;
   defaultModelPattern: string;
@@ -107,7 +110,11 @@ async function runSufficiencyChunk(input: {
       input.options.extensionPaths ?? [],
     );
     if (!hasRequestAuth(resolved.apiKey, resolved.headers)) {
-      return failedRows(input, candidatePoolModes, batchId, elapsedMs(startedAt),
+      return failedRows(
+        input,
+        candidatePoolModes,
+        batchId,
+        elapsedMs(startedAt),
         "No request auth is configured for the SearchStrategyFlow batch sufficiency gate.",
       );
     }
@@ -168,7 +175,7 @@ async function runSufficiencyChunk(input: {
 }
 
 function mapOutputToRuns(input: {
-  rows: IndexedTracedRow[];
+  rows: IndexedMarkdownCorpusTraceRow[];
   output: Record<string, unknown>;
   events: SearchStrategyFlowAgentEvent[];
   cached: boolean;
@@ -230,7 +237,10 @@ function mapOutputToRuns(input: {
   });
 }
 
-function validateFamilyCoverage(rows: IndexedTracedRow[], parsedRows: Map<string, SufficiencyRow>): string[] {
+function validateFamilyCoverage(
+  rows: IndexedMarkdownCorpusTraceRow[],
+  parsedRows: Map<string, SufficiencyRow>,
+): string[] {
   const expected = new Set(rows.map((row) => row.intentRow.familyId));
   return [
     ...[...expected]
@@ -244,7 +254,7 @@ function validateFamilyCoverage(rows: IndexedTracedRow[], parsedRows: Map<string
 
 function completedRun(
   input: {
-    rows: IndexedTracedRow[];
+    rows: IndexedMarkdownCorpusTraceRow[];
     events: SearchStrategyFlowAgentEvent[];
     cached: boolean;
     model: string;
@@ -252,7 +262,7 @@ function completedRun(
     batchId: string;
     batchDurationMs: number;
   },
-  row: IndexedTracedRow,
+  row: IndexedMarkdownCorpusTraceRow,
   sufficiency: SufficiencyRow,
 ): SearchStrategyFlowMarkdownCorpusAgentRun {
   return {
@@ -284,7 +294,7 @@ function completedRun(
   };
 }
 
-function buildSufficiencyPrompt(rows: IndexedTracedRow[]): string {
+function buildSufficiencyPrompt(rows: IndexedMarkdownCorpusTraceRow[]): string {
   return [
     "You are the Wendao SearchStrategyFlow batch sufficiency gate.",
     "Judge whether each row's selected frontier is sufficient for the stated intent.",
@@ -302,7 +312,7 @@ function buildSufficiencyPrompt(rows: IndexedTracedRow[]): string {
 }
 
 function buildCompactTrace(
-  rows: IndexedTracedRow[],
+  rows: IndexedMarkdownCorpusTraceRow[],
   candidatePoolModes: Map<number, SearchStrategyFlowMarkdownCorpusAgentRun["candidatePoolMode"]>,
 ): Record<string, unknown> {
   return {
@@ -358,34 +368,22 @@ function parseRawRows(value: unknown): unknown {
   return Array.isArray(parsed)
     ? parsed
     : isRecord(parsed)
-      ? parsed.rows ??
+      ? (parsed.rows ??
         parsed.sufficiency_rows ??
         parsed.sufficiencyRows ??
         parsed.sufficiency_judgements ??
-        parsed.sufficiencyJudgements
+        parsed.sufficiencyJudgements)
       : undefined;
 }
 
-function parseJsonPayload(value: unknown): unknown {
-  if (Array.isArray(value) || isRecord(value)) return value;
-  if (typeof value !== "string") return undefined;
-  const text = value.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1").trim();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-function syntheticTrace(rows: IndexedTracedRow[]): SearchStrategyFlowTrace {
+function syntheticTrace(rows: IndexedMarkdownCorpusTraceRow[]): SearchStrategyFlowTrace {
   const trace = rows[0]?.trace;
   if (!trace) throw new Error("SearchStrategyFlow batch sufficiency requires at least one row");
   return { ...trace, intent: `Batch sufficiency gate for ${rows.length} intent(s).` };
 }
 
 function failedRows(
-  input: { rows: IndexedTracedRow[] },
+  input: { rows: IndexedMarkdownCorpusTraceRow[] },
   candidatePoolModes: Map<number, SearchStrategyFlowMarkdownCorpusAgentRun["candidatePoolMode"]>,
   batchId: string,
   batchDurationMs: number,
@@ -450,18 +448,6 @@ function skippedRun(
   };
 }
 
-function chunkRows<T>(rows: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < rows.length; index += size) {
-    chunks.push(rows.slice(index, index + size));
-  }
-  return chunks;
-}
-
-function hasRequestAuth(apiKey: string | undefined, headers: Record<string, string> | undefined) {
-  return Boolean(apiKey || (headers && Object.keys(headers).length > 0));
-}
-
 function normalizeTimeoutSeconds(value: number | undefined): number {
   if (value === undefined) return 180;
   if (!Number.isFinite(value) || value < 0) {
@@ -481,16 +467,4 @@ function readBoolean(value: unknown): boolean | undefined {
 function readUnitScore(value: unknown): number | undefined {
   const score = typeof value === "number" ? value : Number.parseFloat(readString(value));
   return Number.isFinite(score) && score >= 0 && score <= 1 ? score : undefined;
-}
-
-function readString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function elapsedMs(startedAt: number): number {
-  return Date.now() - startedAt;
 }

@@ -8,10 +8,8 @@ import {
   registerServerlessMemoryRecallTool,
   WENDAO_MEMORY_RECALL_TOOL_NAME,
 } from "../cli/serverless-memory/index.js";
-import {
-  NATIVE_SUBAGENT_FILE_TOOL_NAMES,
-  registerNativeSubagentFileTools,
-} from "./file-tools.js";
+import { NATIVE_SUBAGENT_FILE_TOOL_NAMES, registerNativeSubagentFileTools } from "./file-tools.js";
+import type { PiWendaoSubagentType } from "../types/domain.js";
 
 export const NATIVE_SUBAGENT_INTERCOM_TOOL_NAME = "intercom";
 export const NATIVE_SUBAGENT_CHILD_CONTEXT_TOOL_NAMES = [
@@ -22,7 +20,7 @@ export const NATIVE_SUBAGENT_CHILD_CONTEXT_TOOL_NAMES = [
 ] as const;
 
 export interface NativeSubagentChildToolSelection {
-  type: string;
+  type: PiWendaoSubagentType;
   isolated?: boolean;
 }
 

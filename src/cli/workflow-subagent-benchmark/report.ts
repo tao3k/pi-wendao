@@ -16,9 +16,7 @@ export function summarizeWorkflowSubagentBenchmarkReport(
   );
   const liveRows = passedRows(rows, "pi-wendao-live-complex-subagent");
   const deterministicAvgMs = average(deterministicRows.map((row) => row.wallMs));
-  const deterministicSubagentAvgMs = average(
-    deterministicSubagentRows.map((row) => row.wallMs),
-  );
+  const deterministicSubagentAvgMs = average(deterministicSubagentRows.map((row) => row.wallMs));
   const serverSubagentAvgMs = average(serverSubagentRows.map((row) => row.wallMs));
   const serverFreshStartSubagentAvgMs = average(
     serverFreshStartSubagentRows.map((row) => row.wallMs),

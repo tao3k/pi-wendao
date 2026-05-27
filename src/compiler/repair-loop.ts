@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { Effect } from "effect";
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai";
 import type { CompileTargetDecision } from "./prompt.js";
@@ -18,8 +19,26 @@ import {
   missingArtifactMessage,
   renderArtifactBundleForPrompt,
 } from "./artifacts.js";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
 
-export async function compileWithLintAgent(
+export function compileWithLintAgent(
+  options: CompileOptions,
+  args: {
+    systemPrompt: string;
+    userMessage: string;
+    skillContent: string;
+    templates: CompileTemplates;
+    targetDecision: CompileTargetDecision;
+    lintOptions: CompileLintOptions;
+    lintRunners: CompileArtifactLintRunners;
+  },
+): Effect.Effect<CompileResult, PiWendaoEffectError> {
+  return effectFromPromise("compileWithLintAgent", () =>
+    compileWithLintAgentPromise(options, args),
+  );
+}
+
+async function compileWithLintAgentPromise(
   options: CompileOptions,
   args: {
     systemPrompt: string;

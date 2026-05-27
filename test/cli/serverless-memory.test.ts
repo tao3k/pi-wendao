@@ -49,9 +49,7 @@ describe("serverless memory recall packet", () => {
     expect(content).toContain("orgid: accepted-memory-sample");
     expect(content).toContain("locator: org-section orgid=accepted-memory-sample");
     expect(content).toContain("title: Accepted memory sample");
-    expect(content).toContain(
-      "source_citation: .cache/agent/org/serverless_memory_fixture.org:1",
-    );
+    expect(content).toContain("source_citation: .cache/agent/org/serverless_memory_fixture.org:1");
     expect(content).toContain(
       "locator: org-section orgid=accepted-memory-sample object=org-property sourceKind=property sourceKey=REUSABLE_KNOWLEDGE",
     );
@@ -338,9 +336,7 @@ describe("serverless memory recall packet", () => {
 
     expect(startup.shouldLaunchNativeChat).toBe(true);
     expect(startup.serverlessMemoryRecallPacket?.rows).toHaveLength(1);
-    expect(startup.serverlessMemoryRecallPacket?.rows[0]?.orgid).toBe(
-      "accepted-memory-sample",
-    );
+    expect(startup.serverlessMemoryRecallPacket?.rows[0]?.orgid).toBe("accepted-memory-sample");
   });
 
   it("rejects serverless recall packet flags outside native chat startup", () => {
@@ -352,9 +348,7 @@ describe("serverless memory recall packet", () => {
         stdinIsTTY: true,
         serverlessMemoryRecallJson: "test/fixtures/serverless-memory-task-list.json",
       }),
-    ).toThrow(
-      "--serverless-memory-recall-json currently applies only to native pi chat startup",
-    );
+    ).toThrow("--serverless-memory-recall-json currently applies only to native pi chat startup");
   });
 
   it("launches native pi with serverless recall extension factory wiring", async () => {
@@ -481,9 +475,7 @@ function loadMemoryRecallTool(options: {
 }
 
 function taskListJsonFixturePath(): string {
-  return fileURLToPath(
-    new URL("../fixtures/serverless-memory-task-list.json", import.meta.url),
-  );
+  return fileURLToPath(new URL("../fixtures/serverless-memory-task-list.json", import.meta.url));
 }
 
 function projectRoot(): string {

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import registerPiWendaoPiSubagents, {
   PI_WENDAO_RESET_NATIVE_SESSION_SURFACES_EVENT,

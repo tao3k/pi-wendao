@@ -13,3 +13,19 @@ export function parseNonNegativeInt(value: string | undefined, label: string): n
   }
   return parsed;
 }
+
+export function parsePositiveIntOption(value: string, label: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return parsed;
+}
+
+export function parseIntegerOption(value: string, label: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`${label} must be an integer`);
+  }
+  return parsed;
+}

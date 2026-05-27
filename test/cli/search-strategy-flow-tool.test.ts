@@ -102,10 +102,7 @@ function traceFixture(intent: string): SearchStrategyFlowTrace {
       fallback: "none",
     },
     stageReceipts: [],
-    candidates: [
-      candidate("authority", true),
-      candidate("validation", false),
-    ],
+    candidates: [candidate("authority", true), candidate("validation", false)],
     frontier: [
       {
         rank: 1,
@@ -137,7 +134,10 @@ function traceFixture(intent: string): SearchStrategyFlowTrace {
   };
 }
 
-function candidate(candidateId: string, selected: boolean): SearchStrategyFlowTrace["candidates"][number] {
+function candidate(
+  candidateId: string,
+  selected: boolean,
+): SearchStrategyFlowTrace["candidates"][number] {
   return {
     candidateId,
     action: "inspect",

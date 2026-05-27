@@ -1,3 +1,5 @@
+import type { Branded } from "../../types/domain.js";
+
 export type WorkflowSubagentBenchmarkVariant =
   | "qianji-complex-fixture"
   | "pi-wendao-deterministic-complex-subagent"
@@ -6,15 +8,24 @@ export type WorkflowSubagentBenchmarkVariant =
   | "pi-wendao-live-complex-subagent";
 
 export type WorkflowSubagentBenchmarkStatus = "passed" | "failed" | "skipped";
-export type WorkflowSubagentBenchmarkPath = string;
-export type WorkflowSubagentBenchmarkProcessId = string;
+export type WorkflowSubagentBenchmarkPath = Branded<string, "WorkflowSubagentBenchmarkPath">;
+export type WorkflowSubagentBenchmarkProcessId = Branded<
+  string,
+  "WorkflowSubagentBenchmarkProcessId"
+>;
 export type WorkflowSubagentBenchmarkModelPattern = string;
 export type WorkflowSubagentBenchmarkMilliseconds = number;
 export type WorkflowSubagentBenchmarkCount = number;
-export type WorkflowSubagentBenchmarkVariableKey = string;
+export type WorkflowSubagentBenchmarkVariableKey = Branded<
+  string,
+  "WorkflowSubagentBenchmarkVariableKey"
+>;
 export type WorkflowSubagentBenchmarkError = string;
 export type WorkflowSubagentBenchmarkStartedAt = string;
-export type WorkflowSubagentBenchmarkServerUrl = string;
+export type WorkflowSubagentBenchmarkServerUrl = Branded<
+  string,
+  "WorkflowSubagentBenchmarkServerUrl"
+>;
 export type WorkflowSubagentBenchmarkServerStartMode = "resume-or-start" | "start";
 
 export interface WorkflowSubagentBenchmarkOptions {

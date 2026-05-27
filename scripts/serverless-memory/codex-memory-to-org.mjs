@@ -62,14 +62,16 @@ function parseCodexMemoryGroups(markdown, sourcePath) {
     const endExclusive = starts[groupIndex + 1]?.index ?? lines.length;
     const groupLines = lines.slice(start, endExclusive);
     const title = groupLines[0]?.replace(/^# Task Group:\s*/, "").trim() ?? "Codex memory";
-    groups.push(parseCodexMemoryGroup({
-      title,
-      lines: groupLines,
-      sourcePath,
-      sourceStartLine: start + 1,
-      sourceEndLine: endExclusive,
-      groupIndex: groupIndex + 1,
-    }));
+    groups.push(
+      parseCodexMemoryGroup({
+        title,
+        lines: groupLines,
+        sourcePath,
+        sourceStartLine: start + 1,
+        sourceEndLine: endExclusive,
+        groupIndex: groupIndex + 1,
+      }),
+    );
   }
   return groups;
 }

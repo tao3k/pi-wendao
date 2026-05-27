@@ -25,10 +25,14 @@ export function evaluateMarkdownCorpusBenchmarkRow(
   const requiredEvidenceCovered =
     missingRequiredEvidence.length === 0 && trace.validation.requiredEvidenceCovered !== false;
   const expectedSourceHit = intentRow.expectedSourcePaths.some((sourcePath) =>
-    selectedCandidateIds.some((candidateId) => candidateIdStartsWithSource(candidateId, sourcePath)),
+    selectedCandidateIds.some((candidateId) =>
+      candidateIdStartsWithSource(candidateId, sourcePath),
+    ),
   );
   const blockedSourceSelected = intentRow.blockedSourcePaths.some((sourcePath) =>
-    selectedCandidateIds.some((candidateId) => candidateIdStartsWithSource(candidateId, sourcePath)),
+    selectedCandidateIds.some((candidateId) =>
+      candidateIdStartsWithSource(candidateId, sourcePath),
+    ),
   );
   const liveToolUseCount = agentTrace
     ? agentTrace.events.filter((event) => event.kind === "tool_call").length
@@ -159,10 +163,11 @@ function isProductionArrowFlightTrace(trace: SearchStrategyFlowTrace): boolean {
   return (
     trace.strategyFlowDataPlane === WENDAO_ARROW_FLIGHT_DATA_PLANE &&
     trace.strategyFlowService?.dataPlane === WENDAO_ARROW_FLIGHT_DATA_PLANE &&
-    (trace.retrievalRoutes ?? []).some((route) => (
-      route.materializationStatus === "executed" &&
-      route.primaryTransport === WENDAO_ARROW_FLIGHT_DATA_PLANE
-    ))
+    (trace.retrievalRoutes ?? []).some(
+      (route) =>
+        route.materializationStatus === "executed" &&
+        route.primaryTransport === WENDAO_ARROW_FLIGHT_DATA_PLANE,
+    )
   );
 }
 

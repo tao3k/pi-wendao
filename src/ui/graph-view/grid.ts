@@ -1,5 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { dim } from "yoctocolors";
+import { ansiReset, readAnsiSequenceAt } from "../ansi.js";
 
 export function drawEdgeOnGrid(
   grid: string[][],
@@ -95,17 +96,17 @@ function splitStyledCells(text: string): string[] {
   const cells: string[] = [];
   let activeAnsi = "";
   for (let index = 0; index < text.length; ) {
-    const ansi = text.slice(index).match(/^\x1b\[[0-9;]*m/);
+    const ansi = readAnsiSequenceAt(text, index);
     if (ansi) {
-      activeAnsi = updateActiveAnsi(activeAnsi, ansi[0]);
-      index += ansi[0].length;
+      activeAnsi = updateActiveAnsi(activeAnsi, ansi);
+      index += ansi.length;
       continue;
     }
 
     const char = text[index]!;
     const width = Math.max(0, visibleWidth(char));
     if (width > 0) {
-      cells.push(activeAnsi ? `${activeAnsi}${char}\x1b[0m` : char);
+      cells.push(activeAnsi ? `${activeAnsi}${char}${ansiReset()}` : char);
       for (let extra = 1; extra < width; extra += 1) {
         cells.push("");
       }

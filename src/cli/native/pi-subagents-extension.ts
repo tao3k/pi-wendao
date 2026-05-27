@@ -22,7 +22,7 @@ export default function registerPiWendaoPiSubagents(pi: ExtensionAPI): void {
 
   const resetSurfaces = () => {
     surfaceGeneration += 1;
-    for (const handle of [...overlayHandles]) {
+    for (const handle of overlayHandles) {
       handle.hide();
       overlayHandles.delete(handle);
     }
@@ -34,9 +34,14 @@ export default function registerPiWendaoPiSubagents(pi: ExtensionAPI): void {
 
   registerPiWendaoNativeSubagents(
     wrapPi(pi, (ctx) =>
-      wrapContext(ctx, overlayHandles, () => surfaceGeneration, (ui) => {
-        latestUi = ui;
-      }),
+      wrapContext(
+        ctx,
+        overlayHandles,
+        () => surfaceGeneration,
+        (ui) => {
+          latestUi = ui;
+        },
+      ),
     ),
   );
 }
@@ -48,11 +53,14 @@ function wrapPi(
   return {
     ...pi,
     on: ((event: Parameters<ExtensionAPI["on"]>[0], handler: unknown) => {
-      pi.on(event as never, ((payload: unknown, ctx: ExtensionContext) =>
-        (handler as (payload: unknown, ctx: ExtensionContext) => unknown)(
-          payload,
-          wrapCtx(ctx),
-        )) as never);
+      pi.on(
+        event as never,
+        ((payload: unknown, ctx: ExtensionContext) =>
+          (handler as (payload: unknown, ctx: ExtensionContext) => unknown)(
+            payload,
+            wrapCtx(ctx),
+          )) as never,
+      );
     }) as ExtensionAPI["on"],
     registerCommand: (name, options) => {
       pi.registerCommand(name, {
@@ -124,12 +132,11 @@ function wrapContext<TContext extends ExtensionCommandContext | ExtensionContext
                 },
               }
             : options;
-        return context.ui.custom<T>(
-          factory as Parameters<typeof context.ui.custom<T>>[0],
-          customOptions,
-        ).finally(() => {
-          if (overlayHandle) overlayHandles.delete(overlayHandle);
-        });
+        return context.ui
+          .custom<T>(factory as Parameters<typeof context.ui.custom<T>>[0], customOptions)
+          .finally(() => {
+            if (overlayHandle) overlayHandles.delete(overlayHandle);
+          });
       }) as ExtensionCommandContext["ui"]["custom"],
     },
   } as TContext;

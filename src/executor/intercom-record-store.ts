@@ -1,6 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { PiWendaoIntercomRecord, PiWendaoIntercomRecordStore } from "./intercom-correlation.js";
+import type {
+  PiWendaoIntercomRecord,
+  PiWendaoIntercomRecordStore,
+} from "./intercom-correlation.js";
 
 export function createInMemoryPiWendaoIntercomRecordStore(
   initialRecords: PiWendaoIntercomRecord[] = [],

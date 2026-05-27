@@ -145,7 +145,7 @@ export class GraphView implements Component {
 
     const grid: string[][] = [];
     for (let y = 0; y < gridH; y++) {
-      grid.push(new Array(gridW).fill(" "));
+      grid.push(Array.from({ length: gridW }, () => " "));
     }
 
     for (const edge of this.edges) {

@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
+import type { Effect } from "effect";
 import type {
   DmnPath,
   EventFixturePath,
   InstanceId,
+  PiWendaoSubagentType,
   ProcessId,
   QianjiCommand,
   RunStorePath,
@@ -19,6 +21,7 @@ import {
   type PiLoadedExtensionsLike,
 } from "./pi-subagents-runtime.js";
 import { execute, type ExecuteOptions, type ExecuteResult } from "./executor.js";
+import { effectFromPromise, runPiWendaoEffect, type PiWendaoEffectError } from "../effect.js";
 
 export interface ExecuteBpmnWithPiSubagentsOptions {
   /** BPMN source path passed to qianji. */
@@ -39,7 +42,7 @@ export interface ExecuteBpmnWithPiSubagentsOptions {
   cwd?: string;
   runStore?: PiSubagentsRunStore;
   runStorePath?: RunStorePath;
-  defaultSubagentType?: string;
+  defaultSubagentType?: PiWendaoSubagentType;
   defaultRunInBackground?: boolean;
   defaultModel?: string;
   defaultThinking?: string;
@@ -62,10 +65,12 @@ export interface ExecuteBpmnWithPiSubagentsOptions {
   traceFrameDelayMs?: ExecuteOptions["traceFrameDelayMs"];
 }
 
-export async function executeBpmnWithPiSubagents(
+export function executeBpmnWithPiSubagents(
   options: ExecuteBpmnWithPiSubagentsOptions,
-): Promise<ExecuteResult> {
-  return executeBpmnWithPiSubagentsInternal(options);
+): Effect.Effect<ExecuteResult, PiWendaoEffectError> {
+  return effectFromPromise("executeBpmnWithPiSubagents", () =>
+    executeBpmnWithPiSubagentsInternal(options),
+  );
 }
 
 async function executeBpmnWithPiSubagentsInternal(
@@ -93,32 +98,34 @@ async function executeBpmnWithPiSubagentsInternal(
     ...(options.verboseResult === undefined ? {} : { verboseResult: options.verboseResult }),
   });
 
-  return execute({
-    source,
-    sourcePath: options.workflowPath,
-    ...(options.processId ? { processId: options.processId } : {}),
-    ...(options.instanceId ? { instanceId: options.instanceId } : {}),
-    ...(options.qianjiCommand ? { qianjiCommand: options.qianjiCommand } : {}),
-    ...(options.dmnPaths ? { dmnPaths: options.dmnPaths } : {}),
-    ...(options.eventFixturePath ? { eventFixturePath: options.eventFixturePath } : {}),
-    ...(options.context ? { context: options.context } : {}),
-    ...(options.variables ? { variables: options.variables } : {}),
-    ...(cwd ? { cwd } : {}),
-    agentHost,
-    ...(options.onCliOutput ? { onCliOutput: options.onCliOutput } : {}),
-    ...(options.onActivityStart ? { onActivityStart: options.onActivityStart } : {}),
-    ...(options.onActivityEnd ? { onActivityEnd: options.onActivityEnd } : {}),
-    ...(options.onFlowTake ? { onFlowTake: options.onFlowTake } : {}),
-    ...(options.onError ? { onError: options.onError } : {}),
-    ...(options.graphView ? { graphView: options.graphView } : {}),
-    ...(options.onGraphReady ? { onGraphReady: options.onGraphReady } : {}),
-    ...(options.onGraphUpdate ? { onGraphUpdate: options.onGraphUpdate } : {}),
-    ...(options.onTraceEvent ? { onTraceEvent: options.onTraceEvent } : {}),
-    ...(options.traceFrameDelayMs === undefined
-      ? {}
-      : { traceFrameDelayMs: options.traceFrameDelayMs }),
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
+  return runPiWendaoEffect(
+    execute({
+      source,
+      sourcePath: options.workflowPath,
+      ...(options.processId ? { processId: options.processId } : {}),
+      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
+      ...(options.qianjiCommand ? { qianjiCommand: options.qianjiCommand } : {}),
+      ...(options.dmnPaths ? { dmnPaths: options.dmnPaths } : {}),
+      ...(options.eventFixturePath ? { eventFixturePath: options.eventFixturePath } : {}),
+      ...(options.context ? { context: options.context } : {}),
+      ...(options.variables ? { variables: options.variables } : {}),
+      ...(cwd ? { cwd } : {}),
+      agentHost,
+      ...(options.onCliOutput ? { onCliOutput: options.onCliOutput } : {}),
+      ...(options.onActivityStart ? { onActivityStart: options.onActivityStart } : {}),
+      ...(options.onActivityEnd ? { onActivityEnd: options.onActivityEnd } : {}),
+      ...(options.onFlowTake ? { onFlowTake: options.onFlowTake } : {}),
+      ...(options.onError ? { onError: options.onError } : {}),
+      ...(options.graphView ? { graphView: options.graphView } : {}),
+      ...(options.onGraphReady ? { onGraphReady: options.onGraphReady } : {}),
+      ...(options.onGraphUpdate ? { onGraphUpdate: options.onGraphUpdate } : {}),
+      ...(options.onTraceEvent ? { onTraceEvent: options.onTraceEvent } : {}),
+      ...(options.traceFrameDelayMs === undefined
+        ? {}
+        : { traceFrameDelayMs: options.traceFrameDelayMs }),
+      ...(options.signal ? { signal: options.signal } : {}),
+    }),
+  );
 }
 
 function inferCwdFromCtx(ctx: unknown): string | undefined {

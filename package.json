@@ -5,14 +5,53 @@
     "pi-wendao": "./dist/cli/pi-wendao.js"
   },
   "type": "module",
+  "exports": {
+    "./arrow/ipc": {
+      "types": "./dist/arrow/ipc.d.ts",
+      "import": "./dist/arrow/ipc.js"
+    },
+    "./arrow/schema": {
+      "types": "./dist/arrow/schema.d.ts",
+      "import": "./dist/arrow/schema.js"
+    },
+    "./subagents": {
+      "types": "./dist/subagents.d.ts",
+      "import": "./dist/subagents.js"
+    },
+    "./subagents/activity": {
+      "types": "./dist/subagents/activity.d.ts",
+      "import": "./dist/subagents/activity.js"
+    },
+    "./qianji-server": {
+      "types": "./dist/qianji-server.d.ts",
+      "import": "./dist/qianji-server.js"
+    },
+    "./workflows": {
+      "types": "./dist/workflows.d.ts",
+      "import": "./dist/workflows.js"
+    },
+    "./wendao-server": {
+      "types": "./dist/wendao-server.d.ts",
+      "import": "./dist/wendao-server.js"
+    },
+    "./gateway": {
+      "types": "./dist/gateway.d.ts",
+      "import": "./dist/gateway.js"
+    }
+  },
   "scripts": {
-    "build": "rm -rf dist && tsc && chmod +x dist/cli/pi-wendao.js",
-    "check": "tsc --noEmit && node scripts/harness-agent-gate.mjs",
+    "build": "rm -rf dist && npm run build:types && npm run build:js && chmod +x dist/cli/pi-wendao.js",
+    "build:js": "rspack build",
+    "build:types": "tsc --emitDeclarationOnly",
+    "check": "tsc --noEmit && vitest run test/project-harness.test.ts",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
     "harness": "typescript-project-harness .",
+    "harness:agent-compact": "typescript-project-harness --agent-compact .",
     "harness:agent": "typescript-project-harness --agent-snapshot .",
-    "harness:agent-gate": "node scripts/harness-agent-gate.mjs",
+    "lint": "oxlint .",
     "prepack": "npm run build",
-    "test": "vitest run && node scripts/harness-agent-gate.mjs",
+    "test": "vitest run --exclude test/project-harness.test.ts && vitest run test/project-harness.test.ts",
     "test:search-live": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_LIVE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"live SearchStrategyFlow\"'",
     "test:search-bridge-smoke": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_SEARCH_STRATEGY_FLOW_BRIDGE_SMOKE=1 vitest run test/cli/pi-wendao-cli.test.ts -t \"Rust bridge SearchStrategyFlow smoke\"'",
     "test:workflow-subagent-bpmn-live": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; RUN_PI_WENDAO_WORKFLOW_SUBAGENT_BPMN_LIVE=1 vitest run test/cli/workflow-runner-subagents-bpmn.test.ts -t \"live native subagent model\"'",
@@ -36,12 +75,20 @@
     "apache-arrow": "^21.1.0",
     "commander": "^13.0.0",
     "dagre": "^0.8.5",
+    "effect": "^3.21.2",
     "fast-xml-parser": "^5.7.1",
     "yoctocolors": "^2.1.2"
   },
   "devDependencies": {
+    "@rspack/cli": "^2.0.4",
+    "@rspack/core": "^2.0.4",
     "typescript": "^5.8.0",
-    "typescript-lang-project-harness": "git+https://github.com/tao3k/typescript-lang-project-harness.git",
+    "typescript-lang-project-harness": "github:tao3k/typescript-lang-project-harness#4498e8f",
     "vitest": "^3.0.0"
+  },
+  "typescriptProjectHarness": {
+    "extensions": {
+      "effect": "enable"
+    }
   }
 }

@@ -69,7 +69,13 @@ async function recoverRetryableLiveAgentTimeouts(
     if (!tracedRow) continue;
     let currentRun = run;
     if (!shouldRetryLiveAgentRun(tracedRow.intentRow, tracedRow.trace, currentRun)) continue;
-    runs[index] = await recoverSingleLiveAgentTimeout(input, runner, tracedRow, currentRun, retryLimit);
+    runs[index] = await recoverSingleLiveAgentTimeout(
+      input,
+      runner,
+      tracedRow,
+      currentRun,
+      retryLimit,
+    );
   }
   return runs;
 }
@@ -142,7 +148,7 @@ async function runLiveAgentAttempt(
     apiKey: options.apiKey,
     thinkingLevel: options.thinkingLevel,
     timeoutSeconds: attempt.retry
-      ? options.liveAgentRetryTimeoutSeconds ?? options.liveAgentTimeoutSeconds
+      ? (options.liveAgentRetryTimeoutSeconds ?? options.liveAgentTimeoutSeconds)
       : options.liveAgentTimeoutSeconds,
     forceJudgement: intentRow.liveEvidenceRequired,
     qianjiCommand: options.qianjiCommand,

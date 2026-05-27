@@ -1,7 +1,5 @@
-import type {
-  WendaoArrowFlightDataPlane,
-  WendaoTraceDataPlane,
-} from "../../arrow/boundary.js";
+import type { WendaoArrowFlightDataPlane, WendaoTraceDataPlane } from "../../arrow/boundary.js";
+import type { Branded } from "../../types/domain.js";
 
 declare const searchStrategyFlowPathBrand: unique symbol;
 declare const searchStrategyFlowFlightBaseUrlBrand: unique symbol;
@@ -73,6 +71,17 @@ export interface SearchStrategyFlowOptions {
 
 export type SearchStrategyFlowBackend = "auto" | "rust-julia" | "julia-direct";
 export type SearchStrategyFlowRustBridgeMode = "cargo" | "direct-binary" | "persistent-stdio";
+export type SearchStrategyFlowCandidateDiscoveryMode = Branded<
+  string,
+  "SearchStrategyFlowCandidateDiscoveryMode"
+>;
+export type SearchStrategyFlowEvidenceKind = Branded<string, "SearchStrategyFlowEvidenceKind">;
+export type SearchStrategyFlowSignalKind = Branded<string, "SearchStrategyFlowSignalKind">;
+export type SearchStrategyFlowJudgementKind = Branded<string, "SearchStrategyFlowJudgementKind">;
+export type SearchStrategyFlowPlannerActionKind = Branded<
+  string,
+  "SearchStrategyFlowPlannerActionKind"
+>;
 
 export interface SearchStrategyFlowBridgeTrace {
   requestedBackend: SearchStrategyFlowBackend;
@@ -121,7 +130,7 @@ export interface SearchStrategyFlowCandidateInputDiscovery {
   repoId?: string;
   transport?: string;
   route?: string;
-  candidateDiscoveryMode?: string;
+  candidateDiscoveryMode?: SearchStrategyFlowCandidateDiscoveryMode;
   attemptCount?: number;
   mergedCandidateCount?: number;
   elapsedMs?: number;
@@ -136,7 +145,7 @@ export interface SearchStrategyFlowRetrievalRoute {
   primaryTransport: WendaoArrowFlightDataPlane;
   sourcePath: SearchStrategyFlowSourcePath;
   headingAnchor?: string;
-  evidenceKind?: string;
+  evidenceKind?: SearchStrategyFlowEvidenceKind;
   directFileReadAllowed: false;
   executeBeforeAnswer: true;
   materializedRows?: number;
@@ -146,10 +155,7 @@ export interface SearchStrategyFlowRetrievalRoute {
   resolvedPageId?: SearchStrategyFlowPageId;
   resolvedNodeId?: SearchStrategyFlowNodeId;
   resolvedGraphNodeId?: SearchStrategyFlowGraphNodeId;
-  graphMaterializationStatus?:
-    | "resolved"
-    | "missing"
-    | "structured-code-relation-substitute";
+  graphMaterializationStatus?: "resolved" | "missing" | "structured-code-relation-substitute";
   graphMaterializationWarning?: string;
   flightSteps: SearchStrategyFlowRetrievalStep[];
 }
@@ -262,7 +268,7 @@ export interface SearchStrategyFlowQueryUnderstandingRow {
   flowId: SearchStrategyFlowId;
   intentId: SearchStrategyFlowIntentId;
   signalId: SearchStrategyFlowSignalId;
-  signalKind: string;
+  signalKind: SearchStrategyFlowSignalKind;
   signalValue: string;
   confidence: number;
   routeHint: string;
@@ -308,11 +314,11 @@ export interface SearchStrategyFlowFrontierRow {
   finalScore: number;
   action: string;
   contextBudget: number;
-  judgementKind: string;
+  judgementKind: SearchStrategyFlowJudgementKind;
 }
 
 export interface SearchStrategyFlowPlannerAction {
-  actionKind: string;
+  actionKind: SearchStrategyFlowPlannerActionKind;
   candidateId: string;
   targetCandidateId: string;
   cycleAllowed: boolean;

@@ -17,27 +17,37 @@ npm install -g pi-wendao
 ## Local Policy Checks
 
 `pi-wendao` uses `typescript-lang-project-harness` as its TypeScript policy
-gate. The policy is part of the normal check and test commands:
+surface. Effect policy is enabled from `package.json` through
+`typescriptProjectHarness.extensions.effect`, and the embedded harness test is
+part of the normal check and test commands:
 
 ```bash
 npm run check
 npm test
+npm run lint
+npm run format:check
+npm run build
 ```
 
-Both commands run the TypeScript compiler or Vitest first, then enforce the
-harness agent gate. Agent-facing findings are treated as required repair work,
-and failures include the compact parser-owned owner map and finding groups.
+`npm run check` runs `tsc --noEmit` and the embedded harness test.
+`npm test` runs the full Vitest suite, including the same embedded harness
+test. Blocking harness findings fail the test; agent-facing advice is emitted
+as compact repair text without requiring a custom local gate script.
+`npm run lint` and `npm run format:check` call the `oxlint` and `oxfmt`
+commands provided by the devenv environment. `npm run build` keeps TypeScript
+as the declaration/type authority and uses Rspack for the JavaScript artifacts
+under `dist`.
 
 To inspect the same surfaces directly:
 
 ```bash
 npm run harness
+npm run harness:agent-compact
 npm run harness:agent
-npm run harness:agent-gate
 ```
 
 The package `Justfile` routes `just check` and `just test` through the same
-policy-enforced commands, so `just verify-local` inherits the harness gate.
+commands, so `just verify-local` inherits the package-level harness check.
 
 ## Usage
 
@@ -101,13 +111,34 @@ or human host work is completed through
 `/workflows/{instance_id}/tasks/complete` for a single pending item and through
 `/workflows/{instance_id}/tasks/complete-batch` when the same blocked host
 boundary yields multiple completed items. Both paths use the same `Agent` /
-`get_subagent_result` host tools. The server-backed runner also
-synthesizes terminal node trace events after HTTP task completion so the graph
-view can close host-work nodes without depending on the CLI trace stream. If
-native host execution fails,
-pi-wendao reports the last qianji-server checkpoint summary before returning
-the failure, so operators can see that the remote workflow checkpoint remains
-recoverable unless an explicit cancel route is used. With the same environment
+`get_subagent_result` host tools. Before starting a server-backed workflow,
+pi-wendao reads qianji-server `/capabilities` and rejects a stale process that
+does not expose `bpmn.workflow.task.complete-batch`, preventing invalid
+benchmarks from running against an older server binary. When the server also
+reports `bpmn.workflow.activity-evidence` and was started with a control ledger,
+HTTP task completion records replayable host-work ActivityTask lifecycle facts
+server-side without changing pi-wendao's `Agent` / `get_subagent_result` host
+tools. If the server also exposes `bpmn.workflow.task.fail`, native host
+execution failures are reported through
+`/workflows/{instance_id}/tasks/fail` as evidence-only `ActivityFailed` facts;
+the original host error remains the user-facing failure and the checkpoint
+stays recoverable. After recording failure evidence, pi-wendao reads
+`/control/runs/{run_id}/summary` and `/control/runs/{run_id}/recovery` to render
+failed activity counters and ordered recovery actions without parsing raw event
+history. The server-backed runner also synthesizes terminal node trace events
+after HTTP task completion so the graph view can close host-work nodes without
+depending on the CLI trace stream. If native host execution fails, pi-wendao
+reports the last qianji-server checkpoint summary and control recovery
+diagnostics before returning the failure, and graph mode attaches the recovery
+counts and ordered recovery actions to the failed activity node. Operators can
+see that the remote workflow checkpoint remains recoverable unless an explicit
+cancel route is used. `--qianji-control-apply-recovery` is a separate explicit
+server-backed operator action: after host-failure evidence is recorded,
+pi-wendao verifies the additional `qianji.control.recovery.apply` capability
+and calls `/control/runs/{run_id}/recovery/apply`. The default failure path
+remains read-only diagnostics; this flag is not part of the serverless memory
+recall module and is not required for normal qianji-server workflow execution.
+With the same environment
 configured, `--show --instance-id <id>` reads `/workflows/{instance_id}` from
 qianji-server and renders the pending host-work summary instead of shelling out
 to the qianji CLI. `--cancel --instance-id <id>` is the explicit operator
@@ -146,12 +177,34 @@ That smoke uses `PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL`, defaulting to
 `http://127.0.0.1:38130`, and proves that `/workflows/start` plus
 `/workflows/{instance_id}/tasks/complete` or
 `/workflows/{instance_id}/tasks/complete-batch` can drive the same native
-`Agent` / `get_subagent_result` host tools through a real qianji-server. When
-the default server is not ready and the current environment exposes
-`PC_SOCKET_PATH`, the smoke starts the process-compose `qianji-server` process
-before waiting for readiness. A stale `PC_SOCKET_PATH` is ignored, and an
-already-running process-compose `qianji-server` is treated as a successful
-startup attempt before the readiness wait continues.
+`Agent` / `get_subagent_result` host tools through a real qianji-server. The
+runner checks `/capabilities` first, so a stale process fails before any BPMN
+instance is started. When the default server is not ready and the current
+environment exposes `PC_SOCKET_PATH`, the smoke starts the process-compose
+`qianji-server` process before waiting for readiness. If
+`target/debug/qianji-server` is missing, the smoke runs an explicit
+qianji-server prebuild first so compile failures surface before readiness
+polling.
+A stale `PC_SOCKET_PATH` is ignored, and an already-running process-compose
+`qianji-server` is treated as a successful startup attempt before the readiness
+wait continues.
+The same smoke file also contains a self-contained failure-ledger proof: it
+starts temporary Valkey and a temporary `qianji-server` process from the built
+binary with a temporary DuckDB control ledger, triggers a native host failure,
+and inspects
+`/control/runs/{run_id}/history` while qianji-server is still running for the
+replayable `RunCreated` -> `ActivityScheduled` -> `ActivityStarted` ->
+`ActivityFailed` chain. qianji-server also exposes
+`/control/runs/{run_id}/summary` for operator-safe activity, timer, signal,
+cost, and recovery counters derived from the same durable ledger, plus
+`/control/runs/{run_id}/recovery` for ordered read-only recovery actions such
+as retry review or terminal escalation.
+The explicit recovery-apply smoke builds a Valkey-capable `qianji-server` and
+requires the dev-only `XIUXIAN_ARTISAN_WORKSHOP_ROOT` environment variable when
+the command is launched from outside the Rust workspace root. That variable
+points to the local xiuxian-artisan-workshop checkout used only for smoke
+prebuild and process launch; runtime pi-wendao still talks to qianji-server
+through `PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL`.
 
 For a BPMN+DMN compile result, pass the sidecar DMN source to qianji:
 
@@ -165,6 +218,13 @@ Options:
 - `--instance-id <id>` — qianji workflow instance id; must be a stable descriptive id, not a short numeric value
 - `--start-at-node <id>` — start a fresh run at a specific BPMN node; supported by both the CLI runner and the qianji-server workflow-control runner
 - `--workflow-start-mode <mode>` — qianji-server workflow admission mode; `resume-or-start` is the safe default, and `start` is for known-new workflow instance ids
+- `--qianji-control-apply-recovery` — explicitly apply the qianji-control recovery plan after qianji-server host-failure evidence is recorded; requires server capability `qianji.control.recovery.apply`
+- `--qianji-control-recovery-attempt <n>` — recovery apply attempt number; requires `--qianji-control-apply-recovery`
+- `--qianji-control-recovery-reason <text>` — operator reason recorded on the recovery apply request
+- `--qianji-control-recovery-max-attempts <n>` — maximum bounded recovery attempts for the request
+- `--qianji-control-recovery-backoff-ms <ms>` — non-negative recovery backoff recorded with the request
+- `--qianji-control-recovery-require-human-approval` — mark the request as requiring human approval
+- `--qianji-control-recovery-priority <n>` — integer priority recorded with the request
 - `--cancel` — cancel a qianji-server workflow checkpoint for `--instance-id`; requires `PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL`
 - `--qianji <command>` — qianji CLI command override
 - `--qianji-client <command>` — qianji-client command override for Flowhub scenario registry lookup
@@ -251,6 +311,25 @@ on the Rust/Gateway Arrow Flight data plane. Do not wrap Arrow payloads in
 JSON/base64 for this path. Reports use `arrow-flight` for the canonical data
 plane, `none` when no backend data plane is involved, and
 `jsonl-stdio-control`/`process-args-control` for control-only coordination.
+The package also exports `pi-wendao/arrow/schema` as the shared JavaScript
+Arrow Schema facade for frontend and agent consumers. Consumers should validate
+table fields through this facade instead of duplicating `apache-arrow` type
+checks locally.
+Library consumers should use the package subpath facades instead of importing
+from private `src/cli` or `src/executor` files:
+
+- `pi-wendao/arrow/schema` and `pi-wendao/arrow/ipc` for Arrow schema and IPC
+  helpers.
+- `pi-wendao/subagents` for native subagent managers, host adapters, runtime
+  discovery, and BPMN subagent execution helpers.
+- `pi-wendao/subagents/activity` for browser-safe subagent activity DTOs and
+  timeline summaries.
+- `pi-wendao/qianji-server` for qianji-server HTTP workflow control and
+  recovery diagnostics.
+- `pi-wendao/wendao-server` for SearchStrategyFlow runners, trace rendering,
+  Arrow judgement encoders, agent-evidence helpers, and benchmark DTOs.
+- `pi-wendao/gateway` for Gateway-backed Flowhub scenario registry providers.
+
 The Studio/Gateway materialization endpoint and the WendaoGraph
 SearchStrategyFlow service endpoint are separate boundaries. Use
 `--search-flight-base-url` for Rust-owned retrieval materialization and
@@ -696,6 +775,14 @@ and improve Org-native recall behavior. It is not a qianji-server or gateway
 migration path. Model-visible recall content is the default compact
 `wendao-client orgize task-list` text output. JSON recall packets remain a
 separate diagnostic and fixture surface for session injection tests.
+Serverless memory modules live under `src/cli/serverless-memory/` and do not
+import qianji-server workflow-control clients. Server-backed qianji workflow
+and recovery modules live under `src/executor/qianji-server/` and communicate
+only with qianji-server HTTP routes. Keep these module trees separate so
+offline Codex/Claude memory recall tests cannot accidentally depend on a live
+server, and server recovery policy cannot accidentally run from the serverless
+recall path. New checks for this split should live in TypeScript tests or
+project harness policy rather than a separate local gate script.
 Graph-local `ask` calls target the inline planner inbox; `send` calls are
 fire-and-forget chat messages.
 CLI execution resolves workflow, fixture, DMN, and explicit extension paths
@@ -757,7 +844,12 @@ resume-or-start workflow-control path and a fresh-start path that bypasses the
 resume probe for newly created benchmark instance ids. Server rows complete
 parallel host-work boundaries through qianji-server's batch task-completion
 route, reducing repeated checkpoint loads and HTTP round trips while preserving
-the single-task route for non-parallel boundaries. The live variant adds the
+the single-task route for non-parallel boundaries. Server rows also perform the
+same `/capabilities` preflight as the workflow runner so route support is part
+of the benchmark admission gate. When the benchmark server is started with
+control-ledger evidence enabled, the server-side durable host-work evidence is
+orthogonal to the printed wall-time rows and can be inspected through Qianji
+control-ledger views. The live variant adds the
 model-backed subagent row so fixed model thinking time can be separated from
 BPMN runtime, subagent adapter, and server overhead. The direct qianji row
 reports full JSON trace events; host-session rows report compact renderer trace

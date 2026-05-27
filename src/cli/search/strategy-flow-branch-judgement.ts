@@ -104,7 +104,9 @@ function parseBranchJudgementRows(
     if (!candidateId) {
       errors.push(`branch_judgements row ${rowNumber} missing candidate_id.`);
     } else if (!context.allowedCandidateIds.has(candidateId)) {
-      errors.push(`branch_judgements row ${rowNumber} references unknown candidate_id ${candidateId}.`);
+      errors.push(
+        `branch_judgements row ${rowNumber} references unknown candidate_id ${candidateId}.`,
+      );
     }
 
     const branchRole = readBranchRole(rawRow.branchRole ?? rawRow.branch_role ?? rawRow.role);
@@ -211,7 +213,7 @@ function parseBranchJudgementPayload(value: unknown): unknown {
   if (!text) return undefined;
   try {
     const parsed = JSON.parse(text) as unknown;
-    return isRecord(parsed) ? parsed.branch_judgements ?? parsed.branchJudgements : parsed;
+    return isRecord(parsed) ? (parsed.branch_judgements ?? parsed.branchJudgements) : parsed;
   } catch {
     return undefined;
   }
@@ -219,7 +221,7 @@ function parseBranchJudgementPayload(value: unknown): unknown {
 
 function stripJsonFence(value: string): string {
   const fenced = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced ? fenced[1]?.trim() ?? "" : value;
+  return fenced ? (fenced[1]?.trim() ?? "") : value;
 }
 
 function readBranchRole(value: unknown): SearchStrategyFlowBranchJudgementRole | undefined {

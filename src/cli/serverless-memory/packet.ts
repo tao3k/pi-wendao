@@ -35,8 +35,9 @@ function parseRecallRow(input: unknown, index: number): ServerlessMemoryRecallRo
     sourceRangeEnd:
       optionalNumber(record.sourceRangeEnd) ??
       requireNumber(record.sourceLine, `recall packet row ${index} sourceLine`),
-    matchedOrgElements: optionalArray(record.matchedOrgElements)
-      .map((element, elementIndex) => parseMatchedOrgElement(element, index, elementIndex + 1, orgid)),
+    matchedOrgElements: optionalArray(record.matchedOrgElements).map((element, elementIndex) =>
+      parseMatchedOrgElement(element, index, elementIndex + 1, orgid),
+    ),
     memoryObjects: requireArray(record.memoryObjects, `recall packet row ${index} memoryObjects`)
       .map((object, objectIndex) => parseMemoryObject(object, index, objectIndex + 1, orgid))
       .filter((object) => object.value.trim().length > 0),
@@ -51,7 +52,8 @@ function parseMatchedOrgElement(
 ): ServerlessMemoryMatchedOrgElement {
   const label = `recall packet row ${rowIndex} matched org element ${elementIndex}`;
   const record = requireRecord(input, label);
-  const affiliatedName = typeof record.affiliatedName === "string" ? record.affiliatedName : undefined;
+  const affiliatedName =
+    typeof record.affiliatedName === "string" ? record.affiliatedName : undefined;
   const language = typeof record.language === "string" ? record.language : undefined;
   return {
     locator: parseOrgElementLocator(record.locator, orgid, label),
@@ -102,7 +104,8 @@ function parseSectionLocator(input: unknown, orgid: string): ServerlessMemoryLoc
       orgid: requireString(section.orgid, "recall packet section locator orgid"),
       ...(typeof section.title === "string" ? { title: section.title } : {}),
       ...(typeof section.source === "string" ? { source: section.source } : {}),
-      ...(Array.isArray(section.outline) && section.outline.every((item) => typeof item === "string")
+      ...(Array.isArray(section.outline) &&
+      section.outline.every((item) => typeof item === "string")
         ? { outline: section.outline }
         : {}),
     },

@@ -19,6 +19,7 @@ import {
   getCurrentPiSubagentsToolExecutionContext,
   tryCreatePiSubagentsHostFromLoadedExtensions,
 } from "../executor/pi-subagents-runtime.js";
+import type { PiWendaoSubagentType } from "../types/domain.js";
 
 const TOOL_EVENT_BRIDGE_KEY = "__PI_WENDAO_PI_SUBAGENTS_TOOL_EVENT_BRIDGE__";
 export const DEFAULT_PI_WENDAO_SUBAGENT_TYPE = "pi-wendao-worker";
@@ -35,7 +36,7 @@ export interface CreateCliExtensionContextOptions {
 
 export interface CreateCliPiSubagentsHostOptions extends CreateCliExtensionContextOptions {
   runStorePath?: string;
-  defaultSubagentType?: string;
+  defaultSubagentType?: PiWendaoSubagentType;
   defaultRunInBackground?: boolean;
   defaultModel?: string;
   defaultThinking?: string;

@@ -11,26 +11,17 @@ export function parseFlowhubScenarioRegistryJson(stdout: string): unknown {
     return JSON.parse(stdout);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Flowhub scenario registry did not return valid JSON: ${detail}`,
-    );
+    throw new Error(`Flowhub scenario registry did not return valid JSON: ${detail}`);
   }
 }
 
-export function normalizeFlowhubScenarioRegistry(
-  value: unknown,
-): FlowhubScenarioRegistry {
-  if (!isObject(value))
-    throw new Error("Flowhub scenario registry returned a non-object");
+export function normalizeFlowhubScenarioRegistry(value: unknown): FlowhubScenarioRegistry {
+  if (!isObject(value)) throw new Error("Flowhub scenario registry returned a non-object");
   if (value.passed !== true) {
-    throw new Error(
-      "Flowhub scenario registry did not pass validation",
-    );
+    throw new Error("Flowhub scenario registry did not pass validation");
   }
   if (!Array.isArray(value.sourcePairs)) {
-    throw new Error(
-      "qianji-client flowhub scenario registry is missing sourcePairs",
-    );
+    throw new Error("qianji-client flowhub scenario registry is missing sourcePairs");
   }
   return {
     passed: true,
@@ -43,9 +34,7 @@ export function selectFlowhubScenario(
   scenarioId: string,
   flowhubRoot: string,
 ): FlowhubScenarioResolution {
-  const selected = registry.sourcePairs.find(
-    (pair) => pair.scenarioId === scenarioId,
-  );
+  const selected = registry.sourcePairs.find((pair) => pair.scenarioId === scenarioId);
   if (!selected) {
     const available = registry.sourcePairs
       .map((pair) => pair.scenarioId)
@@ -68,8 +57,7 @@ export function selectFlowhubScenario(
 }
 
 function parseFlowhubScenarioPair(value: unknown): FlowhubScenarioPair {
-  if (!isObject(value))
-    throw new Error("Flowhub sourcePairs must contain objects");
+  if (!isObject(value)) throw new Error("Flowhub sourcePairs must contain objects");
   return {
     scenarioId: readString(value, "scenarioId"),
     bpmnProcessId: readString(value, "bpmnProcessId"),

@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import { compileSkill, defaultCompileTraceDir, type CompileResult } from "../compiler/compiler.js";
+import { runPiWendaoEffect } from "../effect.js";
 import { resolvePiWendaoNamedWorkflowSeedPath } from "../pi-resources.js";
 import type { DmnPath, SourcePath, WorkflowPath } from "../types/domain.js";
 
@@ -151,22 +152,24 @@ async function compileNamedWorkflow(options: {
   qianjiCommand?: string;
   skillContent: string;
 }): Promise<CompileResult> {
-  return compileSkill({
-    skillContent: options.skillContent,
-    model: options.context.model,
-    apiKey: options.context.apiKey,
-    headers: options.context.headers,
-    cwd: options.cwd,
-    template: {
-      command: options.qianjiCommand,
-    },
-    target: {},
-    lint: {
-      command: options.qianjiCommand,
-      maxRepairAttempts: 2,
-      traceDir: defaultCompileTraceDir(options.cwd),
-    },
-  });
+  return runPiWendaoEffect(
+    compileSkill({
+      skillContent: options.skillContent,
+      model: options.context.model,
+      apiKey: options.context.apiKey,
+      headers: options.context.headers,
+      cwd: options.cwd,
+      template: {
+        command: options.qianjiCommand,
+      },
+      target: {},
+      lint: {
+        command: options.qianjiCommand,
+        maxRepairAttempts: 2,
+        traceDir: defaultCompileTraceDir(options.cwd),
+      },
+    }),
+  );
 }
 
 function replaceExtension(path: string, extension: string): string {

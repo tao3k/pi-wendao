@@ -30,7 +30,9 @@ export async function runMarkdownCorpusBenchmarkRustBridgeSession(input: {
 }): Promise<SearchStrategyFlowRustBridgeSessionResult> {
   const rustWorkspace = resolveWendaoRustWorkspace(input.baseOptions);
   if (!rustWorkspace) {
-    throw new Error("could not find xiuxian Rust workspace for SearchStrategyFlow benchmark session");
+    throw new Error(
+      "could not find xiuxian Rust workspace for SearchStrategyFlow benchmark session",
+    );
   }
   const graphProject = resolveWendaoGraphProject(input.baseOptions);
   const command = resolveRustBridgeCommand(
@@ -81,10 +83,13 @@ function collectRustBridgeSessionOutput(input: {
   return new Promise((resolveOutput, reject) => {
     const child = spawn(
       input.command.command,
-      [...input.command.prefixArgs, ...rustBridgeSessionArgs(input.command.mode, {
-        flightBaseUrl: input.flightBaseUrl,
-        flightTimeoutSeconds: input.flightTimeoutSeconds,
-      })],
+      [
+        ...input.command.prefixArgs,
+        ...rustBridgeSessionArgs(input.command.mode, {
+          flightBaseUrl: input.flightBaseUrl,
+          flightTimeoutSeconds: input.flightTimeoutSeconds,
+        }),
+      ],
       {
         cwd: input.rustWorkspace,
         env: {
@@ -166,15 +171,7 @@ function rustBridgeSessionArgs(
 ): string[] {
   const args =
     mode === "cargo"
-      ? [
-          "run",
-          "-q",
-          "-p",
-          "xiuxian-julia-core",
-          "--bin",
-          "wendaograph_search_strategy_flow",
-          "--",
-        ]
+      ? ["run", "-q", "-p", "xiuxian-julia-core", "--bin", "wendaograph_search_strategy_flow", "--"]
       : [];
   if (options.flightBaseUrl) {
     args.push("--flight-base-url", options.flightBaseUrl);
@@ -196,9 +193,9 @@ function buildRustBridgeSessionTiming(
   const firstResponseMs = measuredElapsedMs[0] ?? sessionDurationMs;
   const lastResponseMs = measuredElapsedMs.at(-1) ?? firstResponseMs;
   const responseSpanMs = Math.max(0, lastResponseMs - firstResponseMs);
-  const responseGaps = measuredElapsedMs.slice(1).map((elapsedMs, index) => (
-    elapsedMs - (measuredElapsedMs[index] ?? firstResponseMs)
-  ));
+  const responseGaps = measuredElapsedMs
+    .slice(1)
+    .map((elapsedMs, index) => elapsedMs - (measuredElapsedMs[index] ?? firstResponseMs));
   const timing: SearchStrategyFlowRustBridgeSessionTiming = {
     requestCount: measuredElapsedMs.length,
     sessionDurationMs,
@@ -253,7 +250,9 @@ function parseRustBridgeSessionResponses(
   for (const [index, response] of warmupResponses.entries()) {
     const row = intentRows[index % intentRows.length];
     if (!row) {
-      throw new Error(`Rust SearchStrategyFlow benchmark warmup response ${index + 1} has no source row`);
+      throw new Error(
+        `Rust SearchStrategyFlow benchmark warmup response ${index + 1} has no source row`,
+      );
     }
     const expectedRequestId = warmupRequestId(row, index);
     if (response.requestId !== expectedRequestId) {
@@ -286,7 +285,9 @@ function parseRustBridgeSessionResponses(
       );
     }
     if (response.trace === undefined) {
-      throw new Error(`Rust SearchStrategyFlow benchmark session response ${familyId} is missing trace`);
+      throw new Error(
+        `Rust SearchStrategyFlow benchmark session response ${familyId} is missing trace`,
+      );
     }
     return {
       ...parseStrategyFlowTrace(JSON.stringify(response.trace)),

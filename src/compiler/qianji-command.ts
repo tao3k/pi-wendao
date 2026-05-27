@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import type { Effect } from "effect";
 import { resolveDefaultQianjiCommand } from "../qianji-command-resolution.js";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
 
 export interface CommandResult {
   exitCode: number | null;
@@ -7,7 +9,15 @@ export interface CommandResult {
   stderr: string;
 }
 
-export function runCommand(command: string, args: string[], cwd: string): Promise<CommandResult> {
+export function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+): Effect.Effect<CommandResult, PiWendaoEffectError> {
+  return effectFromPromise("runCommand", () => runCommandPromise(command, args, cwd));
+}
+
+function runCommandPromise(command: string, args: string[], cwd: string): Promise<CommandResult> {
   const commandLine = [command, ...args.map(shellQuote)].join(" ");
   return new Promise((resolvePromise, reject) => {
     const child = spawn(commandLine, {

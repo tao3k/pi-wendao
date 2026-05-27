@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { Effect } from "effect";
 import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import type {
@@ -12,9 +13,13 @@ import type {
 } from "./pi-subagents-host.js";
 import { createJsonFilePiSubagentsRunStore, createPiSubagentsHost } from "./pi-subagents-host.js";
 import type { PiWendaoAgentHost } from "./agent-host.js";
+import type { ActivityId, AgentId, Branded, PiWendaoSubagentType } from "../types/domain.js";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
+
+export type PiToolResultContentType = Branded<string, "PiToolResultContentType">;
 
 export interface PiToolResultContent {
-  type: string;
+  type: PiToolResultContentType;
   text?: string;
 }
 
@@ -52,9 +57,9 @@ export interface PiSubagentsRegisteredTools {
 }
 
 export interface PiSubagentsToolExecutionContext {
-  activityId: string;
+  activityId: ActivityId;
   description: string;
-  agentId?: string;
+  agentId?: AgentId;
 }
 
 export interface PiSubagentsRegisteredToolClientOptions {
@@ -68,7 +73,7 @@ export interface PiSubagentsRuntimeHostOptions extends PiSubagentsRegisteredTool
   loadResult: PiLoadedExtensionsLike;
   runStore?: PiSubagentsRunStore;
   runStorePath?: string;
-  defaultSubagentType?: string;
+  defaultSubagentType?: PiWendaoSubagentType;
   defaultRunInBackground?: boolean;
   defaultModel?: string;
   defaultThinking?: string;
@@ -136,7 +141,15 @@ export function createPiSubagentsClientFromLoadedExtensions(
   );
 }
 
-export async function discoverPiSubagentsHost(
+export function discoverPiSubagentsHost(
+  options: DiscoverPiSubagentsRuntimeHostOptions,
+): Effect.Effect<DiscoverPiSubagentsRuntimeHostResult, PiWendaoEffectError> {
+  return effectFromPromise("discoverPiSubagentsHost", () =>
+    discoverPiSubagentsHostPromise(options),
+  );
+}
+
+async function discoverPiSubagentsHostPromise(
   options: DiscoverPiSubagentsRuntimeHostOptions,
 ): Promise<DiscoverPiSubagentsRuntimeHostResult> {
   const loadResult = await discoverAndLoadExtensions(

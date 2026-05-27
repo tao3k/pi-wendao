@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
 import type { Command } from "commander";
 import { compileSkill, defaultCompileTraceDir } from "../compiler/compiler.js";
+import { runPiWendaoEffect } from "../effect.js";
 import { resolveModel } from "./model-resolver.js";
 import { parseNonNegativeInt } from "./number-options.js";
 
@@ -29,27 +30,15 @@ export function registerCompileCommand(program: Command): void {
       "--qianji <command>",
       "Qianji CLI command for templates and compile lint (default: QIANJI_CLI, workspace target/debug/qianji, or qianji on PATH)",
     )
-    .option(
-      "--lint-retries <count>",
-      "Model repair attempts after qianji lint failure",
-      "2",
-    )
+    .option("--lint-retries <count>", "Model repair attempts after qianji lint failure", "2")
     .option("--no-lint", "Disable qianji lint repair loop")
-    .option(
-      "-e, --extension <path>",
-      "Load an extra pi extension (repeatable)",
-      collect,
-      [],
-    )
+    .option("-e, --extension <path>", "Load an extra pi extension (repeatable)", collect, [])
     .action(async (skillPath: string, options: PiWendaoCompileOptions) => {
       try {
         await runCompileCommand(skillPath, options);
         process.exit(0);
       } catch (err) {
-        console.error(
-          "Error:",
-          err instanceof Error ? err.message : String(err),
-        );
+        console.error("Error:", err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
     });
@@ -79,32 +68,31 @@ async function runCompileCommand(
 
   console.log(`Compiling ${skillPath} using ${model.provider}/${model.id}...`);
 
-  const result = await compileSkill({
-    skillContent,
-    model,
-    apiKey,
-    headers,
-    cwd: process.cwd(),
-    template: {
-      command: options.qianji,
-      onMessage: (message) => console.log(message),
-    },
-    target: {
-      onMessage: (message) => console.log(message),
-    },
-    lint:
-      options.lint === false
-        ? false
-        : {
-            command: options.qianji,
-            maxRepairAttempts: parseNonNegativeInt(
-              options.lintRetries,
-              "--lint-retries",
-            ),
-            traceDir: defaultCompileTraceDir(process.cwd()),
-            onMessage: (message) => console.log(message),
-          },
-  });
+  const result = await runPiWendaoEffect(
+    compileSkill({
+      skillContent,
+      model,
+      apiKey,
+      headers,
+      cwd: process.cwd(),
+      template: {
+        command: options.qianji,
+        onMessage: (message) => console.log(message),
+      },
+      target: {
+        onMessage: (message) => console.log(message),
+      },
+      lint:
+        options.lint === false
+          ? false
+          : {
+              command: options.qianji,
+              maxRepairAttempts: parseNonNegativeInt(options.lintRetries, "--lint-retries"),
+              traceDir: defaultCompileTraceDir(process.cwd()),
+              onMessage: (message) => console.log(message),
+            },
+    }),
+  );
 
   if (!result.success) {
     const errors = result.errors?.map((error) => `  - ${error}`).join("\n");

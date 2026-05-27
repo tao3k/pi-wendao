@@ -143,9 +143,7 @@ function qianjiInteractionFromHostWorkForm(
   };
 }
 
-function qianjiInteractionTypeFromHostWorkForm(
-  value: string,
-): QianjiInteractionType | undefined {
+function qianjiInteractionTypeFromHostWorkForm(value: string): QianjiInteractionType | undefined {
   return value === "input" || value === "confirm" || value === "choice" || value === "choice_input"
     ? value
     : undefined;
@@ -198,10 +196,7 @@ export function humanTaskReplyOutputNames(
   return [resultOutput];
 }
 
-function assertQianjiHumanTaskResultOutput(
-  work: QianjiHostWork,
-  form: QianjiHumanTaskForm,
-): void {
+function assertQianjiHumanTaskResultOutput(work: QianjiHostWork, form: QianjiHumanTaskForm): void {
   if (form.result_output?.trim()) return;
   throw new Error(
     formatMissingHumanTaskResultOutputError({
@@ -230,7 +225,7 @@ function formatMissingHumanTaskResultOutputError(context: HumanTaskResolutionCon
     "[pi-wendao.runtime.missing_native_answer_output]",
     `BPMN human task '${activity}' did not include native form result_output.`,
     "Contract: bpmn.native_human_task_io.v1 requires the Rust engine to stream result_output on @@QIANJI_HOST_WORK.",
-    "Run BPMN lint/compile so the task declares dataOutput name=\"answer\" with a dataOutputAssociation targetRef; pi-wendao does not infer outputs from local XML.",
+    'Run BPMN lint/compile so the task declares dataOutput name="answer" with a dataOutputAssociation targetRef; pi-wendao does not infer outputs from local XML.',
   ].join("\n");
 }
 
@@ -303,7 +298,9 @@ function validateChoiceArray(
       role,
     });
   }
-  return source.map((choice, index) => parseHumanTaskChoiceObject(ref, choice, index, context, role));
+  return source.map((choice, index) =>
+    parseHumanTaskChoiceObject(ref, choice, index, context, role),
+  );
 }
 
 function parseHumanTaskChoiceObject(
@@ -384,7 +381,7 @@ function formatDynamicChoicesError(details: DynamicChoicesErrorDetails): string 
     `Bad payload: ${formatChoicePayload(details.payload)}`,
     "",
     `Help: ${details.ref} must be a native Array<{ value: string; label?: string; description?: string }>; do not wrap the array in a JSON string.`,
-    'Contract: native choices data must be a JSON array whose items have a non-empty string value.',
+    "Contract: native choices data must be a JSON array whose items have a non-empty string value.",
     "",
     "Expected value:",
     "```json",

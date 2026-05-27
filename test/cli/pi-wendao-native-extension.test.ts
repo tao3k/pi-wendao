@@ -125,8 +125,10 @@ describe("pi-wendao native pi extension", () => {
         await options?.withSession?.({
           ui: {
             notify: (message, severity) => calls.push(`new:${severity}:${message}`),
-            setStatus: (key, value) => calls.push(value ? `newStatus:${key}:${value}` : `newClearStatus:${key}`),
-            setWidget: (key, value) => calls.push(value ? `newWidget:${key}` : `newClearWidget:${key}`),
+            setStatus: (key, value) =>
+              calls.push(value ? `newStatus:${key}:${value}` : `newClearStatus:${key}`),
+            setWidget: (key, value) =>
+              calls.push(value ? `newWidget:${key}` : `newClearWidget:${key}`),
           },
         });
         return { cancelled: false };
@@ -207,8 +209,10 @@ describe("pi-wendao native pi extension", () => {
         await options?.withSession?.({
           ui: {
             notify: (message, severity) => calls.push(`new:${severity}:${message}`),
-            setStatus: (key, value) => calls.push(value ? `newStatus:${key}:${value}` : `newClearStatus:${key}`),
-            setWidget: (key, value) => calls.push(value ? `newWidget:${key}` : `newClearWidget:${key}`),
+            setStatus: (key, value) =>
+              calls.push(value ? `newStatus:${key}:${value}` : `newClearStatus:${key}`),
+            setWidget: (key, value) =>
+              calls.push(value ? `newWidget:${key}` : `newClearWidget:${key}`),
           },
         });
         return { cancelled: false };
@@ -393,7 +397,9 @@ describe("pi-wendao native pi extension", () => {
     await run;
 
     expect(notifications).toContain("warning:Stopping pi-wendao workflow...");
-    expect(notifications.filter((entry) => entry === "warning:Stopping pi-wendao workflow...")).toHaveLength(1);
+    expect(
+      notifications.filter((entry) => entry === "warning:Stopping pi-wendao workflow..."),
+    ).toHaveLength(1);
     expect(terminalInputEvents).toEqual(["subscribe", "unsubscribe"]);
     expect(
       sent.some((message) =>
@@ -483,12 +489,7 @@ describe("pi-wendao native pi extension", () => {
           calls.push(`anchor:${overlayOptions?.anchor}`);
           calls.push(`nonCapturing:${overlayOptions?.nonCapturing}`);
           calls.push(`row:${overlayOptions?.row}`);
-          factory(
-            { requestRender: () => calls.push("render") },
-            {},
-            {},
-            () => calls.push("done"),
-          );
+          factory({ requestRender: () => calls.push("render") }, {}, {}, () => calls.push("done"));
           options.onHandle?.({ hide: () => calls.push("hideOverlay") });
           return Promise.resolve(undefined);
         },
@@ -538,11 +539,7 @@ describe("pi-wendao native pi extension", () => {
     clearNativeWorkflowGraphPanel(handle);
     onHandle?.({ hide: () => calls.push("lateHideOverlay") });
 
-    expect(calls).toEqual([
-      "customOverlay",
-      "dispose",
-      "lateHideOverlay",
-    ]);
+    expect(calls).toEqual(["customOverlay", "dispose", "lateHideOverlay"]);
   });
 
   it("collects workflow ask through the pi-ask dependency without registering ask_user", async () => {
@@ -1304,9 +1301,7 @@ describe("pi-wendao native pi extension", () => {
     expect(args).toContain("--thinking");
     expect(args).toContain("medium");
     expect(args).toContain("/tmp/custom-extension.js");
-    expect(args.some((arg) => arg.endsWith("src/cli/native/pi-subagents-extension.ts"))).toBe(
-      true,
-    );
+    expect(args.some((arg) => arg.endsWith("src/cli/native/pi-subagents-extension.ts"))).toBe(true);
     expect(args.some((arg) => arg.includes("@eko24ive/pi-ask"))).toBe(false);
   });
 

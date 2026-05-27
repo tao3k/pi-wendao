@@ -333,9 +333,7 @@ export function compactSearchStrategyFlowTraceForAgent(
       resolvedGraphNodeId: branch.resolvedGraphNodeId,
       graphMaterializationStatus: branch.graphMaterializationStatus,
       evidenceAnchors: branch.evidenceAnchors,
-      ...(branch.branchSource === "frontier"
-        ? { derivedTraceHints: branch.derivedHints }
-        : {}),
+      ...(branch.branchSource === "frontier" ? { derivedTraceHints: branch.derivedHints } : {}),
     })),
     llmActions: trace.plannerActions
       .filter((action) => action.requiresLlmJudgement)
@@ -354,10 +352,11 @@ function selectCandidatePoolBranchesForAgent(
 ): SearchStrategyFlowBranchContext[] {
   const terms = searchStrategyFlowIntentTerms(trace);
   return [...branches]
-    .sort((left, right) =>
-      candidatePoolBranchScore(right, terms) - candidatePoolBranchScore(left, terms) ||
-      (right.finalScore ?? 0) - (left.finalScore ?? 0) ||
-      String(left.candidateId).localeCompare(String(right.candidateId)),
+    .sort(
+      (left, right) =>
+        candidatePoolBranchScore(right, terms) - candidatePoolBranchScore(left, terms) ||
+        (right.finalScore ?? 0) - (left.finalScore ?? 0) ||
+        String(left.candidateId).localeCompare(String(right.candidateId)),
     )
     .slice(0, CANDIDATE_POOL_BRANCH_VISIBLE_LIMIT);
 }
@@ -395,9 +394,8 @@ function candidatePoolBranchScore(
     .toLowerCase();
   const overlap = terms.filter((term) => haystack.includes(term)).length;
   const markdownBonus = branch.sourcePath?.endsWith(".md") ? 1.5 : 0;
-  const exactPathBonus = branch.sourcePath && haystack.includes(branch.sourcePath.toLowerCase())
-    ? 0.5
-    : 0;
+  const exactPathBonus =
+    branch.sourcePath && haystack.includes(branch.sourcePath.toLowerCase()) ? 0.5 : 0;
   const routeBonus = branch.routeRole === "general" ? 0 : 0.5;
   return overlap * 4 + markdownBonus + exactPathBonus + routeBonus;
 }
@@ -410,7 +408,10 @@ function resolveSearchAgentCwd(options: SearchStrategyFlowAgentOptions): string 
   return options.trace.searchRoot || options.trace.graphProject || options.cwd;
 }
 
-function hasRequestAuth(apiKey: string | undefined, headers: Record<string, string> | undefined): boolean {
+function hasRequestAuth(
+  apiKey: string | undefined,
+  headers: Record<string, string> | undefined,
+): boolean {
   return Boolean(apiKey || (headers && Object.keys(headers).length > 0));
 }
 

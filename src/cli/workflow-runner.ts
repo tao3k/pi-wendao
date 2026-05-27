@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { basename, resolve as resolvePath } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type {
@@ -11,6 +10,7 @@ import type {
   WorkflowPath,
 } from "../types/domain.js";
 import type { PiWendaoThinkingLevel } from "../executor/agent-runtime-types.js";
+import { runPiWendaoEffect } from "../effect.js";
 import { execute } from "../executor/executor.js";
 import {
   formatPiSubagentsHostEventForLog,
@@ -32,6 +32,7 @@ import {
 import { createCliPiSubagentsHost } from "./pi-subagents.js";
 import { runWorkflowLintPreflight } from "./workflow-runner/preflight.js";
 import { resolveQianjiWorkflowServerUrl } from "./workflow-runner/server-url.js";
+import type { QianjiControlRecoveryApplyPolicy } from "../executor/qianji-server/control-diagnostics.js";
 
 export interface PiWendaoWorkflowOptions {
   process?: string;
@@ -40,6 +41,8 @@ export interface PiWendaoWorkflowOptions {
   qianji?: string;
   qianjiWorkflowServerUrl?: string;
   qianjiWorkflowStartMode?: "resume-or-start" | "start";
+  qianjiControlApplyRecovery?: boolean;
+  qianjiControlRecoveryPolicy?: QianjiControlRecoveryApplyPolicy;
   contextJson?: string;
   traceFrameMs?: TraceFrameDelayMs;
   var?: string[];
@@ -203,75 +206,83 @@ async function runWorkflowInRendererInternal(
       renderer.appendLog("Extension tool: pi-intercom");
     }
 
-    const result = await execute({
-      source,
-      sourcePath: workflowPath,
-      processId: params.options.process,
-      instanceId: params.instanceId,
-      startAtNode: params.options.startAtNode,
-      qianjiCommand: params.options.qianji,
-      qianjiWorkflowServerUrl: resolveQianjiWorkflowServerUrl(
-        params.options.qianjiWorkflowServerUrl,
-      ),
-      qianjiWorkflowStartMode: params.options.qianjiWorkflowStartMode,
-      dmnPaths: params.resolvedDmnPaths,
-      hostFixturePath: params.resolvedHostFixturePath,
-      eventFixturePath: params.resolvedEventFixturePath,
-      context: parseContextJson(params.options.contextJson),
-      model: piSubagentsHost ? undefined : params.resolvedModel?.model,
-      apiKey: piSubagentsHost ? undefined : params.resolvedModel?.apiKey,
-      thinkingLevel: params.thinkingLevel,
-      agentHost: piSubagentsHost,
-      humanTaskHandler: async (request) => {
-        if (params.useGraph) {
-          updateSubagentGraphDetail(renderer.graphView, request.activityId, "user:awaiting input");
-          renderer.refresh();
-        }
-        renderer.appendLog(`human task ${request.activityId}`);
-        const answer = await renderer.requestPlannerReply(
-          {
-            toolCallId: `human:${request.execution?.tokenId ?? request.activityId}:${Date.now()}`,
-            action: "human_task",
-            to: "user",
-            message: request.config.prompt || `Provide input for ${request.activityId}.`,
-            interaction: request.config.interaction,
-            context: {
-              activityId: request.activityId,
-              description: "BPMN user task",
+    const result = await runPiWendaoEffect(
+      execute({
+        source,
+        sourcePath: workflowPath,
+        processId: params.options.process,
+        instanceId: params.instanceId,
+        startAtNode: params.options.startAtNode,
+        qianjiCommand: params.options.qianji,
+        qianjiWorkflowServerUrl: resolveQianjiWorkflowServerUrl(
+          params.options.qianjiWorkflowServerUrl,
+        ),
+        qianjiWorkflowStartMode: params.options.qianjiWorkflowStartMode,
+        qianjiControlApplyRecovery: params.options.qianjiControlApplyRecovery,
+        qianjiControlRecoveryPolicy: params.options.qianjiControlRecoveryPolicy,
+        dmnPaths: params.resolvedDmnPaths,
+        hostFixturePath: params.resolvedHostFixturePath,
+        eventFixturePath: params.resolvedEventFixturePath,
+        context: parseContextJson(params.options.contextJson),
+        model: piSubagentsHost ? undefined : params.resolvedModel?.model,
+        apiKey: piSubagentsHost ? undefined : params.resolvedModel?.apiKey,
+        thinkingLevel: params.thinkingLevel,
+        agentHost: piSubagentsHost,
+        humanTaskHandler: async (request) => {
+          if (params.useGraph) {
+            updateSubagentGraphDetail(
+              renderer.graphView,
+              request.activityId,
+              "user:awaiting input",
+            );
+            renderer.refresh();
+          }
+          renderer.appendLog(`human task ${request.activityId}`);
+          const answer = await renderer.requestPlannerReply(
+            {
+              toolCallId: `human:${request.execution?.tokenId ?? request.activityId}:${Date.now()}`,
+              action: "human_task",
+              to: "user",
+              message: request.config.prompt || `Provide input for ${request.activityId}.`,
+              interaction: request.config.interaction,
+              context: {
+                activityId: request.activityId,
+                description: "BPMN user task",
+              },
             },
-          },
-          params.signal,
-        );
-        if (params.useGraph) {
-          updateSubagentGraphDetail(renderer.graphView, request.activityId, "user:answered");
-          renderer.refresh();
-        }
-        return answer;
-      },
-      hostBackend: piSubagentsHost ? "pi-subagents" : params.resolvedModel ? "pi-ai" : undefined,
-      agentTools: piIntercomTool ? [piIntercomTool] : undefined,
-      traceFrameDelayMs: params.options.traceFrameMs,
-      cwd: params.invocationCwd,
-      variables: params.options.var,
-      onCliOutput: (output) => {
-        for (const line of formatQianjiCliOutputForLog(output)) {
-          renderer.appendLog(line);
-        }
-      },
-      onHostWork: (event) => {
-        for (const line of formatQianjiHostWorkEventForLog(event)) {
-          renderer.appendLog(line);
-        }
-      },
-      onAgentEvent: (event) => renderer.onAgentEvent(event),
-      graphView: params.useGraph ? renderer.graphView : undefined,
-      onGraphReady: () => renderer.refresh(),
-      onGraphUpdate: () => renderer.refresh(),
-      onTraceEvent: (event) => renderer.onTraceEvent(event),
-      onFlowTake: (flowId) => renderer.onFlowTake(flowId),
-      onError: (error) => renderer.onError(error),
-      signal: params.signal,
-    });
+            params.signal,
+          );
+          if (params.useGraph) {
+            updateSubagentGraphDetail(renderer.graphView, request.activityId, "user:answered");
+            renderer.refresh();
+          }
+          return answer;
+        },
+        hostBackend: piSubagentsHost ? "pi-subagents" : params.resolvedModel ? "pi-ai" : undefined,
+        agentTools: piIntercomTool ? [piIntercomTool] : undefined,
+        traceFrameDelayMs: params.options.traceFrameMs,
+        cwd: params.invocationCwd,
+        variables: params.options.var,
+        onCliOutput: (output) => {
+          for (const line of formatQianjiCliOutputForLog(output)) {
+            renderer.appendLog(line);
+          }
+        },
+        onHostWork: (event) => {
+          for (const line of formatQianjiHostWorkEventForLog(event)) {
+            renderer.appendLog(line);
+          }
+        },
+        onAgentEvent: (event) => renderer.onAgentEvent(event),
+        graphView: params.useGraph ? renderer.graphView : undefined,
+        onGraphReady: () => renderer.refresh(),
+        onGraphUpdate: () => renderer.refresh(),
+        onTraceEvent: (event) => renderer.onTraceEvent(event),
+        onFlowTake: (flowId) => renderer.onFlowTake(flowId),
+        onError: (error) => renderer.onError(error),
+        signal: params.signal,
+      }),
+    );
 
     if (result.interrupted) {
       renderer.appendLog("\nWorkflow interrupted. Qianji checkpoint state was preserved.");

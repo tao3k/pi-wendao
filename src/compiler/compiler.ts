@@ -1,4 +1,5 @@
 import { isAbsolute, join, resolve } from "node:path";
+import type { Effect } from "effect";
 import { streamSimple } from "@earendil-works/pi-ai";
 import { extractArtifactBundle, missingArtifactMessage } from "./artifacts.js";
 import { createCompileLintRunner } from "./contract-lint.js";
@@ -12,6 +13,7 @@ import {
 import { compileWithLintAgent } from "./repair-loop.js";
 import { decideCompileTarget, selectedConstructIds } from "./target.js";
 import type { CompileOptions, CompileResult, CompileTargetDecision } from "./types.js";
+import { effectFromPromise, runPiWendaoEffect, type PiWendaoEffectError } from "../effect.js";
 
 export type {
   BpmnLintResult,
@@ -35,48 +37,55 @@ export function defaultCompileTraceDir(cwd = process.cwd()): string {
 /**
  * Compile a skill markdown file into qianji BPMN/DMN artifacts using a large model.
  */
-export async function compileSkill(options: CompileOptions): Promise<CompileResult> {
+export function compileSkill(
+  options: CompileOptions,
+): Effect.Effect<CompileResult, PiWendaoEffectError> {
+  return effectFromPromise("compileSkill", () => compileSkillPromise(options));
+}
+
+async function compileSkillPromise(options: CompileOptions): Promise<CompileResult> {
   const lintOptions = options.lint === false ? undefined : (options.lint ?? {});
   const cwd = options.cwd ?? process.cwd();
   const qianjiCommand = options.template?.command ?? lintOptions?.command;
 
-  const constructIndexResult = await loadQianjiConstructIndex({
-    ...(options.template ?? {}),
-    command: qianjiCommand,
-    cwd,
-  });
+  const constructIndexResult = await runPiWendaoEffect(
+    loadQianjiConstructIndex({
+      ...options.template,
+      command: qianjiCommand,
+      cwd,
+    }),
+  );
   if (!constructIndexResult.success) {
     return { success: false, errors: constructIndexResult.errors };
   }
 
   let targetDecision: CompileTargetDecision;
   try {
-    targetDecision = await decideCompileTarget(
-      options,
-      options.skillContent,
-      constructIndexResult.output,
+    targetDecision = await runPiWendaoEffect(
+      decideCompileTarget(options, options.skillContent, constructIndexResult.output),
     );
   } catch (err) {
     return { success: false, errors: [err instanceof Error ? err.message : String(err)] };
   }
   options.target?.onMessage?.(`compile target: ${targetDecision.target}`);
 
-  const templateResult = await loadQianjiTemplates(targetDecision.target, {
-    ...(options.template ?? {}),
-    command: qianjiCommand,
-    cwd,
-  });
+  const templateResult = await runPiWendaoEffect(
+    loadQianjiTemplates(targetDecision.target, {
+      ...options.template,
+      command: qianjiCommand,
+      cwd,
+    }),
+  );
   if (!templateResult.success) {
     return { success: false, targetDecision, errors: templateResult.errors };
   }
 
-  const constructCardsResult = await loadQianjiConstructCards(
-    selectedConstructIds(targetDecision),
-    {
-      ...(options.template ?? {}),
+  const constructCardsResult = await runPiWendaoEffect(
+    loadQianjiConstructCards(selectedConstructIds(targetDecision), {
+      ...options.template,
       command: qianjiCommand,
       cwd,
-    },
+    }),
   );
   if (!constructCardsResult.success) {
     return { success: false, targetDecision, errors: constructCardsResult.errors };
@@ -115,18 +124,20 @@ export async function compileSkill(options: CompileOptions): Promise<CompileResu
         }))
       : undefined;
 
-  return compileWithLintAgent(options, {
-    systemPrompt,
-    userMessage,
-    skillContent: options.skillContent,
-    templates,
-    targetDecision,
-    lintOptions,
-    lintRunners: {
-      bpmn: bpmnLintRunner,
-      dmn: dmnLintRunner,
-    },
-  });
+  return runPiWendaoEffect(
+    compileWithLintAgent(options, {
+      systemPrompt,
+      userMessage,
+      skillContent: options.skillContent,
+      templates,
+      targetDecision,
+      lintOptions,
+      lintRunners: {
+        bpmn: bpmnLintRunner,
+        dmn: dmnLintRunner,
+      },
+    }),
+  );
 }
 
 async function requestArtifacts(

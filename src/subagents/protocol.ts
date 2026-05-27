@@ -1,5 +1,10 @@
-import type { AgentSession, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentSession,
+  ExtensionContext,
+  ModelRegistry,
+} from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
+import type { PiWendaoSubagentType } from "../types/domain.js";
 
 export type NativeSubagentStatus = "queued" | "running" | "completed" | "failed" | "stopped";
 
@@ -15,7 +20,7 @@ export interface NativeSubagentInvocation {
 export interface NativeSubagentSpawnRequest {
   prompt: string;
   description: string;
-  subagent_type: string;
+  subagent_type: PiWendaoSubagentType;
   run_in_background?: boolean;
   model?: string;
   thinking?: string;
@@ -41,7 +46,7 @@ export interface NativeSubagentToolResultDetails {
   agentId?: string;
   status?: NativeSubagentStatus | "background";
   description?: string;
-  subagentType?: string;
+  subagentType?: PiWendaoSubagentType;
   toolUses?: number;
   turnCount?: number;
   maxTurns?: number;
@@ -59,7 +64,7 @@ export interface NativeSubagentToolResult {
 export interface NativeSubagentRecord {
   id: string;
   description: string;
-  type: string;
+  type: PiWendaoSubagentType;
   prompt: string;
   status: NativeSubagentStatus;
   startedAt: number;

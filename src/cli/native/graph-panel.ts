@@ -35,32 +35,34 @@ export function setNativeWorkflowGraphPanel(
   let overlayHandle: OverlayHandle | undefined;
   let closed = false;
 
-  void ctx.ui.custom<void>(
-    (tui, theme) => {
-      component = factory(tui, theme);
-      if (closed) {
-        component.dispose?.();
-      }
-      return component;
-    },
-    {
-      overlay: true,
-      overlayOptions: () => ({
-        anchor: "top-center",
-        width: "100%",
-        maxHeight: "42%",
-        row: 0,
-        col: 0,
-        margin: { top: 0, right: 0, left: 0 },
-        nonCapturing: true,
-        visible: (termWidth, termHeight) => termWidth >= 20 && termHeight >= 10,
-      }),
-      onHandle: (handle) => {
-        overlayHandle = handle;
-        if (closed) handle.hide();
+  void ctx.ui
+    .custom<void>(
+      (tui, theme) => {
+        component = factory(tui, theme);
+        if (closed) {
+          component.dispose?.();
+        }
+        return component;
       },
-    },
-  ).catch(() => undefined);
+      {
+        overlay: true,
+        overlayOptions: () => ({
+          anchor: "top-center",
+          width: "100%",
+          maxHeight: "42%",
+          row: 0,
+          col: 0,
+          margin: { top: 0, right: 0, left: 0 },
+          nonCapturing: true,
+          visible: (termWidth, termHeight) => termWidth >= 20 && termHeight >= 10,
+        }),
+        onHandle: (handle) => {
+          overlayHandle = handle;
+          if (closed) handle.hide();
+        },
+      },
+    )
+    .catch(() => undefined);
 
   const panel: NativeWorkflowGraphPanelHandle = {
     close: () => {
@@ -86,7 +88,7 @@ export function clearNativeWorkflowGraphPanel(
 }
 
 export function clearAllNativeWorkflowGraphPanels(): void {
-  for (const panel of [...activeGraphPanels]) {
+  for (const panel of activeGraphPanels) {
     panel.close();
   }
 }
@@ -125,7 +127,10 @@ export function renderTopGraphWidgetLines(options: {
     graphLines.length < availableGraphHeight
       ? Math.floor((availableGraphHeight - graphLines.length) / 2)
       : 0;
-  return [title, ...new Array(topPadding).fill(""), ...visibleGraph].slice(0, totalHeight);
+  return [title, ...Array.from({ length: topPadding }, () => ""), ...visibleGraph].slice(
+    0,
+    totalHeight,
+  );
 }
 
 class NativeWorkflowWidget implements Component {

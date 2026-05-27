@@ -17,10 +17,7 @@ export function resolveDefaultQianjiClientCommand(cwd = process.cwd()): string {
   return "qianji-client";
 }
 
-function findWorkspaceCommand(
-  cwd: string,
-  binaryName: string,
-): string | undefined {
+function findWorkspaceCommand(cwd: string, binaryName: string): string | undefined {
   let current = cwd;
   const root = parse(current).root;
   while (true) {

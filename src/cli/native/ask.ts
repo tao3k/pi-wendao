@@ -4,7 +4,13 @@ import type {
   Theme as PiTheme,
 } from "@earendil-works/pi-coding-agent";
 import { createJiti } from "@mariozechner/jiti";
-import { Key, matchesKey, type Component, type OverlayOptions, type TUI } from "@earendil-works/pi-tui";
+import {
+  Key,
+  matchesKey,
+  type Component,
+  type OverlayOptions,
+  type TUI,
+} from "@earendil-works/pi-tui";
 import { withNativeWorkflowUiEscScope } from "./esc-scope.js";
 
 const WORKFLOW_ASK_OVERLAY_MIN_WIDTH = 52;
@@ -138,9 +144,7 @@ function withWorkflowInputCancelKeys(ctx: ExtensionCommandContext): ExtensionCom
   };
 }
 
-function workflowAskCustomOptions(
-  options?: NativeAskCustomOptions,
-): NativeAskCustomOptions {
+function workflowAskCustomOptions(options?: NativeAskCustomOptions): NativeAskCustomOptions {
   return {
     ...options,
     overlay: true,

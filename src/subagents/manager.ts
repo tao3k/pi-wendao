@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Effect } from "effect";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type {
   NativeSubagentGetResultRequest,
@@ -9,11 +10,23 @@ import type {
 } from "./protocol.js";
 import { textResult } from "./protocol.js";
 import { runNativeSubagent } from "./runner.js";
+import { effectFromPromise, runPiWendaoEffect, type PiWendaoEffectError } from "../effect.js";
 
 export class NativeSubagentManager {
   private readonly records = new Map<string, NativeSubagentRecord>();
 
-  async spawn(
+  spawn(
+    request: NativeSubagentSpawnRequest,
+    ctx: ExtensionContext,
+    signal: AbortSignal | undefined,
+    onUpdate: unknown,
+  ): Effect.Effect<NativeSubagentToolResult, PiWendaoEffectError> {
+    return effectFromPromise("NativeSubagentManager.spawn", () =>
+      this.spawnPromise(request, ctx, signal, onUpdate),
+    );
+  }
+
+  private async spawnPromise(
     request: NativeSubagentSpawnRequest,
     ctx: ExtensionContext,
     signal: AbortSignal | undefined,
@@ -48,7 +61,16 @@ export class NativeSubagentManager {
     );
   }
 
-  async getResult(
+  getResult(
+    request: NativeSubagentGetResultRequest,
+    signal: AbortSignal | undefined,
+  ): Effect.Effect<NativeSubagentToolResult, PiWendaoEffectError> {
+    return effectFromPromise("NativeSubagentManager.getResult", () =>
+      this.getResultPromise(request, signal),
+    );
+  }
+
+  private async getResultPromise(
     request: NativeSubagentGetResultRequest,
     signal: AbortSignal | undefined,
   ): Promise<NativeSubagentToolResult> {
@@ -66,7 +88,16 @@ export class NativeSubagentManager {
     return this.renderRecord(record, { verbose: request.verbose === true });
   }
 
-  async steer(
+  steer(
+    request: NativeSubagentSteerRequest,
+    signal: AbortSignal | undefined,
+  ): Effect.Effect<NativeSubagentToolResult, PiWendaoEffectError> {
+    return effectFromPromise("NativeSubagentManager.steer", () =>
+      this.steerPromise(request, signal),
+    );
+  }
+
+  private async steerPromise(
     request: NativeSubagentSteerRequest,
     signal: AbortSignal | undefined,
   ): Promise<NativeSubagentToolResult> {
@@ -111,7 +142,9 @@ export class NativeSubagentManager {
         ...(request.thinking ? { thinking: request.thinking } : {}),
         ...(request.max_turns ? { maxTurns: request.max_turns } : {}),
         ...(request.isolated === undefined ? {} : { isolated: request.isolated }),
-        ...(request.inherit_context === undefined ? {} : { inheritContext: request.inherit_context }),
+        ...(request.inherit_context === undefined
+          ? {}
+          : { inheritContext: request.inherit_context }),
         runInBackground: request.run_in_background !== false,
       },
       abortController: new AbortController(),
@@ -126,35 +159,37 @@ export class NativeSubagentManager {
   ): Promise<string> {
     const childSignal = combineSignals(signal, record.abortController.signal);
     try {
-      const result = await runNativeSubagent(
-        {
-          type: record.type,
-          prompt: record.prompt,
-          description: record.description,
-          cwd: ctx.cwd,
-          modelName: record.modelName,
-          thinking: record.invocation.thinking,
-          maxTurns: record.maxTurns,
-          isolated: record.invocation.isolated,
-          inheritContext: record.invocation.inheritContext,
-        },
-        {
-          ctx,
-          model: ctx.model,
-          modelRegistry: ctx.modelRegistry,
-          signal: childSignal,
-          onSessionCreated: (session) => {
-            record.session = session;
+      const result = await runPiWendaoEffect(
+        runNativeSubagent(
+          {
+            type: record.type,
+            prompt: record.prompt,
+            description: record.description,
+            cwd: ctx.cwd,
+            modelName: record.modelName,
+            thinking: record.invocation.thinking,
+            maxTurns: record.maxTurns,
+            isolated: record.invocation.isolated,
+            inheritContext: record.invocation.inheritContext,
           },
-          onTurnEnd: (turnCount) => {
-            record.turnCount = turnCount;
-            this.emitUpdate(record, onUpdate);
+          {
+            ctx,
+            model: ctx.model,
+            modelRegistry: ctx.modelRegistry,
+            signal: childSignal,
+            onSessionCreated: (session) => {
+              record.session = session;
+            },
+            onTurnEnd: (turnCount) => {
+              record.turnCount = turnCount;
+              this.emitUpdate(record, onUpdate);
+            },
+            onToolActivity: (activity) => {
+              if (activity.type === "end") record.toolUses += 1;
+              this.emitUpdate(record, onUpdate, activity.toolName);
+            },
           },
-          onToolActivity: (activity) => {
-            if (activity.type === "end") record.toolUses += 1;
-            this.emitUpdate(record, onUpdate, activity.toolName);
-          },
-        },
+        ),
       );
       record.result = result.responseText;
       record.session = result.session;
@@ -170,11 +205,7 @@ export class NativeSubagentManager {
     }
   }
 
-  private emitUpdate(
-    record: NativeSubagentRecord,
-    onUpdate: unknown,
-    toolName?: string,
-  ): void {
+  private emitUpdate(record: NativeSubagentRecord, onUpdate: unknown, toolName?: string): void {
     if (typeof onUpdate !== "function") return;
     onUpdate({
       content: [{ type: "text", text: `subagent ${record.id} running` }],
@@ -250,7 +281,8 @@ export class NativeSubagentManager {
         true,
       );
     }
-    const conversation = options.verbose && record.session ? renderConversation(record.session) : "";
+    const conversation =
+      options.verbose && record.session ? renderConversation(record.session) : "";
     return textResult(`${record.result?.trim() || "No output."}${conversation}`, details);
   }
 }
@@ -292,7 +324,9 @@ function combineSignals(
   return controller.signal;
 }
 
-function renderConversation(session: import("@earendil-works/pi-coding-agent").AgentSession): string {
+function renderConversation(
+  session: import("@earendil-works/pi-coding-agent").AgentSession,
+): string {
   const lines: string[] = [];
   for (const message of session.messages) {
     if (message.role === "user") {

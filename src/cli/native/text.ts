@@ -1,6 +1,9 @@
 import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
 import type { PlannerReplyRequest } from "../../ui/renderer.js";
+import { hasAsciiControlCharacter, stripAnsi } from "../../ui/ansi.js";
 import { MAX_MESSAGE_LINE_LENGTH, MAX_MESSAGE_LINES } from "./constants.js";
+
+export { stripAnsi } from "../../ui/ansi.js";
 
 export function normalizeThinkingLevel(
   value: string,
@@ -59,17 +62,13 @@ export function isWorkflowErrorLine(line: string): boolean {
 }
 
 export function isPrintableInput(data: string): boolean {
-  return data.length > 0 && !/[\u0000-\u001F\u007F]/.test(data);
+  return data.length > 0 && !hasAsciiControlCharacter(data);
 }
 
 export function compactLine(line: string, maxLength: number): string {
   const stripped = stripAnsi(line).replace(/\s+/g, " ").trim();
   if (stripped.length <= maxLength) return stripped;
   return `${stripped.slice(0, Math.max(0, maxLength - 3))}...`;
-}
-
-export function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 export function formatVariable(value: unknown): string {

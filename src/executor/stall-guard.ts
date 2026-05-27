@@ -52,7 +52,7 @@ function buildUserPromptOccurrence(
     configs.get(activityId) ?? EMPTY_PI_WENDAO_CONFIG,
     work,
   );
-  const scopedVariables = { ...variables, ...(work.variables ?? {}) };
+  const scopedVariables = { ...variables, ...work.variables };
   const resolvedConfig = resolveHumanTaskConfig(config, scopedVariables, {
     activityId,
   });
@@ -84,10 +84,7 @@ function buildUserPromptOccurrence(
   };
 }
 
-function formatStallMessage(
-  current: UserPromptOccurrence,
-  previous: UserPromptOccurrence,
-): string {
+function formatStallMessage(current: UserPromptOccurrence, previous: UserPromptOccurrence): string {
   const choices = current.choices.map((choice) => choice.value).join(", ") || "(none)";
   const inputs = formatInputValues(current);
   const outputs = current.outputNames.join(", ") || "(none)";

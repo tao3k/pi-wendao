@@ -1,3 +1,6 @@
+import type { Effect } from "effect";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
+
 export class WorkflowInterruptedError extends Error {
   constructor(message = "Workflow interrupted; checkpoint preserved.") {
     super(message);
@@ -16,7 +19,15 @@ export function throwIfWorkflowInterrupted(signal: AbortSignal | undefined): voi
   if (signal?.aborted) throw new WorkflowInterruptedError();
 }
 
-export function waitForWorkflowInterrupt(signal: AbortSignal | undefined): Promise<never> {
+export function waitForWorkflowInterrupt(
+  signal: AbortSignal | undefined,
+): Effect.Effect<never, PiWendaoEffectError> {
+  return effectFromPromise("waitForWorkflowInterrupt", () =>
+    waitForWorkflowInterruptPromise(signal),
+  );
+}
+
+function waitForWorkflowInterruptPromise(signal: AbortSignal | undefined): Promise<never> {
   return new Promise((_resolve, reject) => {
     if (!signal) return;
     if (signal.aborted) {

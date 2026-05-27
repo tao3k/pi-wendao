@@ -256,16 +256,9 @@ class BenchmarkPhaseTimings {
     const shouldMeasure = (input: Parameters<typeof fetch>[0]) => {
       try {
         const url = new URL(
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url,
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
         );
-        return (
-          url.href.startsWith(baseUrl) &&
-          url.pathname.startsWith("/workflows/")
-        );
+        return url.href.startsWith(baseUrl) && url.pathname.startsWith("/workflows/");
       } catch {
         return false;
       }

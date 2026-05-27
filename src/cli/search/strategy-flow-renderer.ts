@@ -127,9 +127,7 @@ function renderSearchStrategyFlowTraceInternal(
     ),
     "",
     "frontier_branches:",
-    ...(branchContexts.length > 0
-      ? branchContexts.map(renderBranchContext)
-      : ["  - none"]),
+    ...(branchContexts.length > 0 ? branchContexts.map(renderBranchContext) : ["  - none"]),
     "",
     "planner:",
     ...trace.plannerActions.map(
@@ -172,7 +170,9 @@ function renderSearchStrategyFlowTraceInternal(
         return `  - live ${event.kind} activity=${event.activityId} tool=${event.toolName}${event.agentId ? ` agent=${event.agentId}` : ""}${event.isError === undefined ? "" : ` error=${formatBool(event.isError)}`}`;
       }
       const resultSnippet =
-        event.kind === "result" && event.resultText ? ` result=${formatSnippet(event.resultText)}` : "";
+        event.kind === "result" && event.resultText
+          ? ` result=${formatSnippet(event.resultText)}`
+          : "";
       return `  - live ${event.kind} activity=${event.activityId}${event.agentId ? ` agent=${event.agentId}` : ""} description=${event.description}${resultSnippet}`;
     }),
   ];
@@ -181,11 +181,8 @@ function renderSearchStrategyFlowTraceInternal(
 
 function renderBranchContext(branch: SearchStrategyFlowBranchContext): string {
   const anchors =
-    branch.evidenceAnchors.length > 0
-      ? ` evidence=${branch.evidenceAnchors.join("|")}`
-      : "";
-  const rows =
-    branch.materializedRows === undefined ? "" : ` rows=${branch.materializedRows}`;
+    branch.evidenceAnchors.length > 0 ? ` evidence=${branch.evidenceAnchors.join("|")}` : "";
+  const rows = branch.materializedRows === undefined ? "" : ` rows=${branch.materializedRows}`;
   const resolvedGraphNode = branch.resolvedGraphNodeId
     ? ` resolved_graph_node=${branch.resolvedGraphNodeId}`
     : "";

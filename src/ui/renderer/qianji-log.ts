@@ -55,6 +55,9 @@ interface QianjiReportSummary {
   checkpointDeleted?: string;
   checkpointStatus?: string;
   pendingHostWork?: string;
+  activities?: string;
+  recoveryActions?: string;
+  actions: string[];
 }
 
 function parseQianjiReports(text: string): QianjiReportSummary[] {
@@ -74,6 +77,9 @@ function parseQianjiReports(text: string): QianjiReportSummary[] {
       checkpointDeleted: extractQianjiReportField(block, "Checkpoint deleted"),
       checkpointStatus: extractQianjiReportField(block, "Checkpoint status"),
       pendingHostWork: extractQianjiReportField(block, "Pending host work"),
+      activities: extractQianjiReportField(block, "Activities"),
+      recoveryActions: extractQianjiReportField(block, "Recovery actions"),
+      actions: extractQianjiReportFields(block, "Action"),
     };
   });
 }
@@ -91,12 +97,32 @@ function formatQianjiReportForLog(report: QianjiReportSummary): string {
   if (report.pendingHostWork && report.pendingHostWork !== "0") {
     parts.push(`pending_host=${report.pendingHostWork}`);
   }
+  if (report.activities) parts.push(`activities=${report.activities}`);
+  if (report.recoveryActions) parts.push(`recovery=${report.recoveryActions}`);
+  if (report.actions.length === 1 && report.actions[0] !== "none") {
+    parts.push(`action=${report.actions[0]}`);
+  } else if (report.actions.length > 1) {
+    parts.push(`actions=${formatActionSummary(report.actions)}`);
+  }
   const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
   return dim(`qianji ${title}: ${report.outcome ?? "reported"}${suffix}`);
+}
+
+function formatActionSummary(actions: string[]): string {
+  const visible = actions.slice(0, 3).join("; ");
+  const overflow = actions.length > 3 ? ` +${actions.length - 3}` : "";
+  return `${actions.length} ${visible}${overflow}`;
 }
 
 function extractQianjiReportField(block: string, label: string): string | undefined {
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = block.match(new RegExp(`^${escapedLabel}:\\s*(.+)$`, "m"));
   return match?.[1]?.trim();
+}
+
+function extractQianjiReportFields(block: string, label: string): string[] {
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...block.matchAll(new RegExp(`^${escapedLabel}:\\s*(.+)$`, "gm"))]
+    .map((match) => match[1]?.trim())
+    .filter((value): value is string => Boolean(value));
 }

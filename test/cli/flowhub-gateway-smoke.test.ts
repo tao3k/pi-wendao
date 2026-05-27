@@ -1,12 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -66,8 +60,8 @@ describe("Flowhub Gateway smoke", () => {
 });
 
 async function resolveQianjiServer(): Promise<{ baseUrl: string }> {
-  const existingUrl = process.env.PI_WENDAO_QIANJI_SERVER_URL?.trim() ||
-    process.env.QIANJI_SERVER_URL?.trim();
+  const existingUrl =
+    process.env.PI_WENDAO_QIANJI_SERVER_URL?.trim() || process.env.QIANJI_SERVER_URL?.trim();
   if (existingUrl) {
     await assertQianjiServerReady(existingUrl);
     return { baseUrl: existingUrl };
@@ -148,11 +142,7 @@ async function startQianjiServer(): Promise<{ baseUrl: string }> {
 function resolveCargoInvocation(): { command: string; prefixArgs: string[] } {
   const profile = process.env.DEVENV_PROFILE;
   if (profile) {
-    const cargoPath = join(
-      profile,
-      "bin",
-      process.platform === "win32" ? "cargo.exe" : "cargo",
-    );
+    const cargoPath = join(profile, "bin", process.platform === "win32" ? "cargo.exe" : "cargo");
     if (existsSync(cargoPath)) return { command: cargoPath, prefixArgs: [] };
   }
   return { command: "direnv", prefixArgs: ["exec", rustWorkspace, "cargo"] };

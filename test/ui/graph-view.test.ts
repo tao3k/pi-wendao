@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GraphView, LogView } from "../../src/ui/graph-view.js";
+import { stripAnsi } from "../../src/ui/ansi.js";
 
 describe("GraphView", () => {
   it("renders a simple linear graph", () => {
@@ -14,7 +15,7 @@ describe("GraphView", () => {
     expect(lines.length).toBeGreaterThan(0);
 
     // The rendered output should contain node labels (stripped of ANSI)
-    const plain = lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    const plain = stripAnsi(lines.join("\n"));
     expect(plain).toContain("( )"); // start
     expect(plain).toContain("Run tests"); // task
     expect(plain).toContain("(*)"); // end
@@ -39,7 +40,7 @@ describe("GraphView", () => {
     const lines = view.render(100);
     expect(lines.length).toBeGreaterThan(0);
 
-    const plain = lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    const plain = stripAnsi(lines.join("\n"));
     expect(plain).toContain("Check");
     expect(plain).toContain("OK?");
     expect(plain).toContain("Success");
@@ -53,20 +54,20 @@ describe("GraphView", () => {
 
     // Render pending
     let lines = view.render(40);
-    let plain = lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    let plain = stripAnsi(lines.join("\n"));
     expect(plain).toContain("Task");
 
     // Update to active
     view.setNodeStatus("T1", "active");
     lines = view.render(40);
-    plain = lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    plain = stripAnsi(lines.join("\n"));
     expect(plain).toContain("Task");
     expect(statusOf(view, "T1")).toBe("active");
 
     // Update to done
     view.setNodeStatus("T1", "done");
     lines = view.render(40);
-    plain = lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    plain = stripAnsi(lines.join("\n"));
     expect(plain).toContain("Task");
     expect(statusOf(view, "T1")).toBe("done");
   });
@@ -80,10 +81,7 @@ describe("GraphView", () => {
       "checkpoint:duckdb/fresh",
     ]);
 
-    const plain = view
-      .render(80)
-      .join("\n")
-      .replace(/\x1b\[[0-9;]*m/g, "");
+    const plain = stripAnsi(view.render(80).join("\n"));
 
     expect(plain).toContain("Review");
     expect(plain).toContain("llm:bash t2/8 1t");
@@ -177,8 +175,4 @@ describe("LogView", () => {
 
 function statusOf(view: GraphView, id: string): string | undefined {
   return (view as unknown as { nodes: Map<string, { status: string }> }).nodes.get(id)?.status;
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
 }

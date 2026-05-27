@@ -31,10 +31,7 @@ export function createPiWendaoNativeExtension(
   return (pi: ExtensionAPI) => {
     registerAnthropicEnvProvider(pi);
     registerWorkflowMessageRenderers(pi);
-    registerServerlessMemoryRecallInjection(
-      pi,
-      options.serverlessMemoryRecallPacket,
-    );
+    registerServerlessMemoryRecallInjection(pi, options.serverlessMemoryRecallPacket);
     registerServerlessMemoryRecallTool(pi, { cwd: options.invocationCwd });
     registerSessionLifecycleAliases(pi);
 

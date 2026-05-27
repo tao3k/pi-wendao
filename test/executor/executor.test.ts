@@ -12,12 +12,9 @@ import {
 import type { PiWendaoAgentHost } from "../../src/executor/agent-host.js";
 import { buildPiWendaoConfigMap } from "../../src/executor/bpmn-config.js";
 import { buildQianjiArgs, QianjiHostSession, runQianjiCli } from "../../src/executor/qianji-cli.js";
+import { stripAnsi } from "../../src/ui/ansi.js";
 import { GraphView } from "../../src/ui/graph-view.js";
-import {
-  nativeDefinitions,
-  nativeHumanTask,
-  nativeServiceTask,
-} from "../support/native-bpmn.js";
+import { nativeDefinitions, nativeHumanTask, nativeServiceTask } from "../support/native-bpmn.js";
 
 const fixturesDir = join(import.meta.dirname, "../fixtures");
 const tempDirs: string[] = [];
@@ -222,10 +219,7 @@ setTimeout(() => {}, 200);
     expect(
       internals.edges.find((edge) => edge.source === "Task_1" && edge.target === "End_1")?.taken,
     ).toBe(true);
-    const plainGraph = graphView
-      .render(80)
-      .join("\n")
-      .replace(/\x1b\[[0-9;]*m/g, "");
+    const plainGraph = stripAnsi(graphView.render(80).join("\n"));
     expect(plainGraph).toContain("( )");
     expect(plainGraph).toContain("List files");
     expect(plainGraph).toContain("(*)");
@@ -793,9 +787,7 @@ setTimeout(() => {}, 200);
     const internals = graphView as unknown as {
       nodes: Map<string, { details?: string[] }>;
     };
-    expect(internals.nodes.get("Task_ManualCheckpoint")?.details).toContain(
-      "host:manual:1 human",
-    );
+    expect(internals.nodes.get("Task_ManualCheckpoint")?.details).toContain("host:manual:1 human");
   });
 
   it("maps userTask replies only to the streamed native result output", async () => {
@@ -1998,6 +1990,7 @@ console.log("# BPMN Run\\n\\nOutcome: completed\\n\\n## Trace\\n" + fence + "jso
   );
 }
 
+/* eslint-disable no-unused-vars -- kept as external-host script fixtures for nearby regression variants */
 function writeFakeExternalHostQianjiScript(scriptPath: string): void {
   writeFileSync(
     scriptPath,
@@ -3025,6 +3018,7 @@ process.exit(64);
     "utf-8",
   );
 }
+/* eslint-enable no-unused-vars */
 
 function tokenScopedServiceTaskWorkflow(): string {
   return nativeDefinitions(

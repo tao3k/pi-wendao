@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolveModel } from "../model-resolver.js";
 import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
+import type { Branded } from "../../types/domain.js";
 import { readServerlessMemoryRecallPacketFile } from "./file.js";
 import {
   PI_WENDAO_MEMORY_RECALL_CUSTOM_TYPE,
@@ -41,9 +42,18 @@ export interface ServerlessMemoryRecallBenchmarkOptions {
   variants?: ServerlessMemoryRecallBenchmarkVariant[];
 }
 
-export type ServerlessMemoryRecallBenchmarkPacketPath = string;
-export type ServerlessMemoryRecallBenchmarkApiKey = string;
-export type ServerlessMemoryRecallBenchmarkEvidencePath = string;
+export type ServerlessMemoryRecallBenchmarkPacketPath = Branded<
+  string,
+  "ServerlessMemoryRecallBenchmarkPacketPath"
+>;
+export type ServerlessMemoryRecallBenchmarkApiKey = Branded<
+  string,
+  "ServerlessMemoryRecallBenchmarkApiKey"
+>;
+export type ServerlessMemoryRecallBenchmarkEvidencePath = Branded<
+  string,
+  "ServerlessMemoryRecallBenchmarkEvidencePath"
+>;
 
 export interface ServerlessMemoryRecallBenchmarkResult {
   schema: "xiuxian_wendao.serverless_memory_recall_benchmark.v1";
@@ -92,20 +102,12 @@ export async function runServerlessMemoryRecallBenchmark(
 ): Promise<ServerlessMemoryRecallBenchmarkResult> {
   const packet = readServerlessMemoryRecallPacketFile(options.packetPath);
   const expected = expectedRecallFacts(packet);
-  const resolved = await resolveModel(
-    options.modelPattern,
-    options.provider,
-    options.apiKey,
-    [],
-  );
+  const resolved = await resolveModel(options.modelPattern, options.provider, options.apiKey, []);
   if (!resolved.apiKey && !resolved.headers) {
     throw new Error("serverless memory recall benchmark requires configured model auth");
   }
   if (resolved.apiKey) {
-    resolved.services.authStorage.setRuntimeApiKey(
-      resolved.model.provider,
-      resolved.apiKey,
-    );
+    resolved.services.authStorage.setRuntimeApiKey(resolved.model.provider, resolved.apiKey);
   }
 
   const variants = options.variants ?? ["section-only", "property-only", "org-elements"];
@@ -155,16 +157,11 @@ async function runBenchmarkVariant(input: {
     render: renderOptionsForVariant(input.variant),
   });
   const sessionManager = SessionManager.inMemory(input.cwd);
-  sessionManager.appendCustomMessageEntry(
-    PI_WENDAO_MEMORY_RECALL_CUSTOM_TYPE,
-    content,
-    false,
-    {
-      schema: SERVERLESS_MEMORY_RECALL_PACKET_SCHEMA,
-      variant: input.variant,
-      rowCount: input.packet.rows.length,
-    },
-  );
+  sessionManager.appendCustomMessageEntry(PI_WENDAO_MEMORY_RECALL_CUSTOM_TYPE, content, false, {
+    schema: SERVERLESS_MEMORY_RECALL_PACKET_SCHEMA,
+    variant: input.variant,
+    rowCount: input.packet.rows.length,
+  });
   const { session } = await createAgentSessionFromServices({
     services: input.services,
     sessionManager,
@@ -236,7 +233,6 @@ interface ExpectedRecallFacts {
 function expectedRecallFacts(packet: ServerlessMemoryRecallPacket): ExpectedRecallFacts[] {
   const rows = packet.rows
     .map((row) => {
-      const claim = row.memoryObjects.find((object) => object.kind === "claim")?.value ?? "";
       const primaryObject = primaryExpectedMemoryObject(row.memoryObjects);
       const elementEvidence =
         row.matchedOrgElements.find((element) => element.kind === "paragraph")?.sourceRaw.trim() ??
@@ -291,7 +287,9 @@ function scoreBenchmarkAnswer(
       orgid: expected.orgid,
       passedOrgid: !hasPromptError && answerText.includes(expected.orgid),
       passedClaim:
-        !hasPromptError && answerText.includes(expected.orgid) && answerText.includes(expected.claim),
+        !hasPromptError &&
+        answerText.includes(expected.orgid) &&
+        answerText.includes(expected.claim),
       passedSupportSummary: !hasPromptError && supportHits.length >= threshold,
       supportTermHits: supportHits,
       supportTermThreshold: threshold,
@@ -371,10 +369,7 @@ function collectAssistantEvidence(session: AgentSession): {
     if (event.type === "message_start" && event.message.role === "assistant") {
       text = "";
     }
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       text += event.assistantMessageEvent.delta;
     }
   });
@@ -410,8 +405,9 @@ function summarizeAssistantMessages(session: AgentSession): {
   }
   const content = Array.isArray(lastAssistant.content) ? lastAssistant.content : [];
   const text = content
-    .filter((block): block is { type: "text"; text: string } =>
-      isRecord(block) && block.type === "text" && typeof block.text === "string",
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        isRecord(block) && block.type === "text" && typeof block.text === "string",
     )
     .map((block) => block.text)
     .join("");
@@ -419,12 +415,9 @@ function summarizeAssistantMessages(session: AgentSession): {
     text,
     count,
     roles,
-    stopReason:
-      typeof lastAssistant.stopReason === "string" ? lastAssistant.stopReason : undefined,
+    stopReason: typeof lastAssistant.stopReason === "string" ? lastAssistant.stopReason : undefined,
     errorMessage:
-      typeof lastAssistant.errorMessage === "string"
-        ? lastAssistant.errorMessage
-        : undefined,
+      typeof lastAssistant.errorMessage === "string" ? lastAssistant.errorMessage : undefined,
   };
 }
 

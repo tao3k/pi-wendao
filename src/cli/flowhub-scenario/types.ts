@@ -17,9 +17,7 @@ export interface FlowhubScenarioResolution {
 }
 
 export interface FlowhubScenarioRegistryProvider {
-  loadRegistry(
-    options: FlowhubScenarioRegistryProviderOptions,
-  ): Promise<unknown>;
+  loadRegistry(options: FlowhubScenarioRegistryProviderOptions): Promise<unknown>;
 }
 
 export interface FlowhubScenarioRegistryProviderOptions {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { QianjiInteractionChoice } from "../../executor/agent-host.js";
+import { runPiWendaoEffect } from "../../effect.js";
 import { WorkflowInterruptedError, waitForWorkflowInterrupt } from "../../executor/interrupt.js";
 import type { PlannerReplyRequest } from "../../ui/renderer.js";
 import { requestQianjiInteractionReply } from "../qianji-interaction-prompt.js";
@@ -37,7 +38,9 @@ export async function requestNativeWorkflowInputReply({
 }: NativeWorkflowInputReplyRequest): Promise<string> {
   if (!ctx.hasUI) {
     if (isWorkflowHumanInput(request)) {
-      throw new WorkflowInterruptedError("Workflow input requires native UI; checkpoint preserved.");
+      throw new WorkflowInterruptedError(
+        "Workflow input requires native UI; checkpoint preserved.",
+      );
     }
     return Promise.resolve(fallbackReply(request));
   }
@@ -142,7 +145,7 @@ async function requestPiAskWorkflowInput(
     const answer = await withNativeWorkflowUiEscScope(() =>
       Promise.race([
         requestQianjiInteractionReply(ctx, request, signal),
-        waitForWorkflowInterrupt(signal),
+        runPiWendaoEffect(waitForWorkflowInterrupt(signal)),
       ]),
     );
     if (answer === undefined)
@@ -151,7 +154,7 @@ async function requestPiAskWorkflowInput(
   }
   const result = await Promise.race([
     askFlow(ctx, workflowInputAskParams(details, request)),
-    waitForWorkflowInterrupt(signal),
+    runPiWendaoEffect(waitForWorkflowInterrupt(signal)),
   ]);
   return answerFromAskResult(result, request);
 }

@@ -52,13 +52,15 @@ export function summarizeMarkdownCorpusBenchmarkReport(
       (row) => (row.liveRetryCount ?? 0) > 0 && row.liveStatus === "completed",
     ).length,
     totalLiveAttemptCount: rows.reduce((sum, row) => sum + (row.liveAttemptCount ?? 0), 0),
-    liveAgentCandidatePoolMode: rows.find((row) => row.liveCandidatePoolMode)?.liveCandidatePoolMode,
+    liveAgentCandidatePoolMode: rows.find((row) => row.liveCandidatePoolMode)
+      ?.liveCandidatePoolMode,
     liveAgentMode: options.liveAgentMode ?? "branch-judgement",
     liveBatchCount: uniqueBatchRows.length,
     liveBatchSize: options.liveAgentBatchSize,
     totalLiveBatchDurationMs: batchDurations.reduce((sum, duration) => sum + duration, 0),
     maxLiveBatchDurationMs: batchDurations.length > 0 ? Math.max(...batchDurations) : 0,
-    liveQianjiConcurrency: options.liveQianjiConcurrency ?? (live ? DEFAULT_LIVE_QIANJI_CONCURRENCY : 0),
+    liveQianjiConcurrency:
+      options.liveQianjiConcurrency ?? (live ? DEFAULT_LIVE_QIANJI_CONCURRENCY : 0),
     traceDataPlane: options.traceDataPlane ?? WENDAO_NO_DATA_PLANE,
     traceControlEnvelope: options.traceControlEnvelope ?? WENDAO_PROCESS_ARGS_CONTROL_PLANE,
     rustBridgeSession: options.rustBridgeSession ?? false,
@@ -67,16 +69,14 @@ export function summarizeMarkdownCorpusBenchmarkReport(
       (sum, duration) => sum + duration,
       0,
     ),
-    maxCandidateDiscoveryMs: candidateDiscoveryDurations.length > 0
-      ? Math.max(...candidateDiscoveryDurations)
-      : 0,
+    maxCandidateDiscoveryMs:
+      candidateDiscoveryDurations.length > 0 ? Math.max(...candidateDiscoveryDurations) : 0,
     totalRouteMaterializationMs: routeMaterializationDurations.reduce(
       (sum, duration) => sum + duration,
       0,
     ),
-    maxRouteMaterializationMs: routeMaterializationDurations.length > 0
-      ? Math.max(...routeMaterializationDurations)
-      : 0,
+    maxRouteMaterializationMs:
+      routeMaterializationDurations.length > 0 ? Math.max(...routeMaterializationDurations) : 0,
     wallDurationMs: options.wallDurationMs ?? 0,
     totalLiveDurationMs: liveDurations.reduce((sum, duration) => sum + duration, 0),
     maxLiveDurationMs: liveDurations.length > 0 ? Math.max(...liveDurations) : 0,

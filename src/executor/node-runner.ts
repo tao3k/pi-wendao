@@ -105,9 +105,15 @@ async function runPiAiTask(
     .map((name) => toolRegistry.get(name))
     .map((tool) =>
       tool
-        ? applyToolScope(tool, request.config.toolScopes ?? [], cwd, request.activityId, (error) => {
-            toolScopeViolation = error;
-          })
+        ? applyToolScope(
+            tool,
+            request.config.toolScopes ?? [],
+            cwd,
+            request.activityId,
+            (error) => {
+              toolScopeViolation = error;
+            },
+          )
         : tool,
     )
     .filter((t): t is PiWendaoAgentTool<any> => t !== undefined);
@@ -214,11 +220,18 @@ function pathWithinScope(rawPath: string, rawScope: string, cwd: string): boolea
 }
 
 function prefixBeforeWildcard(value: string): string {
-  const wildcardIndex = value.search(/[*?\[]/);
+  const wildcardIndex = firstWildcardIndex(value);
   if (wildcardIndex === -1) return value;
   const prefix = value.slice(0, wildcardIndex);
   const slash = Math.max(prefix.lastIndexOf("/"), prefix.lastIndexOf("\\"));
   return slash === -1 ? "." : prefix.slice(0, slash) || ".";
+}
+
+function firstWildcardIndex(value: string): number {
+  const indices = [value.indexOf("*"), value.indexOf("?"), value.indexOf("[")].filter(
+    (index) => index !== -1,
+  );
+  return indices.length === 0 ? -1 : Math.min(...indices);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -290,10 +303,14 @@ async function runPiAiToolLoop(options: {
         if (violation) throw violation;
         throwIfWorkflowInterrupted(options.signal);
         const messages = session.messages.filter(isPiWendaoAgentMessage);
-        const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+        const lastAssistant = [...messages]
+          .reverse()
+          .find((message) => message.role === "assistant");
         if (lastAssistant?.stopReason === "error" || lastAssistant?.stopReason === "aborted") {
           if (options.signal?.aborted) throw new WorkflowInterruptedError();
-          throw new Error(lastAssistant.errorMessage ?? `model stopped: ${lastAssistant.stopReason}`);
+          throw new Error(
+            lastAssistant.errorMessage ?? `model stopped: ${lastAssistant.stopReason}`,
+          );
         }
         return messages;
       } finally {

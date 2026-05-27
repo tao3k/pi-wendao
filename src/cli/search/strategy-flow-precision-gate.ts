@@ -95,7 +95,9 @@ function printPlan(plan: SearchStrategyFlowPrecisionGatePlan): void {
   }
 }
 
-function parseCliArgs(argv: string[]): SearchStrategyFlowPrecisionGateOptions & { printPlan: boolean } {
+function parseCliArgs(
+  argv: string[],
+): SearchStrategyFlowPrecisionGateOptions & { printPlan: boolean } {
   const options: SearchStrategyFlowPrecisionGateOptions & { printPlan: boolean } = {
     printPlan: false,
   };

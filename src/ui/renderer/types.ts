@@ -1,6 +1,14 @@
 import type { GraphView } from "../graph-view.js";
 import type { QianjiInteraction } from "../../executor/agent-host.js";
 import type { PiWendaoAgentEvent } from "../../executor/agent-runtime-types.js";
+import type {
+  ActivityId,
+  AgentId,
+  NodeId,
+  QianjiNodeKind,
+  QianjiNodeStatus,
+  ToolCallId,
+} from "../../types/domain.js";
 
 export interface Renderer {
   graphView: GraphView;
@@ -33,8 +41,13 @@ export interface PlannerReplyRequest {
 }
 
 export type QianjiTraceLogEvent =
-  | { kind: "node_status"; node_id: string; node_kind?: string | null; status: string }
-  | { kind: "flow_take"; source_id: string; target_id: string };
+  | {
+      kind: "node_status";
+      node_id: NodeId;
+      node_kind?: QianjiNodeKind | null;
+      status: QianjiNodeStatus;
+    }
+  | { kind: "flow_take"; source_id: NodeId; target_id: NodeId };
 
 export interface QianjiHostWorkLogEvent {
   activityId: string;
@@ -51,14 +64,14 @@ export interface QianjiHostWorkLogEvent {
 export type PiSubagentsHostLogEvent =
   | {
       type: "spawned" | "resumed" | "waiting";
-      activityId: string;
-      agentId: string;
+      activityId: ActivityId;
+      agentId: AgentId;
       description: string;
     }
   | {
       type: "result";
-      activityId: string;
-      agentId: string;
+      activityId: ActivityId;
+      agentId: AgentId;
       description: string;
       resultText: string;
     };
@@ -66,20 +79,20 @@ export type PiSubagentsHostLogEvent =
 export type PiSubagentsHostToolLogEvent =
   | {
       type: "tool_call";
-      activityId: string;
-      agentId?: string;
+      activityId: ActivityId;
+      agentId?: AgentId;
       description: string;
       toolName: string;
-      toolCallId: string;
+      toolCallId: ToolCallId;
       input: Record<string, unknown>;
     }
   | {
       type: "tool_result";
-      activityId: string;
-      agentId?: string;
+      activityId: ActivityId;
+      agentId?: AgentId;
       description: string;
       toolName: string;
-      toolCallId: string;
+      toolCallId: ToolCallId;
       input: Record<string, unknown>;
       content: unknown;
       details?: unknown;

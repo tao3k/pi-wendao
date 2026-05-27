@@ -1,4 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { ansiReset, readAnsiSequenceAt } from "../ansi.js";
+
+export { stripAnsi } from "../ansi.js";
 
 export function visibleSlice(text: string, start: number, width: number): string {
   if (width <= 0) return "";
@@ -8,11 +11,11 @@ export function visibleSlice(text: string, start: number, width: number): string
   let sawAnsi = false;
 
   for (let index = 0; index < text.length; ) {
-    const ansi = text.slice(index).match(/^\x1b\[[0-9;]*m/);
+    const ansi = readAnsiSequenceAt(text, index);
     if (ansi) {
       sawAnsi = true;
-      if (column >= start && emitted < width) result += ansi[0];
-      index += ansi[0].length;
+      if (column >= start && emitted < width) result += ansi;
+      index += ansi.length;
       continue;
     }
 
@@ -31,17 +34,13 @@ export function visibleSlice(text: string, start: number, width: number): string
     if (charStart >= start && emitted >= width) break;
   }
 
-  if (sawAnsi && result) result += "\x1b[0m";
+  if (sawAnsi && result) result += ansiReset();
   return truncateToWidth(result, width);
 }
 
 export function truncLabel(label: string, max: number): string {
   if (label.length <= max) return label;
   return label.slice(0, max - 1) + "\u2026";
-}
-
-export function stripAnsi(str: string): string {
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 export function arraysEqual(left: string[], right: string[]): boolean {

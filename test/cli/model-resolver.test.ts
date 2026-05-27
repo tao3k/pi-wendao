@@ -131,9 +131,7 @@ describe("resolveModel", () => {
       apiKey: "openrouter-direct-api-key",
       source: "env:OPENROUTER_API_KEY",
     });
-    await expect(authStorage.getApiKey("openrouter")).resolves.toBe(
-      "openrouter-direct-api-key",
-    );
+    await expect(authStorage.getApiKey("openrouter")).resolves.toBe("openrouter-direct-api-key");
   });
 
   it("uses the DeepSeek Anthropic endpoint for DeepSeek model ids by default", async () => {
@@ -156,7 +154,9 @@ describe("resolveModel", () => {
       "https://api.deepseek.com/anthropic",
     );
     expect(result.modelRegistry.getAvailable()).toEqual(
-      expect.arrayContaining([expect.objectContaining({ provider: "anthropic", id: "deepseek-v4-pro" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ provider: "anthropic", id: "deepseek-v4-pro" }),
+      ]),
     );
     expect(warnings.join("\n")).not.toContain('Tool "intercom" conflicts');
   });
@@ -203,7 +203,9 @@ describe("resolveModel", () => {
     expect(result.model.baseUrl).toBe("https://api.deepseek.com/anthropic");
     expect(result.apiKey).toBeUndefined();
     expect(result.modelRegistry.getAvailable()).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ provider: "anthropic", id: "deepseek-v4-pro" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ provider: "anthropic", id: "deepseek-v4-pro" }),
+      ]),
     );
   });
 

@@ -17,10 +17,7 @@ const CANONICAL_TOKEN_LITERALS = [
   WENDAO_PROCESS_ARGS_CONTROL_PLANE,
   WENDAO_JSON_CONTROL_PLANE,
 ] as const;
-const ALLOWED_LITERAL_FILES = [
-  BOUNDARY_FILE,
-  THIS_TEST_FILE,
-] as const;
+const ALLOWED_LITERAL_FILES = [BOUNDARY_FILE, THIS_TEST_FILE] as const;
 
 describe("Arrow boundary token literals", () => {
   it("keeps canonical transport tokens isolated to the JS boundary module", () => {

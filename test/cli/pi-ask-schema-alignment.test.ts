@@ -149,12 +149,12 @@ describe("native qianji interaction to pi-ask schema alignment", () => {
 
       const answer = await withTimeout(
         requestNativeWorkflowInputReply({
-        pi: fakePi() as never,
-        ctx: fakeWorkflowContext() as never,
-        workflowPath: "/tmp/pi-ask-interactions.bpmn",
-        request: testCase.request,
-        askFlow: askFlow,
-      }),
+          pi: fakePi() as never,
+          ctx: fakeWorkflowContext() as never,
+          workflowPath: "/tmp/pi-ask-interactions.bpmn",
+          request: testCase.request,
+          askFlow: askFlow,
+        }),
       );
 
       expect(answer).toBe(testCase.expectedAnswer);

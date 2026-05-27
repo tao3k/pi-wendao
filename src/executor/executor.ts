@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { Effect } from "effect";
 import type { Model } from "@earendil-works/pi-ai";
 import type {
   ApiKey,
@@ -35,11 +36,7 @@ import {
 import { isObject } from "./data.js";
 import { mapHumanTaskReplyToOutputs } from "./human-task.js";
 import { isWorkflowInterruptedError, throwIfWorkflowInterrupted } from "./interrupt.js";
-import {
-  buildQianjiArgs,
-  defaultQianjiCommand,
-  runQianjiCli,
-} from "./qianji-cli.js";
+import { buildQianjiArgs, defaultQianjiCommand, runQianjiCli } from "./qianji-cli.js";
 import type {
   QianjiHostWorkClaim,
   QianjiHostWorkEvent,
@@ -51,6 +48,7 @@ import {
   isQianjiServerWorkflowExecutionError,
   runQianjiServerExternalHostLoop,
 } from "./qianji-server-workflow.js";
+import type { QianjiControlRecoveryApplyPolicy } from "./qianji-server/control-diagnostics.js";
 import {
   applyCheckpointGraphSnapshot,
   applyQianjiTrace,
@@ -59,6 +57,7 @@ import {
   resolveTraceFrameDelayMs,
   resultVariables,
 } from "./executor-runtime-state.js";
+import { effectFromPromise, runPiWendaoEffect, type PiWendaoEffectError } from "../effect.js";
 
 export type { QianjiHostWorkEvent, QianjiTraceEvent } from "./qianji-types.js";
 export { mapHumanTaskReplyToOutputs } from "./human-task.js";
@@ -87,6 +86,10 @@ export interface ExecuteOptions {
   qianjiWorkflowServerUrl?: string;
   /** qianji-server fresh-run policy. Defaults to resume-or-start for operator safety. */
   qianjiWorkflowStartMode?: "resume-or-start" | "start";
+  /** Explicitly apply the qianji-control recovery plan after qianji-server host failure evidence is recorded. */
+  qianjiControlApplyRecovery?: boolean;
+  /** Operator policy payload for explicit qianji-control recovery apply. */
+  qianjiControlRecoveryPolicy?: QianjiControlRecoveryApplyPolicy;
   /** Optional qianji event fixture. */
   eventFixturePath?: EventFixturePath;
   /** Raw JSON object merged after --var pairs for qianji --context-json. */
@@ -160,7 +163,13 @@ export interface HumanTaskPromptRequest {
 /**
  * Execute a BPMN workflow through the qianji CLI.
  */
-export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
+export function execute(
+  options: ExecuteOptions,
+): Effect.Effect<ExecuteResult, PiWendaoEffectError> {
+  return effectFromPromise("execute", () => executePromise(options));
+}
+
+async function executePromise(options: ExecuteOptions): Promise<ExecuteResult> {
   const tempDirs: string[] = [];
   try {
     throwIfWorkflowInterrupted(options.signal);
@@ -175,7 +184,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const instanceId = options.instanceId ?? `pi-wendao-${randomUUID()}`;
     const variables = {
       ...parseVariablePairs(options.variables),
-      ...(options.context ?? {}),
+      ...options.context,
     };
     const useRealHost =
       Boolean(options.model) || Boolean(options.agentHost) || Boolean(options.humanTaskHandler);
@@ -187,15 +196,17 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     if (options.graphView) {
       populateGraphViewFromBpmn(options.source, processId, options.graphView);
       if (options.instanceId) {
-        await applyCheckpointGraphSnapshot({
-          command,
-          sourcePath,
-          instanceId,
-          dmnPaths: options.dmnPaths ?? [],
-          cwd,
-          qianjiEnvironment,
-          options,
-        });
+        await runPiWendaoEffect(
+          applyCheckpointGraphSnapshot({
+            command,
+            sourcePath,
+            instanceId,
+            dmnPaths: options.dmnPaths ?? [],
+            cwd,
+            qianjiEnvironment,
+            options,
+          }),
+        );
       }
       options.onGraphReady?.();
     }
@@ -220,49 +231,55 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const traceFrameDelayMs = resolveTraceFrameDelayMs(options);
     const onTraceEvent = async (event: QianjiTraceEvent) => {
       applyQianjiTraceEvents([event], options);
-      if (traceFrameDelayMs > 0) await delay(traceFrameDelayMs);
+      if (traceFrameDelayMs > 0) await runPiWendaoEffect(delay(traceFrameDelayMs));
     };
     const cli = useRealHost
       ? options.qianjiWorkflowServerUrl
-        ? await runQianjiServerExternalHostLoop({
-            serverUrl: options.qianjiWorkflowServerUrl,
-            sourcePath,
-            processId,
-            instanceId,
-            context: variables,
-            dmnPaths: options.dmnPaths ?? [],
-            cwd,
-            source: options.source,
-            startAtNode: options.startAtNode,
-            options,
-            completionFixture,
-            onTraceEvent,
-          })
-        : await runQianjiExternalHostLoop({
+        ? await runPiWendaoEffect(
+            runQianjiServerExternalHostLoop({
+              serverUrl: options.qianjiWorkflowServerUrl,
+              sourcePath,
+              processId,
+              instanceId,
+              context: variables,
+              dmnPaths: options.dmnPaths ?? [],
+              cwd,
+              source: options.source,
+              startAtNode: options.startAtNode,
+              options,
+              completionFixture,
+              onTraceEvent,
+            }),
+          )
+        : await runPiWendaoEffect(
+            runQianjiExternalHostLoop({
+              command,
+              sourcePath,
+              processId,
+              instanceId,
+              context: variables,
+              dmnPaths: options.dmnPaths ?? [],
+              eventFixturePath: options.eventFixturePath,
+              cwd,
+              source: options.source,
+              startAtNode: options.startAtNode,
+              options,
+              qianjiEnvironment,
+              completionFixture,
+              onTraceEvent,
+              tempDirs,
+            }),
+          )
+      : await runPiWendaoEffect(
+          runQianjiCli({
             command,
-            sourcePath,
-            processId,
-            instanceId,
-            context: variables,
-            dmnPaths: options.dmnPaths ?? [],
-            eventFixturePath: options.eventFixturePath,
+            args,
             cwd,
-            source: options.source,
-            startAtNode: options.startAtNode,
-            options,
-            qianjiEnvironment,
-            completionFixture,
             onTraceEvent,
-            tempDirs,
-          })
-      : await runQianjiCli({
-          command,
-          args,
-          cwd,
-          onTraceEvent,
-          signal: options.signal,
-          env: qianjiEnvironment,
-        });
+            signal: options.signal,
+            env: qianjiEnvironment,
+          }),
+        );
     const rawOutput = [cli.stdout, cli.stderr].filter(Boolean).join("\n");
     options.onCliOutput?.(rawOutput);
     if (!cli.streamedTrace) {

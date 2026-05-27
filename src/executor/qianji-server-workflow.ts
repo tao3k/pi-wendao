@@ -1,19 +1,16 @@
-import {
-  buildPiWendaoConfigMap,
-  type HostCompletionFixture,
-} from "./bpmn-config.js";
+import type { Effect } from "effect";
+import { buildPiWendaoConfigMap, type HostCompletionFixture } from "./bpmn-config.js";
 import { isWorkflowInterruptedError, throwIfWorkflowInterrupted } from "./interrupt.js";
 import { createPiAiHost } from "./node-runner.js";
 import type { ExecuteOptions } from "./executor.js";
 import type {
-  PiWendaoAgentHost,
-  PiWendaoQianjiCheckpointFeedback,
-} from "./agent-host.js";
-import type {
-  QianjiCliResult,
-  QianjiHostWork,
-  QianjiTraceEvent,
-} from "./qianji-types.js";
+  InstanceId,
+  ProcessId,
+  QianjiWorkflowServerUrl,
+  SourcePath,
+} from "../types/domain.js";
+import type { PiWendaoAgentHost, PiWendaoQianjiCheckpointFeedback } from "./agent-host.js";
+import type { QianjiCliResult, QianjiHostWork, QianjiTraceEvent } from "./qianji-types.js";
 import {
   applyQianjiHostWorkGraph,
   appendCliResult,
@@ -26,19 +23,26 @@ import {
 import { type HostCompletionResult, runPendingHostWork } from "./executor-host-loop.js";
 import { WorkflowStallGuard } from "./stall-guard.js";
 import {
+  applyHostWorkFailureRecovery,
+  loadHostWorkFailureDiagnostics,
+} from "./qianji-server/control-diagnostics.js";
+import {
+  assertWorkflowServerCapabilities,
   completeHostWork,
   completeHostWorkBatch,
+  failHostWork,
   resumeOrStartWorkflow,
   type QianjiServerPendingHostWork,
   type QianjiServerWorkflowHttpOptions,
   type QianjiServerWorkflowResponse,
 } from "./qianji-server/http.js";
+import { effectFromPromise, runPiWendaoEffect, type PiWendaoEffectError } from "../effect.js";
 
-interface QianjiServerExternalHostLoopOptions {
-  serverUrl: string;
-  sourcePath: string;
-  processId: string;
-  instanceId: string;
+export interface QianjiServerExternalHostLoopOptionsDto {
+  serverUrl: QianjiWorkflowServerUrl;
+  sourcePath: SourcePath;
+  processId: ProcessId;
+  instanceId: InstanceId;
   context: Record<string, unknown>;
   dmnPaths: string[];
   cwd: string;
@@ -48,6 +52,8 @@ interface QianjiServerExternalHostLoopOptions {
   completionFixture?: HostCompletionFixture;
   onTraceEvent: (event: QianjiTraceEvent) => void | Promise<void>;
 }
+
+export type QianjiServerExternalHostLoopOptions = QianjiServerExternalHostLoopOptionsDto;
 
 export class QianjiServerWorkflowExecutionError extends Error {
   readonly result: QianjiCliResult;
@@ -65,10 +71,12 @@ export function isQianjiServerWorkflowExecutionError(
   return error instanceof QianjiServerWorkflowExecutionError;
 }
 
-export async function runQianjiServerExternalHostLoop(
+export function runQianjiServerExternalHostLoop(
   options: QianjiServerExternalHostLoopOptions,
-): Promise<QianjiCliResult> {
-  return runQianjiServerHostLoop(options);
+): Effect.Effect<QianjiCliResult, PiWendaoEffectError> {
+  return effectFromPromise("runQianjiServerExternalHostLoop", () =>
+    runQianjiServerHostLoop(options),
+  );
 }
 
 async function runQianjiServerHostLoop(
@@ -91,7 +99,8 @@ async function runQianjiServerHostLoop(
   };
 
   const httpOptions = workflowHttpOptions(options);
-  let latest = await resumeOrStartWorkflow(httpOptions);
+  await runPiWendaoEffect(assertWorkflowServerCapabilities(httpOptions));
+  let latest = await runPiWendaoEffect(resumeOrStartWorkflow(httpOptions));
   appendCliResult(aggregate, toCliResult(latest));
 
   let guard = 0;
@@ -125,20 +134,44 @@ async function runQianjiServerHostLoop(
 
     let hostCompletions: HostCompletionResult[] | undefined;
     try {
-      hostCompletions = await runPendingHostWork({
-        agentHost,
-        humanTaskHandler: options.options.humanTaskHandler,
-        piWendaoConfigs,
-        pendingHostWork,
-        variables: options.context,
-        processId: options.processId,
-        instanceId: options.instanceId,
-        checkpoint,
-        completionFixture: options.completionFixture,
-        signal: options.options.signal,
-      });
+      hostCompletions = await runPiWendaoEffect(
+        runPendingHostWork({
+          agentHost,
+          humanTaskHandler: options.options.humanTaskHandler,
+          piWendaoConfigs,
+          pendingHostWork,
+          variables: options.context,
+          processId: options.processId,
+          instanceId: options.instanceId,
+          checkpoint,
+          completionFixture: options.completionFixture,
+          signal: options.options.signal,
+        }),
+      );
     } catch (error) {
       if (!isWorkflowInterruptedError(error)) {
+        const evidenceErrors = await recordHostWorkFailureEvidence(
+          httpOptions,
+          pendingHostWork,
+          error,
+        );
+        const diagnostics = options.options.qianjiControlApplyRecovery
+          ? await runPiWendaoEffect(
+              applyHostWorkFailureRecovery(
+                httpOptions,
+                options.options.qianjiControlRecoveryPolicy,
+              ),
+            )
+          : await runPiWendaoEffect(loadHostWorkFailureDiagnostics(httpOptions));
+        applyHostWorkFailureDiagnosticsGraphDetails(
+          pendingHostWork,
+          diagnostics.graphDetails,
+          diagnostics.targetNodeIds,
+          options.options,
+        );
+        aggregate.stderr = [aggregate.stderr.trim(), ...evidenceErrors, ...diagnostics.logLines]
+          .filter(Boolean)
+          .join("\n");
         await emitHostWorkTerminalTrace(pendingHostWork, "failed", onTraceEvent);
       }
       throw qianjiServerWorkflowExecutionError(error, aggregate);
@@ -151,7 +184,7 @@ async function runQianjiServerHostLoop(
     }
     if (hostCompletions.length > 1) {
       try {
-        latest = await completeHostWorkBatch(httpOptions, hostCompletions);
+        latest = await runPiWendaoEffect(completeHostWorkBatch(httpOptions, hostCompletions));
       } catch (error) {
         await emitHostWorkTerminalTrace(pendingHostWork, "failed", onTraceEvent);
         throw qianjiServerWorkflowExecutionError(error, aggregate);
@@ -162,12 +195,16 @@ async function runQianjiServerHostLoop(
       if (latestResult.exitCode !== 0) {
         await emitHostWorkTerminalTrace(pendingHostWork, "failed", onTraceEvent);
       } else {
-        await emitClearedCompletionTerminalTrace(hostCompletions, latestResult.hostWork, onTraceEvent);
+        await emitClearedCompletionTerminalTrace(
+          hostCompletions,
+          latestResult.hostWork,
+          onTraceEvent,
+        );
       }
     } else {
       for (const completion of hostCompletions) {
         try {
-          latest = await completeHostWork(httpOptions, completion);
+          latest = await runPiWendaoEffect(completeHostWork(httpOptions, completion));
         } catch (error) {
           await emitCompletionTerminalTrace(completion, "failed", onTraceEvent);
           throw qianjiServerWorkflowExecutionError(error, aggregate);
@@ -189,6 +226,49 @@ async function runQianjiServerHostLoop(
   const finalResult = toCliResult(latest);
   aggregate.exitCode = finalResult.exitCode;
   return aggregate;
+}
+
+async function recordHostWorkFailureEvidence(
+  httpOptions: QianjiServerWorkflowHttpOptions,
+  pendingHostWork: QianjiHostWork[],
+  error: unknown,
+): Promise<string[]> {
+  const evidenceErrors: string[] = [];
+  for (const work of pendingHostWork) {
+    try {
+      await runPiWendaoEffect(failHostWork(httpOptions, work, error));
+    } catch (evidenceError) {
+      const message =
+        evidenceError instanceof Error ? evidenceError.message : String(evidenceError);
+      evidenceErrors.push(`qianji server host-work failure evidence failed: ${message}`);
+    }
+  }
+  return evidenceErrors;
+}
+
+function applyHostWorkFailureDiagnosticsGraphDetails(
+  pendingHostWork: QianjiHostWork[],
+  details: string[],
+  targetNodeIds: string[],
+  options: ExecuteOptions,
+): void {
+  if (!options.graphView || details.length === 0) return;
+  const emitted = new Set<string>();
+  for (const nodeId of [
+    ...pendingHostWork.map((work) => work.activity_id?.trim() || work.node_id),
+    ...targetNodeIds,
+  ]) {
+    if (emitted.has(nodeId)) continue;
+    emitted.add(nodeId);
+    const current = options.graphView.getNodeDetails(nodeId);
+    options.graphView.setNodeDetails(nodeId, [
+      ...details,
+      ...current.filter(
+        (line) => !line.startsWith("recovery:") && !line.startsWith("recovery-action:"),
+      ),
+    ]);
+  }
+  options.onGraphUpdate?.();
 }
 
 function buildAgentHost(options: QianjiServerExternalHostLoopOptions): PiWendaoAgentHost {
@@ -248,7 +328,8 @@ function toCliResult(response: QianjiServerWorkflowResponse): QianjiCliResult {
 function toQianjiHostWork(work: QianjiServerPendingHostWork): QianjiHostWork {
   const kind = normalizeHostWorkKind(work.kind);
   const tokenId = typeof work.token_id === "number" ? work.token_id : -1;
-  const nodeId = work.node_id?.trim() || work.activity_id?.trim() || `node_${work.node_index ?? tokenId}`;
+  const nodeId =
+    work.node_id?.trim() || work.activity_id?.trim() || `node_${work.node_index ?? tokenId}`;
   return {
     kind,
     ...(work.process_id ? { process_id: work.process_id } : {}),
@@ -266,8 +347,8 @@ function toQianjiHostWork(work: QianjiServerPendingHostWork): QianjiHostWork {
 
 function hostWorkVariables(work: QianjiServerPendingHostWork): Record<string, unknown> {
   return {
-    ...(work.variables ?? {}),
-    ...(work.inputs ?? {}),
+    ...work.variables,
+    ...work.inputs,
   };
 }
 
@@ -395,7 +476,9 @@ function buildCheckpointFeedback(
   return {
     source: "qianji-server",
     ...(response.checkpoint_backend ? { backend: response.checkpoint_backend } : {}),
-    ...(response.checkpoint_saved !== undefined ? { saved: String(response.checkpoint_saved) } : {}),
+    ...(response.checkpoint_saved !== undefined
+      ? { saved: String(response.checkpoint_saved) }
+      : {}),
     ...(response.checkpoint_deleted !== undefined
       ? { deleted: String(response.checkpoint_deleted) }
       : {}),

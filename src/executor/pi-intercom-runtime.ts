@@ -1,4 +1,5 @@
 import type { PiWendaoAgentTool } from "./agent-runtime-types.js";
+import { runPiWendaoEffect } from "../effect.js";
 import type {
   PiLoadedExtensionsLike,
   PiRegisteredToolDefinition,
@@ -153,25 +154,33 @@ export function createPiIntercomClientFromRegisteredTools(
         replyTo: request.replyTo,
       });
       if (!result.isError) {
-        await options.correlation?.send({
-          to: sessionFromTarget(request.to),
-          text: request.message,
-          messageId: result.messageId,
-          attachments: request.attachments,
-          execution: request.execution,
-          now: request.now,
-        });
+        if (options.correlation) {
+          await runPiWendaoEffect(
+            options.correlation.send({
+              to: sessionFromTarget(request.to),
+              text: request.message,
+              messageId: result.messageId,
+              attachments: request.attachments,
+              execution: request.execution,
+              now: request.now,
+            }),
+          );
+        }
       }
       return result;
     },
     ask: async (request) => {
-      const pendingRecord = await options.correlation?.ask({
-        to: sessionFromTarget(request.to),
-        text: request.message,
-        attachments: request.attachments,
-        execution: request.execution,
-        now: request.now,
-      });
+      const pendingRecord = options.correlation
+        ? await runPiWendaoEffect(
+            options.correlation.ask({
+              to: sessionFromTarget(request.to),
+              text: request.message,
+              attachments: request.attachments,
+              execution: request.execution,
+              now: request.now,
+            }),
+          )
+        : undefined;
       const result = await execute({
         action: "ask",
         to: request.to,
@@ -182,12 +191,16 @@ export function createPiIntercomClientFromRegisteredTools(
       if (pendingRecord) {
         const now = request.now ?? Date.now();
         if (result.isError) {
-          await options.correlation?.markRecordFailed(pendingRecord.key, result.text, now);
+          await runPiWendaoEffect(
+            options.correlation!.markRecordFailed(pendingRecord.key, result.text, now),
+          );
         } else {
-          await options.correlation?.markRecordReplied(
-            pendingRecord.key,
-            replyMessageFromResult(result, pendingRecord.context.message.id, now),
-            now,
+          await runPiWendaoEffect(
+            options.correlation!.markRecordReplied(
+              pendingRecord.key,
+              replyMessageFromResult(result, pendingRecord.context.message.id, now),
+              now,
+            ),
           );
         }
       }
@@ -203,15 +216,17 @@ export function createPiIntercomClientFromRegisteredTools(
       });
       if (!result.isError && options.correlation) {
         try {
-          await options.correlation.reply({
-            text: request.message,
-            to: request.to,
-            replyTo: request.replyTo,
-            messageId: result.messageId,
-            attachments: request.attachments,
-            execution: request.execution,
-            now: request.now,
-          });
+          await runPiWendaoEffect(
+            options.correlation.reply({
+              text: request.message,
+              to: request.to,
+              replyTo: request.replyTo,
+              messageId: result.messageId,
+              attachments: request.attachments,
+              execution: request.execution,
+              now: request.now,
+            }),
+          );
         } catch {
           // pi-intercom may resolve replies with its own in-extension tracker.
         }

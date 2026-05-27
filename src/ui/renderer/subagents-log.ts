@@ -117,7 +117,8 @@ function summarizePiSubagentsToolUpdate(update: unknown):
 function normalizePiSubagentsActivity(activity: string | undefined): string {
   const trimmed = activity?.trim() ?? "";
   if (!trimmed) return "";
-  if (/^`{1,3}/.test(trimmed) || /^[{\[]/.test(trimmed)) return "responding";
+  const first = trimmed[0];
+  if (/^`{1,3}/.test(trimmed) || first === "{" || first === "[") return "responding";
   return trimmed;
 }
 

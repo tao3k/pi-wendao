@@ -285,15 +285,7 @@ function rustBridgeArgs(
 ): string[] {
   const args =
     mode === "cargo"
-      ? [
-          "run",
-          "-q",
-          "-p",
-          "xiuxian-julia-core",
-          "--bin",
-          "wendaograph_search_strategy_flow",
-          "--",
-        ]
+      ? ["run", "-q", "-p", "xiuxian-julia-core", "--bin", "wendaograph_search_strategy_flow", "--"]
       : [];
   args.push("--intent", options.intent);
   if (options.queryUnderstandingArrowIpcPath) {
@@ -324,15 +316,7 @@ function rustBridgeSessionArgs(
 ): string[] {
   const args =
     mode === "cargo"
-      ? [
-          "run",
-          "-q",
-          "-p",
-          "xiuxian-julia-core",
-          "--bin",
-          "wendaograph_search_strategy_flow",
-          "--",
-        ]
+      ? ["run", "-q", "-p", "xiuxian-julia-core", "--bin", "wendaograph_search_strategy_flow", "--"]
       : [];
   if (options.flightBaseUrl) args.push("--flight-base-url", options.flightBaseUrl);
   if (options.flightTimeoutSeconds !== undefined) {
@@ -342,9 +326,7 @@ function rustBridgeSessionArgs(
   return args;
 }
 
-function renderOptionalBranchJudgementsTsv(
-  options: SearchStrategyFlowOptions,
-): string | undefined {
+function renderOptionalBranchJudgementsTsv(options: SearchStrategyFlowOptions): string | undefined {
   return options.branchJudgements && options.branchJudgements.length > 0
     ? renderSearchStrategyFlowBranchJudgementTsv(options.branchJudgements)
     : undefined;
@@ -357,7 +339,10 @@ async function writeOptionalQueryUnderstandingArrowIpcFile(
 
   const dir = await mkdtemp(join(tmpdir(), "pi-wendao-search-query-understanding-"));
   const path = join(dir, "query-understanding.arrow");
-  await writeFile(path, encodeSearchStrategyFlowQueryUnderstandingArrowIpc(options.queryUnderstanding));
+  await writeFile(
+    path,
+    encodeSearchStrategyFlowQueryUnderstandingArrowIpc(options.queryUnderstanding),
+  );
   return {
     path,
     cleanup: () => rm(dir, { force: true, recursive: true }),

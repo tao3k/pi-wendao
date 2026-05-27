@@ -158,8 +158,7 @@ function normalizeMemoryRecallParams(params: MemoryRecallToolParams): {
     limit: clampInteger(params.limit, 5, 1, 8),
     cached: params.cached === undefined ? true : params.cached === true,
     includeDone: params.includeDone === undefined ? true : params.includeDone === true,
-    includeArchived:
-      params.includeArchived === undefined ? true : params.includeArchived === true,
+    includeArchived: params.includeArchived === undefined ? true : params.includeArchived === true,
   };
 }
 

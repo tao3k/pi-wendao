@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
+import { stripAnsi } from "../../src/ui/ansi.js";
 import {
   formatArgsForLog,
   formatAssistantMessageForLog,
@@ -15,10 +16,6 @@ import {
   formatVariableValueForLog,
   waitForTerminalKey,
 } from "../../src/ui/renderer.js";
-
-function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
-}
 
 class FakeKeyInput extends EventEmitter {
   isTTY = true;
@@ -141,6 +138,23 @@ describe("renderer event formatting", () => {
     expect(lines).toEqual([
       "qianji run: blocked_on_host (checkpoint=sqlite, source=fresh, saved=yes, deleted=no, pending_host=1)",
       "qianji task complete: completed (checkpoint=sqlite, source=resumed, saved=yes, deleted=no)",
+    ]);
+  });
+
+  it("summarizes qianji control recovery reports with multiple actions", () => {
+    const lines = formatQianjiCliOutputForLog(
+      [
+        "# BPMN Control Recovery",
+        "Outcome: reported",
+        "Activities: total 2, failed 2, in-flight 0",
+        "Recovery actions: total 2, retry 1, review 1, terminal 0",
+        "Action: retry_activity Task_A",
+        "Action: review_retryable_activity Task_B",
+      ].join("\n"),
+    ).map(stripAnsi);
+
+    expect(lines).toEqual([
+      "qianji control recovery: reported (activities=total 2, failed 2, in-flight 0, recovery=total 2, retry 1, review 1, terminal 0, actions=2 retry_activity Task_A; review_retryable_activity Task_B)",
     ]);
   });
 

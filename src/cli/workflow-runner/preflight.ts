@@ -9,7 +9,11 @@ import { lintPiWendaoWorkflowContract } from "../../compiler/contract-lint.js";
 import { resolveDefaultQianjiCommand } from "../../qianji-command-resolution.js";
 import type { Renderer } from "../../ui/renderer.js";
 import { shellQuote } from "./qianji-show.js";
-import type { WorkflowLintPreflightParams, WorkflowLintPreflightResult, WorkflowRepairModel } from "../workflow-runner.js";
+import type {
+  WorkflowLintPreflightParams,
+  WorkflowLintPreflightResult,
+  WorkflowRepairModel,
+} from "../workflow-runner.js";
 
 const LINT_CACHE_VERSION = "pi-wendao-qianji-contract-lint-success-v2";
 
@@ -86,7 +90,11 @@ export async function runWorkflowLintPreflight(
       );
       return { success: false };
     }
-    workflowPath = await writeRepairedWorkflow(params.cwd, params.resolvedWorkflowPath, repairedXml);
+    workflowPath = await writeRepairedWorkflow(
+      params.cwd,
+      params.resolvedWorkflowPath,
+      repairedXml,
+    );
     repaired = true;
     params.renderer.appendLog(`qianji lint preflight wrote repaired BPMN: ${workflowPath}`);
   }
@@ -281,11 +289,7 @@ async function lintDmnPreflight(
     if (result.exitCode !== 0) {
       return {
         success: false,
-        output: [
-          `qianji lint preflight failed for ${path}`,
-          output,
-          "Workflow was not started.",
-        ]
+        output: [`qianji lint preflight failed for ${path}`, output, "Workflow was not started."]
           .filter(Boolean)
           .join("\n"),
       };

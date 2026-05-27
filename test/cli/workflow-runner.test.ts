@@ -7,11 +7,7 @@ import { runWorkflowInRenderer } from "../../src/cli/workflow-runner.js";
 import { GraphView } from "../../src/ui/graph-view.js";
 import type { PlannerReplyRequest, QianjiTraceLogEvent, Renderer } from "../../src/ui/renderer.js";
 import type { PiWendaoAgentEvent } from "../../src/executor/agent-runtime-types.js";
-import {
-  nativeDefinitions,
-  nativeHumanTask,
-  nativeServiceTask,
-} from "../support/native-bpmn.js";
+import { nativeDefinitions, nativeHumanTask, nativeServiceTask } from "../support/native-bpmn.js";
 
 const fixturesDir = join(import.meta.dirname, "../fixtures");
 const tempDirs: string[] = [];
@@ -181,7 +177,11 @@ describe("workflow runner", () => {
       expect(readFileSync(lintCountPath, "utf-8")).toBe("1");
       expect(renderer.logs.join("\n")).toContain("qianji lint preflight cache hit");
 
-      writeFileSync(workflowPath, workflowSource.replace("List files", "List files again"), "utf-8");
+      writeFileSync(
+        workflowPath,
+        workflowSource.replace("List files", "List files again"),
+        "utf-8",
+      );
       expect((await run()).success).toBe(true);
       expect(readFileSync(lintCountPath, "utf-8")).toBe("2");
     } finally {

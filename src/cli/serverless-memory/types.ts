@@ -1,9 +1,18 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { Branded } from "../../types/domain.js";
 
 export const SERVERLESS_MEMORY_RECALL_PACKET_SCHEMA =
   "xiuxian_wendao.serverless_memory_recall_packet.v1";
 
 export const PI_WENDAO_MEMORY_RECALL_CUSTOM_TYPE = "wendao.memory.recall";
+
+export type ServerlessMemorySourceKind = Branded<string, "ServerlessMemorySourceKind">;
+export type ServerlessMemoryObjectKind = Branded<string, "ServerlessMemoryObjectKind">;
+export type ServerlessMemoryOrgElementCategory = Branded<
+  string,
+  "ServerlessMemoryOrgElementCategory"
+>;
+export type ServerlessMemoryOrgElementType = Branded<string, "ServerlessMemoryOrgElementType">;
 
 export interface ServerlessMemoryLocatorSection {
   kind: "org-section";
@@ -15,15 +24,15 @@ export interface ServerlessMemoryLocatorSection {
 
 export interface ServerlessMemoryLocatorObject {
   kind: "org-property" | "org-reflection-row" | string;
-  sourceKind: string;
+  sourceKind: ServerlessMemorySourceKind;
   sourceKey: string;
   objectIndex: number;
 }
 
 export interface ServerlessMemoryLocatorOrgElement {
   kind: "org-element";
-  category: string;
-  type: string;
+  category: ServerlessMemoryOrgElementCategory;
+  type: ServerlessMemoryOrgElementType;
   context: string;
   ordinal: number;
   source?: string;
@@ -48,8 +57,8 @@ export interface ServerlessMemoryLocator {
 export interface ServerlessMemoryMatchedOrgElement {
   locator: ServerlessMemoryLocator;
   ordinal: number;
-  category: string;
-  kind: string;
+  category: ServerlessMemoryOrgElementCategory;
+  kind: ServerlessMemoryObjectKind;
   affiliatedName?: string;
   context: string;
   summary: unknown;
@@ -63,9 +72,9 @@ export interface ServerlessMemoryMatchedOrgElement {
 export interface ServerlessMemoryObject {
   index: number;
   locator: ServerlessMemoryLocator;
-  kind: string;
+  kind: ServerlessMemoryObjectKind;
   facet: string;
-  sourceKind: string;
+  sourceKind: ServerlessMemorySourceKind;
   sourceKey: string;
   question: string;
   value: string;

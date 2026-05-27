@@ -48,7 +48,8 @@ export async function runSearchStrategyFlowCommand(
   options: SearchStrategyFlowCommandOptions,
 ): Promise<void> {
   const requestInvocation = resolveAnswerRequestInvocation(options);
-  if (requestInvocation.kind === "deterministic") return runDeterministicRequestAnswer(options, requestInvocation);
+  if (requestInvocation.kind === "deterministic")
+    return runDeterministicRequestAnswer(options, requestInvocation);
   if (requestInvocation.kind === "live") return runLiveRequestAnswer(options, requestInvocation);
   await runSearchTraceCommand(options);
 }
@@ -75,7 +76,9 @@ function resolveAnswerRequestInvocation(
     };
   }
   if (options.searchAgent === true) {
-    throw new Error("--search-agent-answer-mode deterministic cannot be combined with --search-agent");
+    throw new Error(
+      "--search-agent-answer-mode deterministic cannot be combined with --search-agent",
+    );
   }
   return {
     kind: "deterministic",

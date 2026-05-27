@@ -3,8 +3,10 @@ import type {
   AgentId,
   InstanceId,
   NodeIndex,
+  PiWendaoSubagentType,
   RunRecordKey,
   TokenId,
+  ToolCallId,
 } from "../types/domain.js";
 import {
   buildPiWendaoAgentPrompt,
@@ -16,11 +18,12 @@ import {
 import { validateOutputSchemas } from "./human-task.js";
 import { buildRunKey, resolveSubagentType } from "./pi-subagents-routing.js";
 import { throwIfWorkflowInterrupted, waitForWorkflowInterrupt } from "./interrupt.js";
+import { runPiWendaoEffect } from "../effect.js";
 
 export interface PiSubagentsSpawnRequest {
   prompt: string;
   description: string;
-  subagent_type: string;
+  subagent_type: PiWendaoSubagentType;
   run_in_background: boolean;
   model?: string;
   thinking?: string;
@@ -56,9 +59,9 @@ export interface PiSubagentsClient {
 }
 
 export interface PiSubagentsClientCallbacks {
-  activityId: string;
+  activityId: ActivityId;
   description: string;
-  agentId?: string;
+  agentId?: AgentId;
   onUpdate?: (update: unknown) => void;
 }
 
@@ -85,22 +88,22 @@ export interface PiSubagentsRunStore {
 export type PiSubagentsHostEvent =
   | {
       type: "spawned" | "resumed" | "waiting";
-      activityId: string;
-      agentId: string;
+      activityId: ActivityId;
+      agentId: AgentId;
       description: string;
     }
   | {
       type: "result";
-      activityId: string;
-      agentId: string;
+      activityId: ActivityId;
+      agentId: AgentId;
       description: string;
       resultText: string;
     };
 
 export interface PiSubagentsHostUpdateEvent {
   type: "update";
-  activityId: string;
-  agentId?: string;
+  activityId: ActivityId;
+  agentId?: AgentId;
   description: string;
   update: unknown;
 }
@@ -108,20 +111,20 @@ export interface PiSubagentsHostUpdateEvent {
 export type PiSubagentsHostToolEvent =
   | {
       type: "tool_call";
-      activityId: string;
-      agentId?: string;
+      activityId: ActivityId;
+      agentId?: AgentId;
       description: string;
       toolName: string;
-      toolCallId: string;
+      toolCallId: ToolCallId;
       input: Record<string, unknown>;
     }
   | {
       type: "tool_result";
-      activityId: string;
-      agentId?: string;
+      activityId: ActivityId;
+      agentId?: AgentId;
       description: string;
       toolName: string;
-      toolCallId: string;
+      toolCallId: ToolCallId;
       input: Record<string, unknown>;
       content: unknown;
       details?: unknown;
@@ -135,7 +138,7 @@ export interface PiSubagentsToolSurface {
 
 export interface PiSubagentsHostOptions {
   client: PiSubagentsClient;
-  defaultSubagentType?: string;
+  defaultSubagentType?: PiWendaoSubagentType;
   defaultRunInBackground?: boolean;
   defaultModel?: string;
   defaultThinking?: string;
@@ -157,7 +160,10 @@ export function createPiSubagentsClientFromTools(tools: PiSubagentsToolSurface):
   };
 }
 
-export { createInMemoryPiSubagentsRunStore, createJsonFilePiSubagentsRunStore } from "./pi-subagents-run-store.js";
+export {
+  createInMemoryPiSubagentsRunStore,
+  createJsonFilePiSubagentsRunStore,
+} from "./pi-subagents-run-store.js";
 export function createPiSubagentsHost(options: PiSubagentsHostOptions): PiWendaoAgentHost {
   return {
     run: async (request) => runPiSubagentTask(options, request),
@@ -271,7 +277,9 @@ async function runPiSubagentTask(
 }
 
 function runInterruptible<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  return signal ? Promise.race([operation, waitForWorkflowInterrupt(signal)]) : operation;
+  return signal
+    ? Promise.race([operation, runPiWendaoEffect(waitForWorkflowInterrupt(signal))])
+    : operation;
 }
 
 function emitHostEvent(options: PiSubagentsHostOptions, event: PiSubagentsHostEvent): void {
@@ -360,13 +368,13 @@ function buildSpawnRequest(
     description: subagent?.description ?? `Run BPMN service task ${request.activityId}`,
     subagent_type: resolveSubagentType(options, request.config),
     run_in_background: subagent?.runInBackground ?? options.defaultRunInBackground ?? true,
-    ...(subagent?.model ?? options.defaultModel
+    ...((subagent?.model ?? options.defaultModel)
       ? { model: subagent?.model ?? options.defaultModel }
       : {}),
-    ...(subagent?.thinking ?? options.defaultThinking
+    ...((subagent?.thinking ?? options.defaultThinking)
       ? { thinking: subagent?.thinking ?? options.defaultThinking }
       : {}),
-    ...(subagent?.maxTurns ?? options.defaultMaxTurns
+    ...((subagent?.maxTurns ?? options.defaultMaxTurns)
       ? { max_turns: subagent?.maxTurns ?? options.defaultMaxTurns }
       : {}),
     ...(subagent?.isolated !== undefined ? { isolated: subagent.isolated } : {}),

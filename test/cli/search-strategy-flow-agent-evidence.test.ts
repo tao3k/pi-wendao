@@ -69,10 +69,7 @@ describe("SearchStrategyFlow live answer evidence", () => {
       sampleTrace(),
     );
 
-    expect(rows.map((row) => row.candidateId)).toEqual([
-      "docs/a.md#owner",
-      "docs/b.md#validation",
-    ]);
+    expect(rows.map((row) => row.candidateId)).toEqual(["docs/a.md#owner", "docs/b.md#validation"]);
     expect(rows[0]?.answerText).toContain("frontier_rank=1");
     expect(rows[0]?.answerText).toContain("judgement=The selected frontier is sufficient.");
   });
@@ -183,10 +180,7 @@ describe("SearchStrategyFlow live answer evidence", () => {
       },
     );
 
-    expect(rows.map((row) => row.candidateId)).toEqual([
-      "docs/a.md#owner",
-      "docs/b.md#validation",
-    ]);
+    expect(rows.map((row) => row.candidateId)).toEqual(["docs/a.md#owner", "docs/b.md#validation"]);
   });
 
   it("writes explicit evidence files only for completed live traces", () => {
@@ -201,9 +195,7 @@ describe("SearchStrategyFlow live answer evidence", () => {
     );
 
     expect(result).toEqual({ path: evidencePath, rowCount: 2 });
-    expect(readFileSync(evidencePath, "utf-8")).toContain(
-      "candidate_id\tanswer_text\n",
-    );
+    expect(readFileSync(evidencePath, "utf-8")).toContain("candidate_id\tanswer_text\n");
   });
 
   it("converts materialized request TSV rows into answer evidence", () => {
@@ -272,9 +264,7 @@ describe("SearchStrategyFlow live answer evidence", () => {
     const requestPath = join(dir, "bad-request.tsv");
     writeFileSync(requestPath, "candidate_id\tanswer_text\nmissing\tshape\n", "utf-8");
 
-    expect(() => loadSearchStrategyFlowAnswerRequestRows(requestPath)).toThrow(
-      "invalid header",
-    );
+    expect(() => loadSearchStrategyFlowAnswerRequestRows(requestPath)).toThrow("invalid header");
     expect(() => buildSearchStrategyFlowRequestAnswerEvidenceRows([])).toThrow(
       "must contain at least one request row",
     );
@@ -303,13 +293,15 @@ describe("SearchStrategyFlow live answer evidence", () => {
       },
     ]);
 
-    expect(parseSearchStrategyFlowPartialLiveAnswerEvidenceTsv(
-      [
-        "candidate_id\tanswer_text",
-        "repos/Pkg.jl/README.md#auto-readme-package-purpose\trepo=Pkg.jl; source=README.md; evidence=auto-readme-package-purpose; term=Pkg; term=Pkg is Julia package manager",
-      ].join("\n"),
-      requestRows,
-    )).toHaveLength(1);
+    expect(
+      parseSearchStrategyFlowPartialLiveAnswerEvidenceTsv(
+        [
+          "candidate_id\tanswer_text",
+          "repos/Pkg.jl/README.md#auto-readme-package-purpose\trepo=Pkg.jl; source=README.md; evidence=auto-readme-package-purpose; term=Pkg; term=Pkg is Julia package manager",
+        ].join("\n"),
+        requestRows,
+      ),
+    ).toHaveLength(1);
   });
 
   it("normalizes model quote escaping before writing live answer evidence", () => {
@@ -322,7 +314,7 @@ describe("SearchStrategyFlow live answer evidence", () => {
     const rows = parseSearchStrategyFlowLiveAnswerEvidenceTsv(
       [
         "candidate_id\tanswer_text",
-        "repos/Quoted.jl/README.md#auto-readme-package-purpose\trepo=Quoted.jl; source=README.md; evidence=auto-readme-package-purpose; term=Quoted; term=The \\\"tutorials\\\" folder",
+        'repos/Quoted.jl/README.md#auto-readme-package-purpose\trepo=Quoted.jl; source=README.md; evidence=auto-readme-package-purpose; term=Quoted; term=The \\"tutorials\\" folder',
       ].join("\n"),
       requestRows,
     );

@@ -9,10 +9,7 @@
       "state": "DOING",
       "isDone": false,
       "archived": false,
-      "tags": [
-        "agent",
-        "memory"
-      ],
+      "tags": ["agent", "memory"],
       "source": ".cache/agent/org/serverless_memory_fixture.org",
       "sourceLine": 1,
       "memoryObjects": [
@@ -43,10 +40,7 @@
       "state": "DOING",
       "isDone": false,
       "archived": false,
-      "tags": [
-        "agent",
-        "memory"
-      ],
+      "tags": ["agent", "memory"],
       "source": ".cache/agent/org/serverless_memory_fixture.org",
       "sourceLine": 8,
       "memoryObjects": []

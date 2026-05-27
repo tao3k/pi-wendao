@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { runPiWendaoEffect } from "../effect.js";
 import { NativeSubagentManager } from "./manager.js";
 import type {
   NativeSubagentGetResultRequest,
@@ -36,7 +37,7 @@ export function registerPiWendaoNativeSubagents(pi: ExtensionAPI): void {
     }),
     executionMode: "parallel",
     execute: (_toolCallId, params, signal, onUpdate, ctx) =>
-      manager.spawn(params as NativeSubagentSpawnRequest, ctx, signal, onUpdate),
+      runPiWendaoEffect(manager.spawn(params as NativeSubagentSpawnRequest, ctx, signal, onUpdate)),
   });
 
   pi.registerTool({
@@ -50,7 +51,7 @@ export function registerPiWendaoNativeSubagents(pi: ExtensionAPI): void {
     }),
     executionMode: "parallel",
     execute: (_toolCallId, params, signal) =>
-      manager.getResult(params as NativeSubagentGetResultRequest, signal),
+      runPiWendaoEffect(manager.getResult(params as NativeSubagentGetResultRequest, signal)),
   });
 
   pi.registerTool({
@@ -63,7 +64,7 @@ export function registerPiWendaoNativeSubagents(pi: ExtensionAPI): void {
     }),
     executionMode: "sequential",
     execute: (_toolCallId, params, signal) =>
-      manager.steer(params as NativeSubagentSteerRequest, signal),
+      runPiWendaoEffect(manager.steer(params as NativeSubagentSteerRequest, signal)),
   });
 
   pi.registerCommand("subagents", {

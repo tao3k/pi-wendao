@@ -1,14 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type {
-  PiWendaoHostWorkKind,
-  PiWendaoQianjiCheckpointFeedback,
-} from "./agent-host.js";
+import type { Effect } from "effect";
+import type { PiWendaoHostWorkKind } from "./agent-host.js";
 import { WorkflowInterruptedError, throwIfWorkflowInterrupted } from "./interrupt.js";
-import type {
-  QianjiCliResult,
-  QianjiHostWork,
-  QianjiTraceEvent,
-} from "./qianji-types.js";
+import type { QianjiCliResult, QianjiHostWork, QianjiTraceEvent } from "./qianji-types.js";
 import {
   consumeQianjiStdoutChunk,
   isBrokenPipeError,
@@ -19,6 +13,7 @@ import {
   type QianjiHostSessionResult,
 } from "./qianji-stream.js";
 import { resolveDefaultQianjiCommand } from "../qianji-command-resolution.js";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
 
 export function buildQianjiArgs(options: {
   sourcePath: string;
@@ -168,7 +163,13 @@ export interface RunQianjiCliOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-export function runQianjiCli(options: RunQianjiCliOptions): Promise<QianjiCliResult> {
+export function runQianjiCli(
+  options: RunQianjiCliOptions,
+): Effect.Effect<QianjiCliResult, PiWendaoEffectError> {
+  return effectFromPromise("runQianjiCli", () => runQianjiCliPromise(options));
+}
+
+function runQianjiCliPromise(options: RunQianjiCliOptions): Promise<QianjiCliResult> {
   throwIfWorkflowInterrupted(options.signal);
   const commandLine = [options.command, ...options.args.map(shellQuote)].join(" ");
   return new Promise((resolvePromise, reject) => {
@@ -316,7 +317,15 @@ export class QianjiHostSession {
     this.initial = this.nextResult();
   }
 
-  taskComplete(request: Record<string, unknown>): Promise<QianjiCliResult> {
+  taskComplete(
+    request: Record<string, unknown>,
+  ): Effect.Effect<QianjiCliResult, PiWendaoEffectError> {
+    return effectFromPromise("QianjiHostSession.taskComplete", () =>
+      this.taskCompletePromise(request),
+    );
+  }
+
+  private taskCompletePromise(request: Record<string, unknown>): Promise<QianjiCliResult> {
     throwIfWorkflowInterrupted(this.signal);
     if (this.closed) {
       throw new Error("qianji host-session is already closed");
@@ -413,9 +422,7 @@ export class QianjiHostSession {
       hostWork: this.currentHostWork,
       ...(result.outcome ? { outcome: result.outcome } : {}),
       ...(result.checkpoint ? { checkpoint: result.checkpoint } : {}),
-      ...(result.pendingHostWork !== undefined
-        ? { pendingHostWork: result.pendingHostWork }
-        : {}),
+      ...(result.pendingHostWork !== undefined ? { pendingHostWork: result.pendingHostWork } : {}),
       ...(result.variables ? { variables: result.variables } : {}),
     });
     this.currentStdout = "";

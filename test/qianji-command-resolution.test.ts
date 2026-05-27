@@ -1,10 +1,4 @@
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -26,9 +20,7 @@ describe("qianji command resolution", () => {
     const original = process.env.QIANJI_CLI;
     try {
       process.env.QIANJI_CLI = "/tmp/explicit-qianji";
-      expect(resolveDefaultQianjiCommand(makeWorkspaceWithQianji())).toBe(
-        "/tmp/explicit-qianji",
-      );
+      expect(resolveDefaultQianjiCommand(makeWorkspaceWithQianji())).toBe("/tmp/explicit-qianji");
     } finally {
       restoreEnv("QIANJI_CLI", original);
     }
@@ -38,12 +30,7 @@ describe("qianji command resolution", () => {
     const cwd = makeWorkspaceWithQianji();
 
     expect(resolveDefaultQianjiCommand(cwd)).toBe(
-      join(
-        workspaceRootFromNestedCwd(cwd),
-        "target",
-        "debug",
-        qianjiBinaryName(),
-      ),
+      join(workspaceRootFromNestedCwd(cwd), "target", "debug", qianjiBinaryName()),
     );
   });
 
@@ -59,9 +46,7 @@ describe("qianji command resolution", () => {
     try {
       process.env.QIANJI_CLIENT_CLI = "/tmp/explicit-qianji-client";
       expect(
-        resolveDefaultQianjiClientCommand(
-          makeWorkspaceWithBinary(qianjiClientBinaryName()),
-        ),
+        resolveDefaultQianjiClientCommand(makeWorkspaceWithBinary(qianjiClientBinaryName())),
       ).toBe("/tmp/explicit-qianji-client");
     } finally {
       restoreEnv("QIANJI_CLIENT_CLI", original);
@@ -69,12 +54,7 @@ describe("qianji command resolution", () => {
 
     const cwd = makeWorkspaceWithBinary(qianjiClientBinaryName());
     expect(resolveDefaultQianjiClientCommand(cwd)).toBe(
-      join(
-        workspaceRootFromNestedCwd(cwd),
-        "target",
-        "debug",
-        qianjiClientBinaryName(),
-      ),
+      join(workspaceRootFromNestedCwd(cwd), "target", "debug", qianjiClientBinaryName()),
     );
 
     const dir = mkdtempSync(join(tmpdir(), "pi-wendao-no-qianji-client-"));

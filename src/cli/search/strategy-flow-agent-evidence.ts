@@ -33,7 +33,11 @@ export function writeSearchStrategyFlowAgentAnswerEvidence(
   agentTrace: SearchStrategyFlowAgentTrace | undefined,
   deterministicTrace?: SearchStrategyFlowTrace,
 ): SearchStrategyFlowAnswerEvidenceResult {
-  const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(trace, agentTrace, deterministicTrace);
+  const rows = buildSearchStrategyFlowAgentAnswerEvidenceRows(
+    trace,
+    agentTrace,
+    deterministicTrace,
+  );
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, renderSearchStrategyFlowAnswerEvidenceTsv(rows), "utf-8");
   return { path, rowCount: rows.length };
@@ -61,7 +65,9 @@ export function buildSearchStrategyFlowAgentAnswerEvidenceRows(
     agentTrace,
   );
   if (selectedFrontier.length === 0) {
-    throw new Error("SearchStrategyFlow live answer evidence requires at least one selected frontier row.");
+    throw new Error(
+      "SearchStrategyFlow live answer evidence requires at least one selected frontier row.",
+    );
   }
 
   const answerText = renderAgentAnswerText(agentTrace);
@@ -91,11 +97,12 @@ function selectedFrontierRowsWithDeterministicBaseline(
 
   const acceptedExpansionIds = new Set(
     (agentTrace?.branchJudgements ?? [])
-      .filter((row) =>
-        row.decision === "expand" &&
-        row.blocked === false &&
-        row.judgementScore >= 0.86 &&
-        row.confidence >= 0.72,
+      .filter(
+        (row) =>
+          row.decision === "expand" &&
+          row.blocked === false &&
+          row.judgementScore >= 0.86 &&
+          row.confidence >= 0.72,
       )
       .map((row) => row.candidateId),
   );
@@ -138,36 +145,39 @@ export function loadSearchStrategyFlowAnswerRequestRows(
     );
   }
 
-  return lines.slice(1).filter((line) => line.trim().length > 0).map((line, index) => {
-    const fields = line.split("\t");
-    if (fields.length !== expectedHeader.length) {
-      throw new Error(
-        `SearchStrategyFlow answer request TSV row ${index + 2} has ${fields.length} fields; expected ${expectedHeader.length}.`,
-      );
-    }
-    const [
-      candidateId,
-      packetId,
-      repoId,
-      sourceRelativePath,
-      evidenceKind,
-      requiredTerms,
-      compactPacket,
-      answerContract,
-    ] = fields;
-    const row = {
-      candidateId,
-      packetId,
-      repoId,
-      sourceRelativePath,
-      evidenceKind,
-      requiredTerms: requiredTerms.split("|").filter((term) => term.trim().length > 0),
-      compactPacket,
-      answerContract,
-    };
-    assertNonEmptyRequestRow(row, index + 2);
-    return row;
-  });
+  return lines
+    .slice(1)
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => {
+      const fields = line.split("\t");
+      if (fields.length !== expectedHeader.length) {
+        throw new Error(
+          `SearchStrategyFlow answer request TSV row ${index + 2} has ${fields.length} fields; expected ${expectedHeader.length}.`,
+        );
+      }
+      const [
+        candidateId,
+        packetId,
+        repoId,
+        sourceRelativePath,
+        evidenceKind,
+        requiredTerms,
+        compactPacket,
+        answerContract,
+      ] = fields;
+      const row = {
+        candidateId,
+        packetId,
+        repoId,
+        sourceRelativePath,
+        evidenceKind,
+        requiredTerms: requiredTerms.split("|").filter((term) => term.trim().length > 0),
+        compactPacket,
+        answerContract,
+      };
+      assertNonEmptyRequestRow(row, index + 2);
+      return row;
+    });
 }
 
 export function buildSearchStrategyFlowRequestAnswerEvidenceRows(
@@ -186,12 +196,17 @@ export function parseSearchStrategyFlowLiveAnswerEvidenceTsv(
   text: string,
   requestRows: ReturnType<typeof loadSearchStrategyFlowAnswerRequestRows>,
 ): SearchStrategyFlowAnswerEvidenceRow[] {
-  const lines = text.trim().split(/\n/).filter((line) => line.trim().length > 0);
+  const lines = text
+    .trim()
+    .split(/\n/)
+    .filter((line) => line.trim().length > 0);
   if (lines.length === 0) {
     throw new Error("SearchStrategyFlow live request answer output is empty.");
   }
   if (lines[0] !== "candidate_id\tanswer_text") {
-    throw new Error("SearchStrategyFlow live request answer output must start with candidate_id<TAB>answer_text.");
+    throw new Error(
+      "SearchStrategyFlow live request answer output must start with candidate_id<TAB>answer_text.",
+    );
   }
   const rows = lines.slice(1).map((line, index) => {
     const fields = line.split("\t");
@@ -224,7 +239,9 @@ export function parseSearchStrategyFlowLiveAnswerEvidenceTsv(
   }
   const duplicateId = firstDuplicate(observedIds);
   if (duplicateId) {
-    throw new Error(`SearchStrategyFlow live request answer output duplicates candidate id ${duplicateId}.`);
+    throw new Error(
+      `SearchStrategyFlow live request answer output duplicates candidate id ${duplicateId}.`,
+    );
   }
   for (let index = 0; index < expectedIds.length; index += 1) {
     if (observedIds[index] !== expectedIds[index]) {
@@ -240,7 +257,11 @@ export function parseSearchStrategyFlowPartialLiveAnswerEvidenceTsv(
   text: string,
   requestRows: ReturnType<typeof loadSearchStrategyFlowAnswerRequestRows>,
 ): SearchStrategyFlowAnswerEvidenceRow[] {
-  const rowCount = text.trim().split(/\n/).filter((line) => line.trim().length > 0).length - 1;
+  const rowCount =
+    text
+      .trim()
+      .split(/\n/)
+      .filter((line) => line.trim().length > 0).length - 1;
   return parseSearchStrategyFlowLiveAnswerEvidenceTsv(
     text,
     requestRows.slice(0, Math.max(rowCount, 0)),
@@ -250,10 +271,12 @@ export function parseSearchStrategyFlowPartialLiveAnswerEvidenceTsv(
 export function renderSearchStrategyFlowAnswerEvidenceTsv(
   rows: SearchStrategyFlowAnswerEvidenceRow[],
 ): string {
-  return [
-    "candidate_id\tanswer_text",
-    ...rows.map((row) => `${escapeTsvCell(row.candidateId)}\t${escapeTsvCell(row.answerText)}`),
-  ].join("\n") + "\n";
+  return (
+    [
+      "candidate_id\tanswer_text",
+      ...rows.map((row) => `${escapeTsvCell(row.candidateId)}\t${escapeTsvCell(row.answerText)}`),
+    ].join("\n") + "\n"
+  );
 }
 
 function renderAgentAnswerText(agentTrace: SearchStrategyFlowAgentTrace | undefined): string {
@@ -270,9 +293,10 @@ function renderAgentAnswerText(agentTrace: SearchStrategyFlowAgentTrace | undefi
 
   const status = agentTrace?.status ?? "unavailable";
   const reason = normalizeWhitespace(agentTrace?.reason ?? "");
-  const judgement = reason.length > 0
-    ? `Live agent ${status}: ${reason}; deterministic frontier evidence retained.`
-    : `Live agent ${status}; deterministic frontier evidence retained.`;
+  const judgement =
+    reason.length > 0
+      ? `Live agent ${status}: ${reason}; deterministic frontier evidence retained.`
+      : `Live agent ${status}; deterministic frontier evidence retained.`;
   return [
     "intent_understanding=Deterministic SearchStrategyFlow frontier selected the evidence rows.",
     "branch_decision=Retain deterministic selected frontier baseline.",
@@ -308,7 +332,9 @@ function assertNonEmptyRequestRow(
   row: SearchStrategyFlowAnswerRequestRow,
   lineNumber: number,
 ): void {
-  const requiredStringFields: Array<keyof Omit<SearchStrategyFlowAnswerRequestRow, "requiredTerms">> = [
+  const requiredStringFields: Array<
+    keyof Omit<SearchStrategyFlowAnswerRequestRow, "requiredTerms">
+  > = [
     "candidateId",
     "packetId",
     "repoId",
@@ -342,7 +368,7 @@ function normalizeWhitespace(value: string): string {
 }
 
 function normalizeLiveModelAnswerText(value: string): string {
-  return value.replace(/\\"/g, "\"");
+  return value.replace(/\\"/g, '"');
 }
 
 function firstDuplicate(values: string[]): string | undefined {

@@ -1,109 +1,25 @@
 import { randomUUID } from "node:crypto";
-import type { PiWendaoAgentExecutionMetadata } from "./agent-host.js";
+import type { Effect } from "effect";
+import { effectFromPromise, type PiWendaoEffectError } from "../effect.js";
+import type {
+  PiWendaoIntercomAttachment,
+  PiWendaoIntercomContext,
+  PiWendaoIntercomExecutionRef,
+  PiWendaoIntercomMessage,
+  PiWendaoIntercomReceiveAskRequest,
+  PiWendaoIntercomRecord,
+  PiWendaoIntercomRecordDirection,
+  PiWendaoIntercomRecordStatus,
+  PiWendaoIntercomRecordStore,
+  PiWendaoIntercomReplyRequest,
+  PiWendaoIntercomReplyTrackerOptions,
+  PiWendaoIntercomSendRequest,
+  PiWendaoIntercomSession,
+  PiWendaoIntercomStateOptions,
+  ResolvePiWendaoIntercomReplyTargetOptions,
+} from "./intercom-types.js";
 
 export const DEFAULT_PI_WENDAO_INTERCOM_ASK_TIMEOUT_MS = 10 * 60 * 1000;
-
-export interface PiWendaoIntercomSession {
-  id: string;
-  name?: string;
-  cwd?: string;
-  model?: string;
-}
-
-export interface PiWendaoIntercomAttachment {
-  type: "file" | "snippet" | "context";
-  name: string;
-  content: string;
-  language?: string;
-}
-
-export interface PiWendaoIntercomMessage {
-  id: string;
-  text: string;
-  timestamp: number;
-  replyTo?: string;
-  expectsReply?: boolean;
-  attachments?: PiWendaoIntercomAttachment[];
-}
-
-export interface PiWendaoIntercomExecutionRef extends PiWendaoAgentExecutionMetadata {
-  activityId?: string;
-}
-
-export interface PiWendaoIntercomContext {
-  from: PiWendaoIntercomSession;
-  to?: PiWendaoIntercomSession;
-  message: PiWendaoIntercomMessage;
-  receivedAt: number;
-  execution?: PiWendaoIntercomExecutionRef;
-}
-
-export type PiWendaoIntercomRecordDirection = "inbound" | "outbound";
-export type PiWendaoIntercomRecordStatus = "sent" | "waiting" | "replied" | "expired" | "failed";
-
-export interface PiWendaoIntercomRecord {
-  key: string;
-  direction: PiWendaoIntercomRecordDirection;
-  status: PiWendaoIntercomRecordStatus;
-  context: PiWendaoIntercomContext;
-  reply?: PiWendaoIntercomMessage;
-  error?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface PiWendaoIntercomRecordStore {
-  get(key: string): Promise<PiWendaoIntercomRecord | undefined>;
-  put(record: PiWendaoIntercomRecord): Promise<void>;
-  list(): Promise<PiWendaoIntercomRecord[]>;
-  delete(key: string): Promise<void>;
-}
-
-export interface PiWendaoIntercomReplyTrackerOptions {
-  askTimeoutMs?: number;
-  initialPending?: PiWendaoIntercomContext[];
-}
-
-export interface ResolvePiWendaoIntercomReplyTargetOptions {
-  replyTo?: string;
-  to?: string;
-  now?: number;
-}
-
-export interface PiWendaoIntercomStateOptions {
-  self: PiWendaoIntercomSession;
-  askTimeoutMs?: number;
-  store?: PiWendaoIntercomRecordStore;
-  now?: () => number;
-}
-
-export interface PiWendaoIntercomSendRequest {
-  to: PiWendaoIntercomSession;
-  text: string;
-  messageId?: string;
-  attachments?: PiWendaoIntercomAttachment[];
-  execution?: PiWendaoIntercomExecutionRef;
-  now?: number;
-}
-
-export interface PiWendaoIntercomReceiveAskRequest {
-  from: PiWendaoIntercomSession;
-  text: string;
-  messageId?: string;
-  attachments?: PiWendaoIntercomAttachment[];
-  execution?: PiWendaoIntercomExecutionRef;
-  now?: number;
-}
-
-export interface PiWendaoIntercomReplyRequest {
-  text: string;
-  replyTo?: string;
-  to?: string;
-  messageId?: string;
-  attachments?: PiWendaoIntercomAttachment[];
-  execution?: PiWendaoIntercomExecutionRef;
-  now?: number;
-}
 
 export class PiWendaoIntercomReplyTracker {
   private readonly askTimeoutMs: number;
@@ -225,7 +141,15 @@ export class PiWendaoIntercomCorrelationState {
     });
   }
 
-  async send(request: PiWendaoIntercomSendRequest): Promise<PiWendaoIntercomRecord> {
+  send(
+    request: PiWendaoIntercomSendRequest,
+  ): Effect.Effect<PiWendaoIntercomRecord, PiWendaoEffectError> {
+    return effectFromPromise("PiWendaoIntercomCorrelationState.send", () =>
+      this.sendPromise(request),
+    );
+  }
+
+  private async sendPromise(request: PiWendaoIntercomSendRequest): Promise<PiWendaoIntercomRecord> {
     const now = request.now ?? this.now();
     return this.writeRecord({
       direction: "outbound",
@@ -246,7 +170,15 @@ export class PiWendaoIntercomCorrelationState {
     });
   }
 
-  async ask(request: PiWendaoIntercomSendRequest): Promise<PiWendaoIntercomRecord> {
+  ask(
+    request: PiWendaoIntercomSendRequest,
+  ): Effect.Effect<PiWendaoIntercomRecord, PiWendaoEffectError> {
+    return effectFromPromise("PiWendaoIntercomCorrelationState.ask", () =>
+      this.askPromise(request),
+    );
+  }
+
+  private async askPromise(request: PiWendaoIntercomSendRequest): Promise<PiWendaoIntercomRecord> {
     const now = request.now ?? this.now();
     return this.writeRecord({
       direction: "outbound",
@@ -268,7 +200,17 @@ export class PiWendaoIntercomCorrelationState {
     });
   }
 
-  async receiveAsk(request: PiWendaoIntercomReceiveAskRequest): Promise<PiWendaoIntercomRecord> {
+  receiveAsk(
+    request: PiWendaoIntercomReceiveAskRequest,
+  ): Effect.Effect<PiWendaoIntercomRecord, PiWendaoEffectError> {
+    return effectFromPromise("PiWendaoIntercomCorrelationState.receiveAsk", () =>
+      this.receiveAskPromise(request),
+    );
+  }
+
+  private async receiveAskPromise(
+    request: PiWendaoIntercomReceiveAskRequest,
+  ): Promise<PiWendaoIntercomRecord> {
     const now = request.now ?? this.now();
     const context = this.tracker.recordIncomingAsk({
       from: request.from,
@@ -291,7 +233,17 @@ export class PiWendaoIntercomCorrelationState {
     });
   }
 
-  async reply(request: PiWendaoIntercomReplyRequest): Promise<PiWendaoIntercomRecord> {
+  reply(
+    request: PiWendaoIntercomReplyRequest,
+  ): Effect.Effect<PiWendaoIntercomRecord, PiWendaoEffectError> {
+    return effectFromPromise("PiWendaoIntercomCorrelationState.reply", () =>
+      this.replyPromise(request),
+    );
+  }
+
+  private async replyPromise(
+    request: PiWendaoIntercomReplyRequest,
+  ): Promise<PiWendaoIntercomRecord> {
     const now = request.now ?? this.now();
     const target = this.tracker.resolveReplyTarget({
       replyTo: request.replyTo,
@@ -336,7 +288,13 @@ export class PiWendaoIntercomCorrelationState {
     });
   }
 
-  async pending(now = this.now()): Promise<PiWendaoIntercomContext[]> {
+  pending(now = this.now()): Effect.Effect<PiWendaoIntercomContext[], PiWendaoEffectError> {
+    return effectFromPromise("PiWendaoIntercomCorrelationState.pending", () =>
+      this.pendingPromise(now),
+    );
+  }
+
+  private async pendingPromise(now = this.now()): Promise<PiWendaoIntercomContext[]> {
     const expired = this.tracker.pruneExpired(now);
     if (this.store) {
       for (const context of expired) {
@@ -354,7 +312,17 @@ export class PiWendaoIntercomCorrelationState {
     return this.tracker.listPending(now);
   }
 
-  async markRecordReplied(
+  markRecordReplied(
+    key: string,
+    reply: PiWendaoIntercomMessage,
+    now = this.now(),
+  ): Effect.Effect<PiWendaoIntercomRecord | undefined, PiWendaoEffectError> {
+    return effectFromPromise("PiWendaoIntercomCorrelationState.markRecordReplied", () =>
+      this.markRecordRepliedPromise(key, reply, now),
+    );
+  }
+
+  private async markRecordRepliedPromise(
     key: string,
     reply: PiWendaoIntercomMessage,
     now = this.now(),
@@ -371,7 +339,17 @@ export class PiWendaoIntercomCorrelationState {
     return record;
   }
 
-  async markRecordFailed(
+  markRecordFailed(
+    key: string,
+    error: string,
+    now = this.now(),
+  ): Effect.Effect<PiWendaoIntercomRecord | undefined, PiWendaoEffectError> {
+    return effectFromPromise("PiWendaoIntercomCorrelationState.markRecordFailed", () =>
+      this.markRecordFailedPromise(key, error, now),
+    );
+  }
+
+  private async markRecordFailedPromise(
     key: string,
     error: string,
     now = this.now(),
@@ -407,7 +385,27 @@ export class PiWendaoIntercomCorrelationState {
   }
 }
 
-export { createInMemoryPiWendaoIntercomRecordStore, createJsonFilePiWendaoIntercomRecordStore } from "./intercom-record-store.js";
+export {
+  createInMemoryPiWendaoIntercomRecordStore,
+  createJsonFilePiWendaoIntercomRecordStore,
+} from "./intercom-record-store.js";
+export type {
+  PiWendaoIntercomAttachment,
+  PiWendaoIntercomContext,
+  PiWendaoIntercomExecutionRef,
+  PiWendaoIntercomMessage,
+  PiWendaoIntercomReceiveAskRequest,
+  PiWendaoIntercomRecord,
+  PiWendaoIntercomRecordDirection,
+  PiWendaoIntercomRecordStatus,
+  PiWendaoIntercomRecordStore,
+  PiWendaoIntercomReplyRequest,
+  PiWendaoIntercomReplyTrackerOptions,
+  PiWendaoIntercomSendRequest,
+  PiWendaoIntercomSession,
+  PiWendaoIntercomStateOptions,
+  ResolvePiWendaoIntercomReplyTargetOptions,
+} from "./intercom-types.js";
 
 export function buildPiWendaoIntercomCorrelationKey(
   execution: PiWendaoIntercomExecutionRef | undefined,

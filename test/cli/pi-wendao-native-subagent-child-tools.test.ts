@@ -27,7 +27,15 @@ describe("pi-wendao native subagent child context tools", () => {
         type: "pi-wendao-output-writer",
         isolated: false,
       }),
-    ).toEqual(["read", "write", "fd", "rg", "wendao_memory_recall", "wendao_search_strategy_flow", "intercom"]);
+    ).toEqual([
+      "read",
+      "write",
+      "fd",
+      "rg",
+      "wendao_memory_recall",
+      "wendao_search_strategy_flow",
+      "intercom",
+    ]);
 
     expect(
       selectNativeSubagentActiveToolNames({
@@ -95,7 +103,13 @@ describe("pi-wendao native subagent child context tools", () => {
       } as never);
     }
 
-    expect(toolNames).toEqual(["fd", "rg", "wendao_memory_recall", "wendao_search_strategy_flow", "intercom"]);
+    expect(toolNames).toEqual([
+      "fd",
+      "rg",
+      "wendao_memory_recall",
+      "wendao_search_strategy_flow",
+      "intercom",
+    ]);
     expect(toolNames).not.toContain("Agent");
     expect(toolNames).not.toContain("get_subagent_result");
   });

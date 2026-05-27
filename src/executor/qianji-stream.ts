@@ -74,7 +74,9 @@ export interface QianjiHostSessionResult {
   variables?: Record<string, unknown>;
 }
 
-export function parseQianjiHostSessionResultLine(line: string): QianjiHostSessionResult | undefined {
+export function parseQianjiHostSessionResultLine(
+  line: string,
+): QianjiHostSessionResult | undefined {
   const prefix = "@@QIANJI_SESSION_RESULT ";
   if (!line.startsWith(prefix)) return undefined;
   try {
@@ -91,9 +93,7 @@ export function parseQianjiHostSessionResultLine(line: string): QianjiHostSessio
       exitCode,
       stdout: typeof parsed.stdout === "string" ? parsed.stdout : "",
       stderr: typeof parsed.stderr === "string" ? parsed.stderr : "",
-      ...(typeof parsed.outcome === "string" && parsed.outcome
-        ? { outcome: parsed.outcome }
-        : {}),
+      ...(typeof parsed.outcome === "string" && parsed.outcome ? { outcome: parsed.outcome } : {}),
       ...(checkpoint ? { checkpoint } : {}),
       ...(pendingHostWork !== undefined ? { pendingHostWork } : {}),
       ...(isObject(parsed.variables) ? { variables: parsed.variables } : {}),
@@ -215,7 +215,9 @@ export function isQianjiHumanTaskAssignment(value: unknown): value is QianjiHuma
   return true;
 }
 
-export function isQianjiHumanTaskResourceRole(value: unknown): value is QianjiHumanTaskResourceRole {
+export function isQianjiHumanTaskResourceRole(
+  value: unknown,
+): value is QianjiHumanTaskResourceRole {
   if (!isObject(value)) return false;
   if (!isOptionalString(value.name)) return false;
   if (!isOptionalString(value.resource_ref)) return false;

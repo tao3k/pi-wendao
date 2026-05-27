@@ -7,7 +7,7 @@ export async function mapWithConcurrency<T, U>(
 ): Promise<U[]> {
   if (items.length === 0) return [];
   const boundedConcurrency = Math.max(1, Math.min(concurrency, items.length));
-  const results = new Array<U>(items.length);
+  const results = Array.from({ length: items.length }) as U[];
   let nextIndex = 0;
   await Promise.all(
     Array.from({ length: boundedConcurrency }, async () => {

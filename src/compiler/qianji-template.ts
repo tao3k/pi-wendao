@@ -1,5 +1,7 @@
 import { defaultQianjiCommand, runCommand } from "./qianji-command.js";
 import type { CompileArtifactTarget } from "./prompt.js";
+import type { Effect } from "effect";
+import { effectFromPromise, runPiWendaoEffect, type PiWendaoEffectError } from "../effect.js";
 
 export interface CompileTemplates {
   bpmn: string;
@@ -41,7 +43,19 @@ export type QianjiConstructResult =
   | { success: true; output: string }
   | { success: false; errors: string[]; output?: string };
 
-export async function loadQianjiTemplates(
+export function loadQianjiTemplates(
+  target: CompileArtifactTarget,
+  options: CompileTemplateOptions & { cwd: string },
+): Effect.Effect<
+  { success: true; templates: CompileTemplates } | { success: false; errors: string[] },
+  PiWendaoEffectError
+> {
+  return effectFromPromise("loadQianjiTemplates", () =>
+    loadQianjiTemplatesPromise(target, options),
+  );
+}
+
+async function loadQianjiTemplatesPromise(
   target: CompileArtifactTarget,
   options: CompileTemplateOptions & { cwd: string },
 ): Promise<{ success: true; templates: CompileTemplates } | { success: false; errors: string[] }> {
@@ -62,7 +76,15 @@ export async function loadQianjiTemplates(
   return { success: true, templates: { bpmn: bpmn.template, dmn: dmn.template } };
 }
 
-export async function loadQianjiConstructIndex(
+export function loadQianjiConstructIndex(
+  options: CompileTemplateOptions & { cwd: string },
+): Effect.Effect<QianjiConstructResult, PiWendaoEffectError> {
+  return effectFromPromise("loadQianjiConstructIndex", () =>
+    loadQianjiConstructIndexPromise(options),
+  );
+}
+
+async function loadQianjiConstructIndexPromise(
   options: CompileTemplateOptions & { cwd: string },
 ): Promise<QianjiConstructResult> {
   const runner = options.constructRunner ?? createQianjiConstructRunner();
@@ -72,7 +94,16 @@ export async function loadQianjiConstructIndex(
   return result;
 }
 
-export async function loadQianjiConstructCards(
+export function loadQianjiConstructCards(
+  constructIds: string[],
+  options: CompileTemplateOptions & { cwd: string },
+): Effect.Effect<QianjiConstructResult, PiWendaoEffectError> {
+  return effectFromPromise("loadQianjiConstructCards", () =>
+    loadQianjiConstructCardsPromise(constructIds, options),
+  );
+}
+
+async function loadQianjiConstructCardsPromise(
   constructIds: string[],
   options: CompileTemplateOptions & { cwd: string },
 ): Promise<QianjiConstructResult> {
@@ -93,10 +124,12 @@ export async function loadQianjiConstructCards(
 
 export function createQianjiTemplateRunner(): QianjiTemplateRunner {
   return async (domain, options) => {
-    const result = await runCommand(
-      options.command ?? defaultQianjiCommand(),
-      ["template", `--${domain}`],
-      options.cwd,
+    const result = await runPiWendaoEffect(
+      runCommand(
+        options.command ?? defaultQianjiCommand(),
+        ["template", `--${domain}`],
+        options.cwd,
+      ),
     );
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
     if (result.exitCode !== 0) {
@@ -122,7 +155,9 @@ export function createQianjiConstructRunner(): QianjiConstructRunner {
   return async (request, options) => {
     const args =
       request.kind === "index" ? ["construct", "index"] : ["construct", "show", request.id];
-    const result = await runCommand(options.command ?? defaultQianjiCommand(), args, options.cwd);
+    const result = await runPiWendaoEffect(
+      runCommand(options.command ?? defaultQianjiCommand(), args, options.cwd),
+    );
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
     if (result.exitCode !== 0) {
       return {

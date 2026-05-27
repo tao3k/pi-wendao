@@ -240,7 +240,9 @@ describe("SearchStrategyFlow Markdown corpus benchmark", () => {
     expect(report.rows.every((row) => row.passed)).toBe(true);
     expect(report.rows.every((row) => row.executionMode === "development")).toBe(true);
     expect(report.rows.every((row) => row.promotionEligible === false)).toBe(true);
-    expect(renderMarkdownCorpusBenchmarkReport(report)).toContain("rust bridge steady-state duration ms");
+    expect(renderMarkdownCorpusBenchmarkReport(report)).toContain(
+      "rust bridge steady-state duration ms",
+    );
   });
 
   it("classifies Flight-backed persistent Rust bridge sessions as development mode", async () => {
@@ -262,10 +264,14 @@ describe("SearchStrategyFlow Markdown corpus benchmark", () => {
 `,
       "utf-8",
     );
-    writeFakeBridgeSession(bridgePath, argsPath, benchmarkTrace({
-      selectedCandidateIds: ["docs/a.md#owner"],
-      selectedRequiredEvidence: ["ownership_boundary"],
-    }));
+    writeFakeBridgeSession(
+      bridgePath,
+      argsPath,
+      benchmarkTrace({
+        selectedCandidateIds: ["docs/a.md#owner"],
+        selectedRequiredEvidence: ["ownership_boundary"],
+      }),
+    );
 
     const report = await runSearchStrategyFlowMarkdownCorpusBenchmark({
       fixturePath,
@@ -446,7 +452,14 @@ describe("SearchStrategyFlow Markdown corpus benchmark", () => {
     const fixturePath = join(dir, "intents.org");
     const bridgePath = join(dir, "fake-bridge.mjs");
     const argsPath = join(dir, "bridge-args.json");
-    writeFileSync(fixturePath, twoIntentFixture().replaceAll("LIVE_EVIDENCE_REQUIRED: false", "LIVE_EVIDENCE_REQUIRED: true"), "utf-8");
+    writeFileSync(
+      fixturePath,
+      twoIntentFixture().replaceAll(
+        "LIVE_EVIDENCE_REQUIRED: false",
+        "LIVE_EVIDENCE_REQUIRED: true",
+      ),
+      "utf-8",
+    );
     writeFakeBridgeDirect(
       bridgePath,
       argsPath,
@@ -469,7 +482,7 @@ describe("SearchStrategyFlow Markdown corpus benchmark", () => {
       searchStrategyFlowServiceBaseUrl: "http://127.0.0.1:50053",
       liveAgentBatchRunner: async (input) => {
         batchSizes.push(input.tracedRows.length);
-        return input.tracedRows.map(({ trace }, index) => ({
+        return input.tracedRows.map((_, index) => ({
           trace: completedAgentTrace(),
           attemptCount: 1,
           retryCount: 0,
@@ -502,7 +515,14 @@ describe("SearchStrategyFlow Markdown corpus benchmark", () => {
     const fixturePath = join(dir, "intents.org");
     const bridgePath = join(dir, "fake-bridge.mjs");
     const argsPath = join(dir, "bridge-args.json");
-    writeFileSync(fixturePath, twoIntentFixture().replaceAll("LIVE_EVIDENCE_REQUIRED: false", "LIVE_EVIDENCE_REQUIRED: true"), "utf-8");
+    writeFileSync(
+      fixturePath,
+      twoIntentFixture().replaceAll(
+        "LIVE_EVIDENCE_REQUIRED: false",
+        "LIVE_EVIDENCE_REQUIRED: true",
+      ),
+      "utf-8",
+    );
     writeFakeBridgeDirect(
       bridgePath,
       argsPath,
@@ -525,7 +545,7 @@ describe("SearchStrategyFlow Markdown corpus benchmark", () => {
       searchStrategyFlowServiceBaseUrl: "http://127.0.0.1:50053",
       liveAgentSufficiencyRunner: async (input) => {
         batchSizes.push(input.tracedRows.length);
-        return input.tracedRows.map(({ trace }) => ({
+        return input.tracedRows.map(() => ({
           trace: completedAgentTrace(),
           attemptCount: 1,
           retryCount: 0,

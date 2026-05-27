@@ -52,7 +52,9 @@ export function registerNativeSubagentFileTools(
       "Use fd to list likely workspace files before using rg or Wendao structured search.",
     parameters: Type.Object({
       pattern: Type.Optional(Type.String({ description: "fd pattern. Defaults to all files." })),
-      path: Type.Optional(Type.String({ description: "Relative search root. Defaults to the workspace root." })),
+      path: Type.Optional(
+        Type.String({ description: "Relative search root. Defaults to the workspace root." }),
+      ),
       limit: Type.Optional(Type.Number({ minimum: 1, maximum: 200 })),
     }),
     executionMode: "sequential",
@@ -70,13 +72,14 @@ export function registerNativeSubagentFileTools(
   pi.registerTool({
     name: NATIVE_SUBAGENT_RG_TOOL_NAME,
     label: "rg",
-    description:
-      "Search workspace text with ripgrep and return compact line-numbered snippets.",
+    description: "Search workspace text with ripgrep and return compact line-numbered snippets.",
     promptSnippet:
       "Use rg for text snippets after fd has narrowed likely files, then use Wendao tools for structured evidence.",
     parameters: Type.Object({
       query: Type.String({ description: "ripgrep search text or regex." }),
-      path: Type.Optional(Type.String({ description: "Relative search root. Defaults to the workspace root." })),
+      path: Type.Optional(
+        Type.String({ description: "Relative search root. Defaults to the workspace root." }),
+      ),
       limit: Type.Optional(Type.Number({ minimum: 1, maximum: 200 })),
     }),
     executionMode: "sequential",

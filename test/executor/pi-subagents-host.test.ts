@@ -357,9 +357,7 @@ describe("createPiSubagentsHost", () => {
     expect(outputOnlyProfile).toContain("skills: false");
 
     expect(outputWriterProfile).toContain("tools: write");
-    expect(outputWriterProfile).toContain(
-      "disallowed_tools: read, bash, edit, grep, find, ls",
-    );
+    expect(outputWriterProfile).toContain("disallowed_tools: read, bash, edit, grep, find, ls");
     expect(outputWriterProfile).toContain("extensions: false");
     expect(outputWriterProfile).toContain("skills: false");
 
@@ -671,9 +669,7 @@ describe("createPiSubagentsHost", () => {
     });
 
     await expect(host.run(request)).rejects.toThrow("No API key found for anthropic");
-    await expect(
-      runStore.get(runKeyFor(request)),
-    ).resolves.toMatchObject({
+    await expect(runStore.get(runKeyFor(request))).resolves.toMatchObject({
       status: "failed",
       error: expect.stringContaining("No API key found for anthropic"),
     });
@@ -819,9 +815,7 @@ describe("createPiSubagentsHost", () => {
       },
     });
 
-    await expect(
-      host.run(cachedRequest),
-    ).resolves.toEqual({ result: "fresh" });
+    await expect(host.run(cachedRequest)).resolves.toEqual({ result: "fresh" });
     expect(spawnCount).toBe(1);
   });
 
@@ -876,9 +870,7 @@ describe("createPiSubagentsHost", () => {
       },
     });
 
-    await expect(host.run(request)).rejects.toThrow(
-      "[pi-wendao.runtime.invalid_dynamic_choices]",
-    );
+    await expect(host.run(request)).rejects.toThrow("[pi-wendao.runtime.invalid_dynamic_choices]");
     await expect(runStore.get(runKeyFor(request))).resolves.toMatchObject({
       status: "failed",
       error: expect.stringContaining("[pi-wendao.runtime.invalid_dynamic_choices]"),

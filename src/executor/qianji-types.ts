@@ -1,5 +1,13 @@
 import type { PiWendaoHostWorkKind, PiWendaoQianjiCheckpointFeedback } from "./agent-host.js";
-import type { ActivityId, NodeId, NodeIndex, ProcessId, TokenId } from "../types/domain.js";
+import type {
+  ActivityId,
+  NodeId,
+  NodeIndex,
+  ProcessId,
+  QianjiNodeKind,
+  QianjiNodeStatus,
+  TokenId,
+} from "../types/domain.js";
 
 export interface QianjiCliResult {
   exitCode: number | null;
@@ -44,7 +52,7 @@ export interface QianjiBaseHostWork {
 }
 
 export interface QianjiHumanTaskForm {
-  interaction_type: string;
+  interaction_type: import("./agent-host.js").QianjiInteractionType;
   question_ref?: string | null;
   question_text?: string | null;
   choices_ref?: string | null;
@@ -82,9 +90,9 @@ export interface QianjiHostWorkClaim {
 
 export interface QianjiTraceNodeStatusEvent {
   kind: "node_status";
-  node_id: string;
-  node_kind?: string | null;
-  status: string;
+  node_id: NodeId;
+  node_kind?: QianjiNodeKind | null;
+  status: QianjiNodeStatus;
 }
 
 export interface QianjiTraceFlowTakeEvent {
@@ -94,8 +102,8 @@ export interface QianjiTraceFlowTakeEvent {
 }
 
 export interface QianjiGraphSnapshotNode {
-  node_id: string;
-  status: string;
-  node_kind?: string | null;
+  node_id: NodeId;
+  status: QianjiNodeStatus;
+  node_kind?: QianjiNodeKind | null;
   node_index?: number;
 }

@@ -78,7 +78,9 @@ function asSearchStrategyFlowFlightTimeoutSeconds(
   return value as SearchStrategyFlowFlightTimeoutSeconds | undefined;
 }
 
-function resolveSearchBackend(explicitBackend: string | undefined): SearchStrategyFlowBackend | undefined {
+function resolveSearchBackend(
+  explicitBackend: string | undefined,
+): SearchStrategyFlowBackend | undefined {
   if (explicitBackend === undefined) return undefined;
   if (
     explicitBackend === "auto" ||

@@ -1,25 +1,26 @@
 import type { PiWendaoThinkingLevel } from "../../../executor/agent-runtime-types.js";
-import type {
-  WendaoTraceControlPlane,
-  WendaoTraceDataPlane,
-} from "../../../arrow/boundary.js";
+import type { WendaoTraceControlPlane, WendaoTraceDataPlane } from "../../../arrow/boundary.js";
 import type { SearchStrategyFlowAgentCandidatePoolMode } from "../strategy-flow-agent.js";
 import type {
   SearchStrategyFlowAgentTrace,
   SearchStrategyFlowTrace,
 } from "../strategy-flow-types.js";
+import type { Branded } from "../../../types/domain.js";
 
 export type { SearchStrategyFlowAgentCandidatePoolMode } from "../strategy-flow-agent.js";
 
-export type MarkdownCorpusBenchmarkPath = string;
-export type MarkdownCorpusBenchmarkApiKey = string;
+export type MarkdownCorpusBenchmarkPath = Branded<string, "MarkdownCorpusBenchmarkPath">;
+export type MarkdownCorpusBenchmarkApiKey = Branded<string, "MarkdownCorpusBenchmarkApiKey">;
 export type MarkdownCorpusBenchmarkModelPattern = string;
 export type MarkdownCorpusBenchmarkProvider = string;
 export type MarkdownCorpusBenchmarkBackend = string;
 export type MarkdownCorpusBenchmarkCommand = string;
-export type MarkdownCorpusBenchmarkFlightUrl = string;
-export type MarkdownCorpusBenchmarkServiceUrl = string;
-export type MarkdownCorpusBenchmarkFamilyId = string;
+export type MarkdownCorpusBenchmarkFlightUrl = Branded<string, "MarkdownCorpusBenchmarkFlightUrl">;
+export type MarkdownCorpusBenchmarkServiceUrl = Branded<
+  string,
+  "MarkdownCorpusBenchmarkServiceUrl"
+>;
+export type MarkdownCorpusBenchmarkFamilyId = Branded<string, "MarkdownCorpusBenchmarkFamilyId">;
 export type MarkdownCorpusBenchmarkIntent = string;
 export type MarkdownCorpusBenchmarkMilliseconds = number;
 export type MarkdownCorpusBenchmarkConcurrency = number;
@@ -31,6 +32,11 @@ export type SearchStrategyFlowMarkdownCorpusLiveAgentMode =
   | "branch-judgement"
   | "batch-judgement"
   | "batch-sufficiency";
+export type SearchStrategyFlowMarkdownCorpusPromotionStatus = Branded<
+  string,
+  "SearchStrategyFlowMarkdownCorpusPromotionStatus"
+>;
+export type SearchStrategyFlowMarkdownCorpusLiveStatus = SearchStrategyFlowAgentTrace["status"];
 export type SearchStrategyFlowMarkdownCorpusLiveAgentRunner = (options: {
   trace: SearchStrategyFlowTrace;
   cwd: string;
@@ -76,7 +82,7 @@ export interface SearchStrategyFlowMarkdownCorpusIntentRow {
   expectedSourcePaths: string[];
   blockedSourcePaths: string[];
   liveEvidenceRequired: boolean;
-  promotionStatus: string;
+  promotionStatus: SearchStrategyFlowMarkdownCorpusPromotionStatus;
 }
 
 export interface SearchStrategyFlowMarkdownCorpusAgentRun {
@@ -158,7 +164,7 @@ export interface SearchStrategyFlowMarkdownCorpusBenchmarkRow {
   routeMaterializationRouteCount?: MarkdownCorpusBenchmarkCount;
   routeMaterializationMs?: MarkdownCorpusBenchmarkMilliseconds;
   routeMaterializationMaxRouteMs?: MarkdownCorpusBenchmarkMilliseconds;
-  liveStatus?: string;
+  liveStatus?: SearchStrategyFlowMarkdownCorpusLiveStatus;
   liveModel?: string;
   liveDurationMs?: MarkdownCorpusBenchmarkMilliseconds;
   liveReason?: string;
@@ -174,7 +180,7 @@ export interface SearchStrategyFlowMarkdownCorpusBenchmarkRow {
   liveBatchDurationMs?: MarkdownCorpusBenchmarkMilliseconds;
   liveSufficient?: boolean;
   liveSufficiencyReason?: string;
-  promotionStatus: string;
+  promotionStatus: SearchStrategyFlowMarkdownCorpusPromotionStatus;
   passed: boolean;
   violations: string[];
 }

@@ -1,5 +1,7 @@
 import { tableFromIPC, tableToIPC, type Table } from "apache-arrow";
 import { assertAllowedArrowPayloadEncoding } from "./boundary.js";
+export { validateArrowTableSchema } from "./schema.js";
+export type { ArrowSchemaContract, ArrowSchemaValidationOptions } from "./schema.js";
 
 declare const arrowIpcColumnNameBrand: unique symbol;
 

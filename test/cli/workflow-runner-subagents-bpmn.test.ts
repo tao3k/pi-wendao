@@ -210,6 +210,7 @@ describe("workflow runner native subagent BPMN integration", () => {
 
       expect(result.success).toBe(true);
       expect(server.requests).toEqual([
+        "GET /capabilities",
         "POST /workflows/start",
         "POST /workflows/wf_runner_native_subagents_server/tasks/complete-batch",
       ]);
@@ -300,6 +301,7 @@ describe("workflow runner native subagent BPMN integration", () => {
 
       expect(result.success).toBe(true);
       expect(server.requests).toEqual([
+        "GET /capabilities",
         "POST /workflows/wf_runner_native_subagents_server_resume/resume",
         "POST /workflows/wf_runner_native_subagents_server_resume/tasks/complete",
       ]);
@@ -374,6 +376,7 @@ describe("workflow runner native subagent BPMN integration", () => {
 
       expect(result.success).toBe(true);
       expect(server.requests).toEqual([
+        "GET /capabilities",
         "POST /workflows/start",
         "POST /workflows/wf_runner_native_subagents_server_fresh_start/tasks/complete",
       ]);
@@ -446,11 +449,34 @@ describe("workflow runner native subagent BPMN integration", () => {
       expect(renderer.logs.join("\n")).toContain(
         "qianji server workflow: blocked_on_host (checkpoint=runtime_valkey, source=qianji-server, saved=true, deleted=false, pending_host=1)",
       );
+      expect(renderer.logs.join("\n")).toContain("qianji control recovery: reported");
+      expect(renderer.logs.join("\n")).toContain("activities=total 1, failed 1, in-flight 0");
+      expect(renderer.logs.join("\n")).toContain("action=review_retryable_activity Task_Review");
+      expect(renderer.graphView.getNodeDetails("Task_Review")).toContain(
+        "recovery:total 1, retry 0, review 1, terminal 0",
+      );
+      expect(renderer.graphView.getNodeDetails("Task_Review")).toContain(
+        "recovery-action:review_retryable_activity Task_Review",
+      );
       expect(renderer.logs.join("\n")).toContain("Execution failed: agent execution failed");
       expect(server.requests).toEqual([
+        "GET /capabilities",
         "POST /workflows/wf_runner_native_subagents_server_fail/resume",
         "POST /workflows/start",
+        "POST /workflows/wf_runner_native_subagents_server_fail/tasks/fail",
+        "GET /control/runs/bpmn.workflow.wf_runner_native_subagents_server_fail/diagnostics",
       ]);
+      expect(server.requestBodies.at(-1)).toMatchObject({
+        failure: {
+          token_id: 11,
+          process_id: "Process_1",
+          activity_id: "Task_Review",
+          kind: "service",
+          error_code: "native_host_execution_failed",
+          message: "agent execution failed",
+          retryable: true,
+        },
+      });
       expect(
         renderer.traceEvents
           .filter(
@@ -459,6 +485,150 @@ describe("workflow runner native subagent BPMN integration", () => {
           )
           .map((event) => event.status),
       ).toEqual(["executing", "failed"]);
+    } finally {
+      faux.unregister();
+      await server.close();
+    }
+  });
+
+  it("applies qianji-server recovery only when the operator flag is explicit", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-workflow-server-recovery-apply-"));
+    tempDirs.push(dir);
+    process.env.PI_WENDAO_SUBAGENTS_RUN_STORE = join(dir, "subagents-server-apply.json");
+    const workflowPath = join(dir, "workflow-server-apply.bpmn");
+    writeFileSync(workflowPath, tokenScopedServiceTaskWorkflow(), "utf-8");
+    const server = await serveQianjiWorkflowServer(["alpha"], {
+      capabilities: [
+        "bpmn.workflow.start",
+        "bpmn.workflow.resume",
+        "bpmn.workflow.task.complete",
+        "bpmn.workflow.task.complete-batch",
+        "bpmn.workflow.task.fail",
+        "qianji.control.diagnostics",
+        "qianji.control.recovery.apply",
+      ],
+    });
+    process.env.PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL = server.url;
+
+    const modelRegistry = ModelRegistry.create(AuthStorage.create());
+    const faux = registerFauxProvider();
+    const loadResult = loadResultWithTools({
+      Agent: tool("Agent", async () => {
+        throw new Error("agent execution failed");
+      }),
+      get_subagent_result: tool("get_subagent_result", async () => {
+        throw new Error("get_subagent_result should not run after Agent failure");
+      }),
+    });
+    const renderer = new RecordingRenderer();
+
+    try {
+      const result = await runWorkflowInRenderer({
+        renderer,
+        useGraph: true,
+        resolvedWorkflowPath: workflowPath,
+        options: {
+          qianji: makeFakeExternalHostQianjiCommand(),
+          qianjiControlApplyRecovery: true,
+          qianjiControlRecoveryPolicy: {
+            attempt: 2,
+            reason: "operator reviewed retry envelope",
+            maxAttempts: 3,
+            backoffMs: 250,
+            requireHumanApproval: true,
+            priority: 7,
+          },
+          contextJson: JSON.stringify({ items: ["alpha"] }),
+          traceFrameMs: 0,
+        },
+        instanceId: "wf_runner_native_subagents_server_apply",
+        invocationCwd: dir,
+        piContextCwd: dir,
+        resolvedDmnPaths: [],
+        thinkingLevel: "medium",
+        resolvedModel: {
+          model: faux.getModel(),
+          apiKey: "test-key",
+          loadResult,
+          modelRegistry,
+          cwd: dir,
+          agentDir: dir,
+          services: {},
+          extensionPaths: [],
+        } as unknown as ResolvedModel,
+      });
+
+      expect(result.success).toBe(false);
+      expect(renderer.logs.join("\n")).toContain("qianji control recovery apply: attempted");
+      expect(renderer.logs.join("\n")).toContain("action=review_retryable_activity Task_Review");
+      expect(server.requests).toEqual([
+        "GET /capabilities",
+        "POST /workflows/wf_runner_native_subagents_server_apply/resume",
+        "POST /workflows/start",
+        "POST /workflows/wf_runner_native_subagents_server_apply/tasks/fail",
+        "GET /capabilities",
+        "POST /control/runs/bpmn.workflow.wf_runner_native_subagents_server_apply/recovery/apply",
+      ]);
+      expect(server.requestBodies.at(-1)).toMatchObject({
+        attempt: 2,
+        reason: "operator reviewed retry envelope",
+        max_attempts: 3,
+        backoff_ms: 250,
+        require_human_approval: true,
+        priority: 7,
+      });
+      expect(typeof server.requestBodies.at(-1)?.occurred_at_ms).toBe("number");
+    } finally {
+      faux.unregister();
+      await server.close();
+    }
+  });
+
+  it("rejects stale qianji-server workflow processes before running host work", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-workflow-server-stale-"));
+    tempDirs.push(dir);
+    process.env.PI_WENDAO_SUBAGENTS_RUN_STORE = join(dir, "subagents-server-stale.json");
+    const workflowPath = join(dir, "workflow-server-stale.bpmn");
+    writeFileSync(workflowPath, tokenScopedServiceTaskWorkflow(), "utf-8");
+    const server = await serveQianjiWorkflowServer(["alpha"], {
+      capabilities: ["bpmn.workflow.start", "bpmn.workflow.task.complete"],
+    });
+    process.env.PI_WENDAO_QIANJI_WORKFLOW_SERVER_URL = server.url;
+
+    const modelRegistry = ModelRegistry.create(AuthStorage.create());
+    const faux = registerFauxProvider();
+    const renderer = new RecordingRenderer();
+
+    try {
+      const result = await runWorkflowInRenderer({
+        renderer,
+        useGraph: true,
+        resolvedWorkflowPath: workflowPath,
+        options: {
+          qianji: makeFakeExternalHostQianjiCommand(),
+          contextJson: JSON.stringify({ items: ["alpha"] }),
+          traceFrameMs: 0,
+        },
+        instanceId: "wf_runner_native_subagents_server_stale",
+        invocationCwd: dir,
+        piContextCwd: dir,
+        resolvedDmnPaths: [],
+        thinkingLevel: "medium",
+        resolvedModel: {
+          model: faux.getModel(),
+          apiKey: "test-key",
+          loadResult: loadResultWithTools({}),
+          modelRegistry,
+          cwd: dir,
+          agentDir: dir,
+          services: {},
+          extensionPaths: [],
+        } as unknown as ResolvedModel,
+      });
+
+      expect(result.success).toBe(false);
+      expect(server.requests).toEqual(["GET /capabilities"]);
+      expect(renderer.logs.join("\n")).toContain("missing: bpmn.workflow.task.complete-batch");
     } finally {
       faux.unregister();
       await server.close();
@@ -475,8 +645,7 @@ describe("workflow runner native subagent BPMN integration", () => {
       writeFileSync(workflowPath, liveSingleOutputWorkflow(), "utf-8");
       const renderer = new RecordingRenderer();
       const modelPattern =
-        process.env.PI_WENDAO_WORKFLOW_SUBAGENT_BPMN_LIVE_MODEL ??
-        "anthropic/deepseek-v4-pro";
+        process.env.PI_WENDAO_WORKFLOW_SUBAGENT_BPMN_LIVE_MODEL ?? "anthropic/deepseek-v4-pro";
       const resolvedModel = await resolveModel(modelPattern);
 
       const result = await runWorkflowInRenderer({
@@ -710,7 +879,7 @@ type QianjiWorkflowServerResumeMode = "checkpoint_missing" | "available";
 
 async function serveQianjiWorkflowServer(
   items: string[],
-  options: { resumeMode?: QianjiWorkflowServerResumeMode } = {},
+  options: { resumeMode?: QianjiWorkflowServerResumeMode; capabilities?: string[] } = {},
 ): Promise<{
   url: string;
   requests: string[];
@@ -723,8 +892,39 @@ async function serveQianjiWorkflowServer(
   const server = createServer(async (request, response) => {
     try {
       requests.push(`${request.method} ${request.url}`);
+      if (request.method === "GET" && request.url === "/capabilities") {
+        writeJson(response, {
+          service: "qianji-server",
+          checkpoint_default_backend: "valkey",
+          capabilities: options.capabilities ?? [
+            "bpmn.workflow.start",
+            "bpmn.workflow.resume",
+            "bpmn.workflow.task.complete",
+            "bpmn.workflow.task.complete-batch",
+            "bpmn.workflow.task.fail",
+            "qianji.control.diagnostics",
+          ],
+        });
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        request.url?.startsWith("/control/runs/") &&
+        request.url.endsWith("/diagnostics")
+      ) {
+        writeJson(response, controlDiagnosticsResponse(request.url));
+        return;
+      }
       const body = (await readJsonBody(request)) as Record<string, unknown>;
       requestBodies.push(body);
+      if (
+        request.method === "POST" &&
+        request.url?.startsWith("/control/runs/") &&
+        request.url.endsWith("/recovery/apply")
+      ) {
+        writeJson(response, controlRecoveryApplyResponse(request.url, body));
+        return;
+      }
       if (request.method === "POST" && request.url === "/workflows/start") {
         writeJson(response, workflowResponse(body, items, completed));
         return;
@@ -758,6 +958,14 @@ async function serveQianjiWorkflowServer(
           completed.set(String(completion.token_id), readCompletionResult(completion.data));
         }
         writeJson(response, workflowResponse(body, items, completed));
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        request.url?.startsWith("/workflows/") &&
+        request.url.endsWith("/tasks/fail")
+      ) {
+        writeJson(response, workflowStatusResponse(body, items, completed));
         return;
       }
       if (
@@ -839,6 +1047,116 @@ function workflowResponse(
         },
       })),
     },
+  };
+}
+
+function controlSummaryResponse(url: string): Record<string, unknown> {
+  const runId = controlRunIdFromUrl(url);
+  return {
+    run_id: runId,
+    summary: {
+      event_count: 4,
+      activities: {
+        total: 1,
+        scheduled: 0,
+        in_flight: 0,
+        completed: 0,
+        failed: 1,
+      },
+      recovery: {
+        total_actions: 1,
+        retry_activities: 0,
+        review_retryable_activities: 1,
+        terminal_activity_escalations: 0,
+        fireable_timers: 0,
+        reclaim_expired_leases: 0,
+      },
+    },
+  };
+}
+
+function controlRecoveryResponse(url: string): Record<string, unknown> {
+  const runId = controlRunIdFromUrl(url);
+  return {
+    run_id: runId,
+    recovery: {
+      summary: {
+        total_actions: 1,
+        retry_activities: 0,
+        review_retryable_activities: 1,
+        terminal_activity_escalations: 0,
+        fireable_timers: 0,
+        reclaim_expired_leases: 0,
+      },
+      plan: {
+        actions: [
+          {
+            action: "review_retryable_activity",
+            activity_id: "Task_Review",
+          },
+        ],
+      },
+    },
+  };
+}
+
+function controlDiagnosticsResponse(url: string): Record<string, unknown> {
+  const runId = controlRunIdFromUrl(url);
+  return {
+    run_id: runId,
+    diagnostics: {
+      summary: controlSummaryResponse(url).summary,
+      recovery: controlRecoveryResponse(url).recovery,
+    },
+  };
+}
+
+function controlRecoveryApplyResponse(
+  url: string,
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const action = controlRecoveryResponse(url).recovery.plan.actions[0];
+  return {
+    run_id: controlRunIdFromUrl(url),
+    application: {
+      attempt: body.attempt,
+      action_results: [
+        {
+          action,
+          result: {
+            status: "not_applicable",
+            reason: "unsupported_action",
+          },
+        },
+      ],
+    },
+    diagnostics: controlDiagnosticsResponse(url).diagnostics,
+  };
+}
+
+function controlRunIdFromUrl(url: string): string {
+  const match = url.match(
+    /^\/control\/runs\/(.+)\/(?:summary|recovery|diagnostics|recovery\/apply)$/,
+  );
+  return match ? decodeURIComponent(match[1]) : "bpmn.workflow.unknown";
+}
+
+function workflowStatusResponse(
+  body: Record<string, unknown>,
+  items: string[],
+  completed: Map<string, string>,
+): Record<string, unknown> {
+  const failure = body.failure as Record<string, unknown> | undefined;
+  const response = workflowResponse(
+    { ...body, process_id: failure?.process_id ?? body.process_id },
+    items,
+    completed,
+    true,
+  );
+  return {
+    checkpoint_sequence: 1,
+    checkpoint_backend: "runtime_valkey",
+    workflow: response.workflow,
   };
 }
 

@@ -47,10 +47,8 @@ export function registerSearchStrategyFlowOptions(command: Command): Command {
       "Read a materialized SearchStrategyFlow answer request TSV and write answer evidence",
     )
     .option("--search-agent-answer-mode <mode>", "Answer request mode: deterministic or live")
-    .option(
-      "--search-agent-answer-chunk-size <count>",
-      "Live answer request chunk size",
-      (value) => parseNonNegativeInt(value, "--search-agent-answer-chunk-size"),
+    .option("--search-agent-answer-chunk-size <count>", "Live answer request chunk size", (value) =>
+      parseNonNegativeInt(value, "--search-agent-answer-chunk-size"),
     )
     .option(
       "--search-agent-answer-resume",

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
+import { fileURLToPath } from "node:url";
 import {
   chmodSync,
   existsSync,
@@ -10,16 +11,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  nativeDefinitions,
-  nativeHumanTask,
-  nativeServiceTask,
-} from "../support/native-bpmn.js";
+import { nativeDefinitions, nativeHumanTask, nativeServiceTask } from "../support/native-bpmn.js";
 import { WENDAO_ARROW_FLIGHT_DATA_PLANE } from "../../src/arrow/boundary.js";
 
-const projectRoot = process.cwd();
+const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const tempDirs: string[] = [];
 const liveWendaoGraphProject = join(projectRoot, "..", "WendaoGraph.jl");
 const liveRustWorkspace = join(projectRoot, "..", "..");
@@ -169,6 +166,24 @@ describe("pi-wendao CLI", () => {
     );
   }, 20_000);
 
+  it("rejects recovery policy options without explicit recovery apply", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-recovery-policy-"));
+    tempDirs.push(dir);
+    const workflowPath = join(dir, "workflow.bpmn");
+    writeFileSync(workflowPath, singleReviewWorkflow(), "utf-8");
+
+    const result = await runPiWendaoCli(
+      [workflowPath, "--qianji-control-recovery-max-attempts", "2", "--no-graph"],
+      dir,
+    );
+    const output = [result.stdout, result.stderr].join("\n");
+
+    expect(result.exitCode).toBe(1);
+    expect(output).toContain(
+      "qianji control recovery policy options require --qianji-control-apply-recovery",
+    );
+  }, 20_000);
+
   it("runs SearchStrategyFlow from --search without requiring a workflow", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-"));
     tempDirs.push(dir);
@@ -222,7 +237,9 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("planner:");
     expect(output).toContain("frontier_branches:");
     expect(output).toContain("role=search_strategy");
-    expect(output).toContain("purpose=Normalize intent, strategy loop, and first-layer branch policy.");
+    expect(output).toContain(
+      "purpose=Normalize intent, strategy loop, and first-layer branch policy.",
+    );
     expect(output).toContain("derived_hints{");
     expect(output).toContain("missing_decoded_evidence_anchors");
     expect(output).toContain("probes=compare_provenance:");
@@ -235,9 +252,7 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain(`primary=${WENDAO_ARROW_FLIGHT_DATA_PLANE}`);
     expect(output).toContain("direct_file_read=no");
     expect(output).toContain("execute_before_answer=yes");
-    expect(output).toContain(
-      "flight_steps=flight_search_page:/search/repos/main",
-    );
+    expect(output).toContain("flight_steps=flight_search_page:/search/repos/main");
     expect(output).toContain(
       "flight_resolve_page_index_tree:/analysis/repo-projected-page-index-tree",
     );
@@ -385,11 +400,7 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("mode: persistent-stdio");
     expect(output).toContain("fallback: none");
     expect(output).toContain("materialization=executed rows=4");
-    expect(bridgeArgs).toEqual([
-      "--flight-base-url",
-      "http://127.0.0.1:50051",
-      "--serve-stdio",
-    ]);
+    expect(bridgeArgs).toEqual(["--flight-base-url", "http://127.0.0.1:50051", "--serve-stdio"]);
   }, 20_000);
 
   it("runs the Rust SearchStrategyFlow bridge session without Flight config", async () => {
@@ -501,7 +512,9 @@ describe("pi-wendao CLI", () => {
     const output = [result.stdout, result.stderr].join("\n");
 
     expect(result.exitCode).toBe(1);
-    expect(output).toContain("--search-agent-answer-request requires --search-agent-answer-evidence");
+    expect(output).toContain(
+      "--search-agent-answer-request requires --search-agent-answer-evidence",
+    );
   }, 20_000);
 
   it("requires --search-agent for live materialized answer request mode", async () => {
@@ -588,7 +601,9 @@ describe("pi-wendao CLI", () => {
     const output = [result.stdout, result.stderr].join("\n");
 
     expect(result.exitCode).toBe(0);
-    expect(output).toContain("SearchStrategyFlow live materialized answer evidence: wrote 1 row(s)");
+    expect(output).toContain(
+      "SearchStrategyFlow live materialized answer evidence: wrote 1 row(s)",
+    );
   }, 20_000);
 
   it("forwards Flight endpoint settings to the Rust SearchStrategyFlow bridge", async () => {
@@ -631,7 +646,9 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("role=search_strategy");
     expect(output).toContain("materialization=executed rows=4");
     expect(output).toContain("derived_hints{");
-    expect(output).toContain("probes=expand_neighbors:docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md");
+    expect(output).toContain(
+      "probes=expand_neighbors:docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
+    );
     expect(output).toContain(
       "evidence=node-context:node:stage-1-query-understanding|graph-node:docs-fixture/docs/30_search_strategy/30.01_search_strategy_flow.md",
     );
@@ -721,77 +738,85 @@ describe("pi-wendao CLI", () => {
     expect(output).toContain("--search-backend julia-direct only for pi-local bridge smoke tests");
   }, 20_000);
 
-  itLive("runs live SearchStrategyFlow DeepSeek understanding without first-layer tools", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-live-"));
-    tempDirs.push(dir);
+  itLive(
+    "runs live SearchStrategyFlow DeepSeek understanding without first-layer tools",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "pi-wendao-cli-search-live-"));
+      tempDirs.push(dir);
 
-    const result = await runPiWendaoCli(
-      [
-        "--search",
-        "find the SearchStrategyFlow ownership boundary and validation path",
-        "--search-agent",
-        "--no-graph",
-      ],
-      projectRoot,
-      {
-        env: {
-          PI_WENDAO_SUBAGENTS_RUN_STORE: join(dir, "pi-subagents-run-store.json"),
+      const result = await runPiWendaoCli(
+        [
+          "--search",
+          "find the SearchStrategyFlow ownership boundary and validation path",
+          "--search-agent",
+          "--no-graph",
+        ],
+        projectRoot,
+        {
+          env: {
+            PI_WENDAO_SUBAGENTS_RUN_STORE: join(dir, "pi-subagents-run-store.json"),
+          },
+          timeoutMs: 180_000,
         },
-        timeoutMs: 180_000,
-      },
-    );
-    const output = [result.stdout, result.stderr].join("\n");
+      );
+      const output = [result.stdout, result.stderr].join("\n");
 
-    expect(result.exitCode).toBe(0);
-    expect(output).toContain("SearchStrategyFlow trace");
-    expect(output).toContain("backend: rust-wendao-julia");
-    expect(output).toContain("control_plane: rust");
-    expect(output).toContain("candidate_input_source: rust-markdown-headings");
-    expect(output).toContain("requested: auto");
-    expect(output).toContain("fallback: none");
-    expect(output).toContain("live status=completed model=anthropic/deepseek-v4-pro");
-    expect(output).toContain("live intent_understanding=");
-    expect(output).toContain("live branch_decision=");
-    expect(output).toContain("live judgement=");
-    expect(output).toContain(
-      "planned runtime=qianji-local-cli service_task=SearchStrategyFlow_QueryUnderstanding",
-    );
-    expect(output).toContain(`${rustSearchStrategyAuthorityCandidate} action=keep`);
-    expect(output).toContain(`${rustSearchStrategyValidationCandidate} action=expand`);
-    expect(output).toContain("receipt_source=rust-bridge");
-    expect(output).toContain(`primary=${WENDAO_ARROW_FLIGHT_DATA_PLANE}`);
-    expect(output).not.toContain(searchStrategyWholeFileAction);
-    expect(output).toContain("Tool uses: 0");
-    expect(output).not.toContain("tool=read");
-    expect(output).not.toContain("tool_call");
-  }, 190_000);
+      expect(result.exitCode).toBe(0);
+      expect(output).toContain("SearchStrategyFlow trace");
+      expect(output).toContain("backend: rust-wendao-julia");
+      expect(output).toContain("control_plane: rust");
+      expect(output).toContain("candidate_input_source: rust-markdown-headings");
+      expect(output).toContain("requested: auto");
+      expect(output).toContain("fallback: none");
+      expect(output).toContain("live status=completed model=anthropic/deepseek-v4-pro");
+      expect(output).toContain("live intent_understanding=");
+      expect(output).toContain("live branch_decision=");
+      expect(output).toContain("live judgement=");
+      expect(output).toContain(
+        "planned runtime=qianji-local-cli service_task=SearchStrategyFlow_QueryUnderstanding",
+      );
+      expect(output).toContain(`${rustSearchStrategyAuthorityCandidate} action=keep`);
+      expect(output).toContain(`${rustSearchStrategyValidationCandidate} action=expand`);
+      expect(output).toContain("receipt_source=rust-bridge");
+      expect(output).toContain(`primary=${WENDAO_ARROW_FLIGHT_DATA_PLANE}`);
+      expect(output).not.toContain(searchStrategyWholeFileAction);
+      expect(output).toContain("Tool uses: 0");
+      expect(output).not.toContain("tool=read");
+      expect(output).not.toContain("tool_call");
+    },
+    190_000,
+  );
 
-  itBridgeSmoke("runs Rust bridge SearchStrategyFlow smoke", async () => {
-    const result = await runPiWendaoCli(
-      [
-        "--search",
-        "find the SearchStrategyFlow ownership boundary and validation path",
-        "--wendao-graph",
-        liveWendaoGraphProject,
-        "--search-rust-workspace",
-        liveRustWorkspace,
-        "--no-graph",
-      ],
-      projectRoot,
-      { timeoutMs: 180_000 },
-    );
-    const output = [result.stdout, result.stderr].join("\n");
+  itBridgeSmoke(
+    "runs Rust bridge SearchStrategyFlow smoke",
+    async () => {
+      const result = await runPiWendaoCli(
+        [
+          "--search",
+          "find the SearchStrategyFlow ownership boundary and validation path",
+          "--wendao-graph",
+          liveWendaoGraphProject,
+          "--search-rust-workspace",
+          liveRustWorkspace,
+          "--no-graph",
+        ],
+        projectRoot,
+        { timeoutMs: 180_000 },
+      );
+      const output = [result.stdout, result.stderr].join("\n");
 
-    expect(result.exitCode).toBe(0);
-    expect(output).toContain("SearchStrategyFlow trace");
-    expect(output).toContain("backend: rust-wendao-julia");
-    expect(output).toContain("fallback: none");
-    expect(output).toContain("graph_query_understanding:");
-    expect(output).toContain("strategy_flow_stages:");
-    expect(output).toContain("stage1 query_understanding");
-    expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
-    expect(output).not.toContain(searchStrategyWholeFileAction);
-  }, 190_000);
+      expect(result.exitCode).toBe(0);
+      expect(output).toContain("SearchStrategyFlow trace");
+      expect(output).toContain("backend: rust-wendao-julia");
+      expect(output).toContain("fallback: none");
+      expect(output).toContain("graph_query_understanding:");
+      expect(output).toContain("strategy_flow_stages:");
+      expect(output).toContain("stage1 query_understanding");
+      expect(output).toContain(`${searchStrategySectionCandidate} action=keep`);
+      expect(output).not.toContain(searchStrategyWholeFileAction);
+    },
+    190_000,
+  );
 });
 
 function runPiWendaoCli(

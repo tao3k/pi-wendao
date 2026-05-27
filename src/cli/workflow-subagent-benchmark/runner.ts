@@ -181,7 +181,4 @@ function normalizeIterations(value: number | undefined): number {
   return value;
 }
 
-export {
-  renderWorkflowSubagentBenchmarkReport,
-  summarizeWorkflowSubagentBenchmarkReport,
-};
+export { renderWorkflowSubagentBenchmarkReport, summarizeWorkflowSubagentBenchmarkReport };

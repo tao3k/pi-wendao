@@ -1,13 +1,8 @@
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   resolveFlowhubScenario,
@@ -22,14 +17,17 @@ let originalPiWendaoQianjiServerUrl: string | undefined;
 let originalQianjiServerUrl: string | undefined;
 let originalRegistryTimeoutMs: string | undefined;
 
+function runResolveFlowhubScenario(options: Parameters<typeof resolveFlowhubScenario>[0]) {
+  return Effect.runPromise(resolveFlowhubScenario(options));
+}
+
 describe("Flowhub scenario resolution", () => {
   beforeEach(() => {
     originalRegistryUrl = process.env.PI_WENDAO_FLOWHUB_REGISTRY_URL;
     originalQianjiRegistryUrl = process.env.QIANJI_FLOWHUB_REGISTRY_URL;
     originalPiWendaoQianjiServerUrl = process.env.PI_WENDAO_QIANJI_SERVER_URL;
     originalQianjiServerUrl = process.env.QIANJI_SERVER_URL;
-    originalRegistryTimeoutMs =
-      process.env.PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS;
+    originalRegistryTimeoutMs = process.env.PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS;
     delete process.env.PI_WENDAO_FLOWHUB_REGISTRY_URL;
     delete process.env.QIANJI_FLOWHUB_REGISTRY_URL;
     delete process.env.PI_WENDAO_QIANJI_SERVER_URL;
@@ -56,10 +54,7 @@ describe("Flowhub scenario resolution", () => {
     restoreEnv("QIANJI_FLOWHUB_REGISTRY_URL", originalQianjiRegistryUrl);
     restoreEnv("PI_WENDAO_QIANJI_SERVER_URL", originalPiWendaoQianjiServerUrl);
     restoreEnv("QIANJI_SERVER_URL", originalQianjiServerUrl);
-    restoreEnv(
-      "PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS",
-      originalRegistryTimeoutMs,
-    );
+    restoreEnv("PI_WENDAO_FLOWHUB_REGISTRY_TIMEOUT_MS", originalRegistryTimeoutMs);
   });
 
   it("selects a BPMN source pair from qianji-client scenarios JSON", async () => {
@@ -80,7 +75,7 @@ describe("Flowhub scenario resolution", () => {
       ],
     });
 
-    const scenario = await resolveFlowhubScenario({
+    const scenario = await runResolveFlowhubScenario({
       scenarioId: "deep_read",
       cwd: root,
       flowhubRoot,
@@ -115,7 +110,7 @@ describe("Flowhub scenario resolution", () => {
     });
 
     await expect(
-      resolveFlowhubScenario({
+      runResolveFlowhubScenario({
         scenarioId: "deep_read",
         cwd: root,
         qianjiClientCommand: command,
@@ -146,7 +141,7 @@ describe("Flowhub scenario resolution", () => {
       },
     };
 
-    const scenario = await resolveFlowhubScenario({
+    const scenario = await runResolveFlowhubScenario({
       scenarioId: "agent-coding",
       cwd: root,
       flowhubRoot,
@@ -178,7 +173,7 @@ describe("Flowhub scenario resolution", () => {
     );
     process.env.PI_WENDAO_FLOWHUB_REGISTRY_URL = url;
 
-    const scenario = await resolveFlowhubScenario({
+    const scenario = await runResolveFlowhubScenario({
       scenarioId: "gateway-scenario",
       cwd: root,
       flowhubRoot,
@@ -208,7 +203,7 @@ describe("Flowhub scenario resolution", () => {
     );
     process.env.PI_WENDAO_QIANJI_SERVER_URL = stripFlowhubRegistryPath(serverUrl);
 
-    const scenario = await resolveFlowhubScenario({
+    const scenario = await runResolveFlowhubScenario({
       scenarioId: "server-url-scenario",
       cwd: root,
       flowhubRoot,
@@ -247,7 +242,7 @@ describe("Flowhub scenario resolution", () => {
       }),
     );
 
-    const scenario = await resolveFlowhubScenario({
+    const scenario = await runResolveFlowhubScenario({
       scenarioId: "exact-url-scenario",
       cwd: root,
       flowhubRoot,
@@ -264,13 +259,10 @@ describe("Flowhub scenario resolution", () => {
 
   it("surfaces Gateway provider HTTP errors", async () => {
     const root = makeTempDir("pi-wendao-flowhub-gateway-error-");
-    process.env.PI_WENDAO_FLOWHUB_REGISTRY_URL = await serveRegistry(
-      { error: "not ready" },
-      503,
-    );
+    process.env.PI_WENDAO_FLOWHUB_REGISTRY_URL = await serveRegistry({ error: "not ready" }, 503);
 
     await expect(
-      resolveFlowhubScenario({
+      runResolveFlowhubScenario({
         scenarioId: "gateway-scenario",
         cwd: root,
         qianjiClientCommand: "/definitely/not/used",
@@ -297,7 +289,7 @@ describe("Flowhub scenario resolution", () => {
     );
 
     await expect(
-      resolveFlowhubScenario({
+      runResolveFlowhubScenario({
         scenarioId: "gateway-scenario",
         cwd: root,
         qianjiClientCommand: "/definitely/not/used",
@@ -313,7 +305,7 @@ describe("Flowhub scenario resolution", () => {
     });
 
     await expect(
-      resolveFlowhubScenario({
+      runResolveFlowhubScenario({
         scenarioId: "deep_read",
         cwd: root,
         qianjiClientCommand: command,

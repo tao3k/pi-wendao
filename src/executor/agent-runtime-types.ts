@@ -10,6 +10,7 @@ import type {
   TSchema,
 } from "@earendil-works/pi-ai";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { ToolCallId } from "../types/domain.js";
 
 export type PiWendaoThinkingLevel = "off" | PiAiThinkingLevel;
 export type PiWendaoAgentMessage = Message;
@@ -30,7 +31,7 @@ export interface PiWendaoAgentTool<
   label: string;
   prepareArguments?: (args: unknown) => Static<TParameters>;
   execute: (
-    toolCallId: string,
+    toolCallId: ToolCallId,
     params: Static<TParameters>,
     signal?: AbortSignal,
     onUpdate?: PiWendaoAgentToolUpdateCallback<TDetails>,
@@ -50,17 +51,17 @@ export type PiWendaoAgentEvent =
       assistantMessageEvent: AssistantMessageEvent;
     }
   | { type: "message_end"; message: PiWendaoAgentMessage }
-  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
+  | { type: "tool_execution_start"; toolCallId: ToolCallId; toolName: string; args: unknown }
   | {
       type: "tool_execution_update";
-      toolCallId: string;
+      toolCallId: ToolCallId;
       toolName: string;
       args: unknown;
       partialResult: PiWendaoAgentToolResult;
     }
   | {
       type: "tool_execution_end";
-      toolCallId: string;
+      toolCallId: ToolCallId;
       toolName: string;
       result: PiWendaoAgentToolResult;
       isError: boolean;
@@ -70,9 +71,7 @@ export function toPiWendaoAgentEvent(event: AgentSessionEvent): PiWendaoAgentEve
   return toPiWendaoAgentEventInternal(event);
 }
 
-function toPiWendaoAgentEventInternal(
-  event: AgentSessionEvent,
-): PiWendaoAgentEvent | undefined {
+function toPiWendaoAgentEventInternal(event: AgentSessionEvent): PiWendaoAgentEvent | undefined {
   switch (event.type) {
     case "agent_start":
     case "turn_start":

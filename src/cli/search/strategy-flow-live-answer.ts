@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import { resolveModel } from "../model-resolver.js";
+import { runPiWendaoEffect } from "../../effect.js";
 import type { PiWendaoThinkingLevel } from "../../executor/agent-runtime-types.js";
 import { execute } from "../../executor/executor.js";
 import { createPiAiHost } from "../../executor/node-runner.js";
@@ -48,9 +49,10 @@ export async function writeSearchStrategyFlowLiveRequestAnswerEvidence(
 ): Promise<SearchStrategyFlowAnswerEvidenceResult> {
   const requestText = readFileSync(options.requestPath, "utf-8");
   const requestRows = loadSearchStrategyFlowAnswerRequestRows(options.requestPath);
-  const evidenceRows: SearchStrategyFlowAnswerEvidenceRow[] = options.resumeExisting === true
-    ? loadExistingEvidenceRows(options.evidencePath, requestRows)
-    : [];
+  const evidenceRows: SearchStrategyFlowAnswerEvidenceRow[] =
+    options.resumeExisting === true
+      ? loadExistingEvidenceRows(options.evidencePath, requestRows)
+      : [];
   const requestChunks = splitRequestTsv(
     requestText,
     requestRows,
@@ -68,9 +70,7 @@ export async function writeSearchStrategyFlowLiveRequestAnswerEvidence(
     options.extensionPaths,
   );
   if (!hasRequestAuth(resolved.apiKey, resolved.headers)) {
-    throw new Error(
-      "No request auth is configured for SearchStrategyFlow live request answers.",
-    );
+    throw new Error("No request auth is configured for SearchStrategyFlow live request answers.");
   }
   for (const [index, chunk] of requestChunks.entries()) {
     const output = await runLiveRequestAnswerChunk({
@@ -117,25 +117,27 @@ async function runLiveRequestAnswerChunk(
     const workflowPath = join(tempDir, "search-strategy-flow-answer.bpmn");
     const workflowSource = buildLiveRequestAnswerBpmn(options);
     await writeFile(workflowPath, workflowSource, "utf-8");
-    const result = await execute({
-      source: workflowSource,
-      sourcePath: workflowPath,
-      cwd: options.cwd,
-      processId: PROCESS_ID,
-      instanceId: liveRequestAnswerInstanceId(options, workflowSource, workflowPath),
-      ...(options.qianjiCommand ?? process.env.QIANJI_CLI
-        ? { qianjiCommand: options.qianjiCommand ?? process.env.QIANJI_CLI }
-        : {}),
-      context: {
-        request_tsv: options.requestTsv,
-      },
-      agentHost: createPiAiHost({
-        model: options.model,
-        ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+    const result = await runPiWendaoEffect(
+      execute({
+        source: workflowSource,
+        sourcePath: workflowPath,
         cwd: options.cwd,
-        ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
+        processId: PROCESS_ID,
+        instanceId: liveRequestAnswerInstanceId(options, workflowSource, workflowPath),
+        ...((options.qianjiCommand ?? process.env.QIANJI_CLI)
+          ? { qianjiCommand: options.qianjiCommand ?? process.env.QIANJI_CLI }
+          : {}),
+        context: {
+          request_tsv: options.requestTsv,
+        },
+        agentHost: createPiAiHost({
+          model: options.model,
+          ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+          cwd: options.cwd,
+          ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
+        }),
       }),
-    });
+    );
     if (!result.success) {
       throw new Error(result.error ?? "SearchStrategyFlow Qianji answer task failed");
     }
@@ -223,13 +225,15 @@ export function buildLiveRequestAnswerPrompt(requestCount: number): string {
     "Each answer_text must be concise, at most 512 characters, and must include the request row's repo=, source=, evidence=, and all term= facts.",
     "If a compact_packet already satisfies that contract, copy that compact_packet byte-for-byte as answer_text.",
     "Do not rewrite punctuation, quotes, backticks, Markdown table pipes, or spaces inside term facts.",
-    "Do not JSON-escape, shell-escape, or backslash-escape answer_text. A literal quote must stay \", not \\\".",
+    'Do not JSON-escape, shell-escape, or backslash-escape answer_text. A literal quote must stay ", not \\".',
   ].join("\n");
 }
 
 function readAnswerEvidenceOutput(value: unknown): string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error("SearchStrategyFlow live request answer missing non-empty answer_evidence_tsv.");
+    throw new Error(
+      "SearchStrategyFlow live request answer missing non-empty answer_evidence_tsv.",
+    );
   }
   return value.trim();
 }
@@ -247,7 +251,9 @@ function splitRequestTsv(
   const header = lines[0];
   const dataLines = lines.slice(1).filter((line) => line.trim().length > 0);
   if (dataLines.length !== requestRows.length) {
-    throw new Error("SearchStrategyFlow answer request TSV row count changed during live chunking.");
+    throw new Error(
+      "SearchStrategyFlow answer request TSV row count changed during live chunking.",
+    );
   }
   const chunks = [];
   for (let start = startRow; start < requestRows.length; start += chunkSize) {
@@ -277,6 +283,9 @@ function writeEvidenceRows(
   writeFileSync(evidencePath, renderSearchStrategyFlowAnswerEvidenceTsv(evidenceRows), "utf-8");
 }
 
-function hasRequestAuth(apiKey: string | undefined, headers: Record<string, string> | undefined): boolean {
+function hasRequestAuth(
+  apiKey: string | undefined,
+  headers: Record<string, string> | undefined,
+): boolean {
   return Boolean(apiKey || (headers && Object.keys(headers).length > 0));
 }

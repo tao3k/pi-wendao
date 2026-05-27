@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultQianjiCommand, runCommand } from "./qianji-command.js";
+import { runPiWendaoEffect } from "../effect.js";
 import type { BpmnLintRunner, QianjiLintJsonReport } from "./types.js";
 import { isObject } from "./json.js";
 
@@ -16,18 +17,22 @@ export function createQianjiLintRunner(options: {
     const path = join(dir, domain === "bpmn" ? "workflow.bpmn" : "decision.dmn");
     try {
       await writeFile(path, xml, "utf-8");
-      const result = await runCommand(
-        options.command ?? defaultQianjiCommand(),
-        ["lint", `--${domain}`, path, "--llm"],
-        options.cwd ?? process.cwd(),
+      const result = await runPiWendaoEffect(
+        runCommand(
+          options.command ?? defaultQianjiCommand(),
+          ["lint", `--${domain}`, path, "--llm"],
+          options.cwd ?? process.cwd(),
+        ),
       );
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
       let qianji: QianjiLintJsonReport | undefined;
       if (domain === "bpmn") {
-        const jsonResult = await runCommand(
-          options.command ?? defaultQianjiCommand(),
-          ["lint", `--${domain}`, path, "--json"],
-          options.cwd ?? process.cwd(),
+        const jsonResult = await runPiWendaoEffect(
+          runCommand(
+            options.command ?? defaultQianjiCommand(),
+            ["lint", `--${domain}`, path, "--json"],
+            options.cwd ?? process.cwd(),
+          ),
         );
         const jsonOutput = [jsonResult.stdout, jsonResult.stderr].filter(Boolean).join("\n").trim();
         qianji = parseQianjiLintJson(jsonOutput);

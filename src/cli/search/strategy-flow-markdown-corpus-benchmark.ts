@@ -9,9 +9,15 @@ import {
 } from "../../arrow/boundary.js";
 import { resolveSearchStrategyFlowCliOptions } from "./strategy-flow-cli-options.js";
 import { runSearchStrategyFlow } from "./strategy-flow-julia.js";
-import { mapWithConcurrency, normalizeLiveQianjiConcurrency } from "./markdown-corpus-benchmark/concurrency.js";
+import {
+  mapWithConcurrency,
+  normalizeLiveQianjiConcurrency,
+} from "./markdown-corpus-benchmark/concurrency.js";
 import { evaluateMarkdownCorpusBenchmarkRow } from "./markdown-corpus-benchmark/evaluate.js";
-import { limitRows, parseMarkdownCorpusIntentFixture } from "./markdown-corpus-benchmark/fixture.js";
+import {
+  limitRows,
+  parseMarkdownCorpusIntentFixture,
+} from "./markdown-corpus-benchmark/fixture.js";
 import {
   runBenchmarkLiveAgentRuns,
   shouldRetryLiveAgentRun,
@@ -70,9 +76,10 @@ export async function runSearchStrategyFlowMarkdownCorpusBenchmark(
     );
   }
   const searchRustBridgeSession = resolveBenchmarkRustBridgeSession(options);
-  const traceDataPlane = hasSearchFlightEndpoint(options) || hasStrategyFlowServiceEndpoint(options)
-    ? WENDAO_ARROW_FLIGHT_DATA_PLANE
-    : WENDAO_NO_DATA_PLANE;
+  const traceDataPlane =
+    hasSearchFlightEndpoint(options) || hasStrategyFlowServiceEndpoint(options)
+      ? WENDAO_ARROW_FLIGHT_DATA_PLANE
+      : WENDAO_NO_DATA_PLANE;
 
   const traceRun = await runBenchmarkTraceRows({
     cwd,
@@ -82,39 +89,47 @@ export async function runSearchStrategyFlowMarkdownCorpusBenchmark(
   });
   const tracedRows = traceRun.rows;
 
-  const liveQianjiConcurrency = options.live === true
-    ? normalizeLiveQianjiConcurrency(options.liveQianjiConcurrency)
-    : 0;
-  const agentRuns = options.live === true
-    ? await runBenchmarkLiveAgentRunsForMode({
-        cwd,
-        tracedRows,
-        options,
-        concurrency: liveQianjiConcurrency,
-        defaultModelPattern: DEFAULT_MODEL_PATTERN,
-      })
-    : [];
+  const liveQianjiConcurrency =
+    options.live === true ? normalizeLiveQianjiConcurrency(options.liveQianjiConcurrency) : 0;
+  const agentRuns =
+    options.live === true
+      ? await runBenchmarkLiveAgentRunsForMode({
+          cwd,
+          tracedRows,
+          options,
+          concurrency: liveQianjiConcurrency,
+          defaultModelPattern: DEFAULT_MODEL_PATTERN,
+        })
+      : [];
   const benchmarkRows = tracedRows.map(({ intentRow, trace }, index) =>
     evaluateMarkdownCorpusBenchmarkRow(intentRow, trace, agentRuns[index]?.trace, agentRuns[index]),
   );
 
-  const report = summarizeMarkdownCorpusBenchmarkReport(fixturePath, options.live === true, benchmarkRows, {
-    liveQianjiConcurrency,
-    traceDataPlane,
-    traceControlEnvelope: searchRustBridgeSession
-      ? WENDAO_JSONL_STDIO_CONTROL_PLANE
-      : WENDAO_PROCESS_ARGS_CONTROL_PLANE,
-    rustBridgeSession: searchRustBridgeSession,
-    rustBridgeSessionTiming: traceRun.rustBridgeSessionTiming,
-    liveAgentMode: resolveLiveAgentMode(options.liveAgentMode),
-    liveAgentBatchSize: options.liveAgentBatchSize,
-    wallDurationMs: Date.now() - startedAt,
-  });
+  const report = summarizeMarkdownCorpusBenchmarkReport(
+    fixturePath,
+    options.live === true,
+    benchmarkRows,
+    {
+      liveQianjiConcurrency,
+      traceDataPlane,
+      traceControlEnvelope: searchRustBridgeSession
+        ? WENDAO_JSONL_STDIO_CONTROL_PLANE
+        : WENDAO_PROCESS_ARGS_CONTROL_PLANE,
+      rustBridgeSession: searchRustBridgeSession,
+      rustBridgeSessionTiming: traceRun.rustBridgeSessionTiming,
+      liveAgentMode: resolveLiveAgentMode(options.liveAgentMode),
+      liveAgentBatchSize: options.liveAgentBatchSize,
+      wallDurationMs: Date.now() - startedAt,
+    },
+  );
   if (options.outputJsonPath) {
     writeTextFile(resolve(cwd, options.outputJsonPath), `${JSON.stringify(report, null, 2)}\n`);
   }
   if (options.outputMarkdownPath) {
-    writeTextFile(resolve(cwd, options.outputMarkdownPath), renderMarkdownCorpusBenchmarkReport(report));
+    writeTextFile(
+      resolve(cwd, options.outputMarkdownPath),
+      renderMarkdownCorpusBenchmarkReport(report),
+    );
   }
   if (options.failOnViolation && report.failedCount > 0) {
     throw new Error(
@@ -146,7 +161,9 @@ function runBenchmarkLiveAgentRunsForMode(input: {
   return runBenchmarkLiveAgentRuns(input);
 }
 
-function hasSearchFlightEndpoint(options: SearchStrategyFlowMarkdownCorpusBenchmarkOptions): boolean {
+function hasSearchFlightEndpoint(
+  options: SearchStrategyFlowMarkdownCorpusBenchmarkOptions,
+): boolean {
   return Boolean(options.searchFlightBaseUrl ?? process.env.PI_WENDAO_SEARCH_FLIGHT_BASE_URL);
 }
 
@@ -155,7 +172,7 @@ function hasStrategyFlowServiceEndpoint(
 ): boolean {
   return Boolean(
     options.searchStrategyFlowServiceBaseUrl ??
-      process.env.PI_WENDAO_SEARCH_STRATEGY_FLOW_SERVICE_BASE_URL,
+    process.env.PI_WENDAO_SEARCH_STRATEGY_FLOW_SERVICE_BASE_URL,
   );
 }
 
@@ -179,7 +196,10 @@ async function runBenchmarkTraceRows(input: {
   options: SearchStrategyFlowMarkdownCorpusBenchmarkOptions;
   searchRustBridgeSession: boolean;
 }): Promise<{
-  rows: Array<{ intentRow: SearchStrategyFlowMarkdownCorpusIntentRow; trace: SearchStrategyFlowTrace }>;
+  rows: Array<{
+    intentRow: SearchStrategyFlowMarkdownCorpusIntentRow;
+    trace: SearchStrategyFlowTrace;
+  }>;
   rustBridgeSessionTiming?: SearchStrategyFlowRustBridgeSessionTiming;
 }> {
   if (input.searchRustBridgeSession && input.options.searchBackend !== "julia-direct") {
@@ -196,7 +216,8 @@ async function runBenchmarkTraceRows(input: {
       searchFlightBaseUrl: input.options.searchFlightBaseUrl,
       searchFlightTimeoutSeconds: input.options.searchFlightTimeoutSeconds,
       searchStrategyFlowServiceBaseUrl: input.options.searchStrategyFlowServiceBaseUrl,
-      searchStrategyFlowServiceTimeoutSeconds: input.options.searchStrategyFlowServiceTimeoutSeconds,
+      searchStrategyFlowServiceTimeoutSeconds:
+        input.options.searchStrategyFlowServiceTimeoutSeconds,
       queryUnderstanding: queryUnderstandingRowsForIntent(input.intentRows[0]),
     });
     const session = await runMarkdownCorpusBenchmarkRustBridgeSession({
@@ -232,7 +253,8 @@ async function runBenchmarkTraceRows(input: {
         searchFlightBaseUrl: input.options.searchFlightBaseUrl,
         searchFlightTimeoutSeconds: input.options.searchFlightTimeoutSeconds,
         searchStrategyFlowServiceBaseUrl: input.options.searchStrategyFlowServiceBaseUrl,
-        searchStrategyFlowServiceTimeoutSeconds: input.options.searchStrategyFlowServiceTimeoutSeconds,
+        searchStrategyFlowServiceTimeoutSeconds:
+          input.options.searchStrategyFlowServiceTimeoutSeconds,
         queryUnderstanding: queryUnderstandingRowsForIntent(intentRow),
       }),
     );
@@ -251,7 +273,8 @@ function queryUnderstandingRowsForIntent(
 ): SearchStrategyFlowQueryUnderstandingRow[] {
   if (!intentRow) return [];
   return intentRow.requiredEvidence.map((requiredEvidence, index) => ({
-    flowId: `markdown-corpus:${intentRow.familyId}` as SearchStrategyFlowQueryUnderstandingRow["flowId"],
+    flowId:
+      `markdown-corpus:${intentRow.familyId}` as SearchStrategyFlowQueryUnderstandingRow["flowId"],
     intentId: intentRow.familyId as SearchStrategyFlowQueryUnderstandingRow["intentId"],
     signalId: `${intentRow.familyId}:required-evidence:${
       index + 1
@@ -350,7 +373,10 @@ function parseCliArgs(argv: string[]): SearchStrategyFlowMarkdownCorpusBenchmark
     } else if (arg === "--search-rust-bridge-session") {
       options.searchRustBridgeSession = true;
     } else if (arg === "--search-rust-bridge-warmup-rows") {
-      options.searchRustBridgeWarmupRows = parseNonNegativeInteger(requireCliValue(argv, index, arg), arg);
+      options.searchRustBridgeWarmupRows = parseNonNegativeInteger(
+        requireCliValue(argv, index, arg),
+        arg,
+      );
       index += 1;
     } else if (arg === "--search-flight-base-url") {
       options.searchFlightBaseUrl = requireCliValue(argv, index, arg);
@@ -362,7 +388,10 @@ function parseCliArgs(argv: string[]): SearchStrategyFlowMarkdownCorpusBenchmark
       options.searchStrategyFlowServiceBaseUrl = requireCliValue(argv, index, arg);
       index += 1;
     } else if (arg === "--search-strategy-flow-service-timeout-seconds") {
-      options.searchStrategyFlowServiceTimeoutSeconds = Number.parseInt(requireCliValue(argv, index, arg), 10);
+      options.searchStrategyFlowServiceTimeoutSeconds = Number.parseInt(
+        requireCliValue(argv, index, arg),
+        10,
+      );
       index += 1;
     } else {
       throw new Error(`unknown Markdown corpus benchmark option: ${arg}`);
@@ -438,7 +467,11 @@ function printReport(report: SearchStrategyFlowMarkdownCorpusBenchmarkReportDto)
 if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? "")).href) {
   try {
     const options = parseCliArgs(process.argv.slice(2));
-    if (!existsSync(resolve(options.cwd ?? process.cwd(), options.fixturePath ?? DEFAULT_FIXTURE_PATH))) {
+    if (
+      !existsSync(
+        resolve(options.cwd ?? process.cwd(), options.fixturePath ?? DEFAULT_FIXTURE_PATH),
+      )
+    ) {
       throw new Error(`fixture not found: ${options.fixturePath ?? DEFAULT_FIXTURE_PATH}`);
     }
     const report = await runSearchStrategyFlowMarkdownCorpusBenchmark(options);

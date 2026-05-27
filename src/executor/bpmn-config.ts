@@ -177,13 +177,6 @@ function readOptionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
-function readOptionalNumber(value: unknown): number | undefined {
-  const text = readText(value).trim();
-  if (!text) return undefined;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function collectPiWendaoHostTasks(processes: unknown): PiWendaoHostTaskElement[] {
   const tasks: PiWendaoHostTaskElement[] = [];
   for (const process of asArray(processes)) {
@@ -274,7 +267,9 @@ function readNativeIo(task: Record<string, unknown>): NativeIoModel {
     dataOutputById,
     dataOutputNames,
     inputAssociations: readElements(task, "dataInputAssociation").map(readNativeInputAssociation),
-    outputAssociations: readElements(task, "dataOutputAssociation").map(readNativeOutputAssociation),
+    outputAssociations: readElements(task, "dataOutputAssociation").map(
+      readNativeOutputAssociation,
+    ),
   };
 }
 
@@ -426,24 +421,22 @@ function findProcess(processes: unknown, processId: string): Record<string, unkn
   return undefined;
 }
 
-function csv(value: string): string[] {
-  if (!value.trim()) return [];
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function firstObject(value: unknown): Record<string, unknown> | undefined {
   const first = asArray(value).find(isObject);
   return first;
 }
 
-function readElements(parent: Record<string, unknown>, localName: string): Record<string, unknown>[] {
+function readElements(
+  parent: Record<string, unknown>,
+  localName: string,
+): Record<string, unknown>[] {
   return asArray(firstElementValue(parent, localName)).filter(isObject);
 }
 
-function firstElement(parent: Record<string, unknown>, localName: string): Record<string, unknown> | undefined {
+function firstElement(
+  parent: Record<string, unknown>,
+  localName: string,
+): Record<string, unknown> | undefined {
   return firstObject(firstElementValue(parent, localName));
 }
 
