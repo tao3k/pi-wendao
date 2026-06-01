@@ -84,7 +84,7 @@
     "@rspack/core": "^2.0.4",
     "typescript": "^5.8.0",
     "typescript-lang-project-harness": "github:tao3k/typescript-lang-project-harness#4498e8f",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.0"
   },
   "typescriptProjectHarness": {
     "extensions": {
