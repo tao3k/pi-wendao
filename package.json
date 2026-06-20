@@ -66,7 +66,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.75.5",
-    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.79.8",
     "@earendil-works/pi-tui": "^0.75.5",
     "@eko24ive/pi-ask": "^1.0.1",
     "@mariozechner/jiti": "^2.6.5",
